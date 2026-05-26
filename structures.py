@@ -5,8 +5,39 @@ from aerodynamics import *
 from vehicle_dynamics import *
 import numpy as np
 import math
+#inputs
 
+#from PPE
+#battery mass
+#no. of propulsion systems
+#location of propulsion systems
+#type and length of wiring
+#max thrust per engine
+#propeller load cases
+#propeller diametre
 
+#from aerodyn
+#wing design
+#pos. of vertical wings
+#pos. of vertical tail
+#locations of control surfaces
+#airfoil type
+#wing load distribution
+#fuselage shape and size
+
+#from VD
+#long. positions of horizontal wings
+#gap
+#stagger
+#ultimate load factor
+
+#from B&O
+#no. of passengers 
+# vehicle lifetime
+# vehicle size envelope
+# payload mass
+
+#outputs
 #propeller failure loads
 #propeller structure
 #propeller material selection
