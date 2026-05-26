@@ -1,5 +1,5 @@
 #this file is responsible for containing constants pertaining to the B&O portion of the N2
-hcruise = #[m/s]
+hcruise = 0#[m/s]
 V_CRUISE = 200 / 3.6 #[m/s]
 RANGE_M = 200000.0 #[m]
 htransition = 0#[m]
