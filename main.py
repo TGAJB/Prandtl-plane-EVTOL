@@ -153,13 +153,13 @@ def COMPUTE_MTOW(MTOW):
     # M_W = (0.453592) * 0.04674 * ((MTOW * 2.20462) ** 0.397) * ((S_W * 3.28084 ** 2) ** 0.36) * (N_W ** 0.397) * (AR_W ** 1.712)
     M_W = (0.453592) * 0.002933 * ((S_W * 3.28084 ** 2) ** 1.018) * (AR_W ** 2.473) * N_W ** 0.611
     M_LG = MTOW * 0.01
-    M_TAIL = TAIL_SAFETY_FACTOR * (0.453592) * ((1.68 * ((MTOW * 2.20462) ** 0.567) * ((S_TAIL * 3.28084 ** 2) ** 1.249) * (AR_T ** 0.482)) / (639.95 * (TIP_TO_CHORD ** 0.747) * (np.cos(TAIL_SWEEP_C4 * (np.pi / 180)) ** 0.882)))
+    M_TAIL = (0.453592) * ((1.68 * ((MTOW * 2.20462) ** 0.567) * ((S_TAIL * 3.28084 ** 2) ** 1.249) * (AR_T ** 0.482)) / (639.95 * (TIP_TO_CHORD ** 0.747) * (np.cos(TAIL_SWEEP_C4 * (np.pi / 180)) ** 0.882)))
     M_MOTOR = 0.165 * ((MAX_POWER * (1 + PM)) / (N_MOTOR))
     M_PROP = 0.144 * ((D_PROP * (MAX_POWER / N_PROP) * N_BLADES ** 0.5) ** 0.782)
     M_PROP_TOT = N_PROP * M_PROP
     M_BATT = battery_mass_from_mtow(MTOW)
     M_MISC = 0.20 * MTOW
-    M_HINGE = 0.07 * MTOW
+    M_HINGE = 0.02 * MTOW
 
     MTOW = M_F + M_W + M_LG + M_TAIL + M_MOTOR + M_PROP_TOT + M_PAYLOAD + M_BATT + M_MISC + M_HINGE
 
