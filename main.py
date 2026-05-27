@@ -134,13 +134,6 @@ def COMPUTE_MTOW(MTOW):
         p_c = cruise_power(mtow_kg)
         p_l = landing_power(mtow_kg, A_disk=np.pi*(PROP_DIAMETER/2)**2, Vs_0=7.6, N_prop=6)
 
-        print((p_to * T_TAKEOFF
-                + p_vc * T_VERTICAL_CLIMB
-                + p_c * T_CRUISE
-                + p_cl * T_CLIMB
-                + p_cl_acc
-                + p_l * T_LANDING))
-
         return (p_to * T_TAKEOFF
                 + p_vc * T_VERTICAL_CLIMB
                 + p_c * T_CRUISE
