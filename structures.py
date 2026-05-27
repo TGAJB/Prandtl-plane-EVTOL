@@ -50,7 +50,30 @@ import math
 #OEW
 #vehicle lifetime
 
-def compute_mmoI(components, cg=(0, 0, 0)):
+#strategy
+#evolutionary algorithm: nsga2 -> multi-objective
+#check for parameters which have the biggest effect via sensitivity and aim for 10-20
+#can use multiple objective functions
+
+
+#cg = (x,y,z)
+cruise_components = [
+    {"name": "fuselage","mass":{},"position":{()},"I_local":{()}},
+    {"name": "wing","mass":{},"position":{()},"I_local":{()}},
+    {"name": "battery","mass":{},"position":{()},"I_local":{()}},
+    {"name": "payload","mass":{},"position":{()},"I_local":{()}},
+    {"name": "hinge","mass":{},"position":{()},"I_local":{()}}    
+    ]
+def local_inertia_computation(components):
+    for comp in components:
+        comp_name = components["name"]
+        for i in range(comp_name):
+            if comp_name == "battery":
+                components
+    return components   
+
+
+def compute_mmoI(components, cg):
     """
     Computes aircraft mass moments of inertia.
 
@@ -66,6 +89,7 @@ def compute_mmoI(components, cg=(0, 0, 0)):
 
     cg : tuple
         Aircraft center of gravity (x, y, z)
+    take the datum for nose tip location
 
     Returns
     -------
