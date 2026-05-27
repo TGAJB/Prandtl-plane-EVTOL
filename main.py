@@ -163,6 +163,19 @@ def COMPUTE_MTOW(MTOW):
 
     MTOW = M_F + M_W + M_LG + M_TAIL + M_MOTOR + M_PROP_TOT + M_PAYLOAD + M_BATT + M_MISC + M_HINGE
 
+    print("")
+    print("Fuselage: " + str(M_F))
+    print("Wing : " + str(M_W))
+    print("Landing Gear: " + str(M_LG))
+    print("Tail: " + str(M_TAIL))
+    print("Motor: " + str(M_MOTOR))
+    print("Propellors: " + str(M_PROP_TOT))
+    print("Payload: " + str(M_PAYLOAD))
+    print("Battery: " + str(M_BATT))
+    print("Miscallaneous: " + str(M_MISC))
+    print("Hinge: " + str(M_HINGE))
+    print("")
+
     return MTOW
 
 # ITERATOR
