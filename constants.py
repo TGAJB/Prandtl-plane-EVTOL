@@ -12,3 +12,5 @@ vehicle_lifetime =0 #years
 M_PAYLOAD = 400 #[kg]
 aircraft_person_proximity =0 #[m]
 aircraft_building_proximity = 0#[m]
+rho_propeller_hub = #[kg/m^3]
+rho_propeller_blade = #[kg/m^3]
