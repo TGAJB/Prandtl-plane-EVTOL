@@ -1,0 +1,8 @@
+{
+  "autodeskProduct": "Fusion360",
+  "type": "script",
+  "author": "",
+  "description": "Parametric propeller hub with shaft bore and blade-root sockets",
+  "version": "1.0.0",
+  "runOnStartup": false
+}

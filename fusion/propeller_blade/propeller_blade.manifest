@@ -1,0 +1,8 @@
+{
+  "autodeskProduct": "Fusion360",
+  "type": "script",
+  "author": "",
+  "description": "Parametric NACA 4-digit propeller blade — linked to main.py sizing constants",
+  "version": "1.0.0",
+  "runOnStartup": false
+}
