@@ -105,6 +105,23 @@ AR_T      = 1.23       # tail aspect ratio
 TIP_TO_CHORD    = 0.1
 TAIL_SWEEP_C4   = 15   # [deg]
 TAIL_SAFETY_FACTOR = 1.5
+
+# V-tail sizing constants ──────────────────────────────────────
+V_ANGLE          = 45.0     # [deg]  V-tail dihedral from horizontal — verify with CAD
+TAPER_TAIL       = 0.40     # [-]    chord taper ratio c_tip/c_root
+F_REAR_WING      = 0.5     # [-]    rear Prandtl-wing lift fraction (from aero model; typ. 0.40-0.55)
+# SIGMA_ALLOW_CFRP = 500e6  # [Pa]   CFRP UD compression allowable (superseded by Al below)
+# RHO_CFRP         = 1550.0 # [kg/m3] CFRP density (superseded by Al below)
+# T_PLY            = 0.125e-3# [m]   UD CFRP prepreg ply thickness (superseded)
+# N_PLY_MIN        = 8       # [-]   min plies per skin, MIL-HDBK-17-3F (superseded)
+SIGMA_ALLOW_AL   = 260e6    # [Pa]   2024-T3 Fcy B-basis, MMPDS-01 Table 3.2.3.0(e)
+RHO_AL           = 2700.0   # [kg/m3] aluminium alloy density
+T_SKIN_MIN_AL    = 1.2e-3   # [m]    minimum sheet thickness for Al primary structure
+                             #        (manufacturing and damage tolerance floor; Niu 1988)
+STRUCT_SF        = 1.5      # [-]    structural safety factor, limit -> ultimate (FAR/CS 25.303)
+C_N_TAIL_MAX     = 1.2      # [-]    peak normal force coeff. at max control deflection
+V_DIVE_FACTOR    = 1.25     # [-]    dive speed as fraction of cruise (conservative lower bound)
+
 T_ELAPSED_VC    = 5    # [s]
 INIT_ELEV       = 0    # [m]
 FIN_ELEV        = 10   # [m]
@@ -204,11 +221,61 @@ def COMPUTE_MTOW(MTOW):
 
     M_LG   = MTOW * 0.03
 
-    M_TAIL = (0.453592
-              * ((1.68 * ((MTOW * 2.20462) ** 0.567) * ((S_TAIL * 3.28084 ** 2) ** 1.249)
-                  * (AR_T ** 0.482))
-                 / (639.95 * (TIP_TO_CHORD ** 0.747)
-                    * (np.cos(TAIL_SWEEP_C4 * (np.pi / 180)) ** 0.882))))
+    # Roskam/Torenbeek transport regression (metallic, calibrated outside this weight class):
+    # M_TAIL = (0.453592
+    #           * ((1.68 * ((MTOW * 2.20462) ** 0.567) * ((S_TAIL * 3.28084 ** 2) ** 1.249)
+    #               * (AR_T ** 0.482))
+    #              / (639.95 * (TIP_TO_CHORD ** 0.747)
+    #                 * (np.cos(TAIL_SWEEP_C4 * (np.pi / 180)) ** 0.882))))
+
+    # Physics-based cantilever sizing.  Each V-tail panel is a cantilever fixed at the
+    # fuselage root and loaded at the tip by the rear Prandtl-wing lift (dominant load case).
+    # Two structural contributions: bending spar (Euler-Bernoulli beam theory) + min-gage skins.
+    # Note: TIP_TO_CHORD is used here as the thickness-to-chord ratio (t/c = 0.10).
+
+    # -- Geometry --
+    # S_TAIL is the actual panel surface area (not planform).
+    # AR_T = (actual span)^2 / S_TAIL, so l_panel is derived directly.
+    _l_panel = 0.5 * np.sqrt(AR_T * S_TAIL)                               # actual panel span [m]
+    _b_half  = _l_panel * np.cos(np.radians(V_ANGLE))                     # horizontal projection [m]
+    _c_root  = S_TAIL / ((1 + TAPER_TAIL) * _l_panel)                     # root chord [m]
+    _h_spar  = TIP_TO_CHORD * _c_root                                      # spar depth at root [m]
+
+    # -- Spar caps: Euler-Bernoulli cantilever, sized to ultimate load --
+    #
+    # Load case 1 — rear wing lift at limit load (vector analysis gives M = b_half x F_vert;
+    # cos terms cancel in the moment arm, but cos(V_ANGLE) re-enters via h_eff below).
+    _F_vert_lim = (F_REAR_WING * N_W * MTOW * G) / 2.0                    # [N] per panel, limit
+    _M_rear     = _b_half * _F_vert_lim                                    # [N.m]
+    #
+    # Load case 2 — V-tail own aerodynamic load at dive speed, max control deflection.
+    # Normal force acts perpendicular to panel surface.  Cross-product analysis (same as
+    # rear wing derivation) gives M_aero = F_aero * l_panel / 2 regardless of V_ANGLE,
+    # because the aero force is perpendicular to the span vector throughout.
+    _q_dive  = 0.5 * RHO_ORIGIN * (V_DIVE_FACTOR * V_CR) ** 2             # [Pa]
+    _F_aero  = _q_dive * (S_TAIL / 2) * C_N_TAIL_MAX                      # [N] per panel
+    _M_aero  = _F_aero * _l_panel / 2                                      # [N.m]
+    #
+    # Ultimate design moment (FAR/CS 25.303: ultimate = limit x 1.5)
+    _M_root  = STRUCT_SF * (_M_rear + _M_aero)                             # [N.m]
+    #
+    # h_eff: flanges separated by h_spar in panel thickness direction (-sinG, 0, cosG).
+    # Only the z-component resists bending about y-axis: h_eff = h_spar * cos(V_ANGLE).
+    # Vol_flanges = integral of A_cap(x) dx = M_root * l / (sigma * h_eff)
+    _h_eff    = _h_spar * np.cos(np.radians(V_ANGLE))                     # [m]
+    _vol_caps = _M_root * _l_panel / (SIGMA_ALLOW_AL * _h_eff)              # [m3]
+    _vol_spar = 1.4 * _vol_caps        # spar web ~40% of cap volume (thin-walled box beam)
+    _m_spar   = _vol_spar * RHO_AL                                         # [kg] per panel
+
+    # -- Skins: min-gage governs (shear sizing < 0.2 mm; min-gage governs) --
+    # S_TAIL is the actual panel surface area, so no cos(V_ANGLE) correction needed.
+    # Two skins (upper + lower) per panel.
+    _m_skin   = 2 * (S_TAIL / 2) * T_SKIN_MIN_AL * RHO_AL                 # [kg] per panel
+
+    # -- Ribs + fittings: 17 % of total (Niu 1992, Table 6.4, composite control surfaces) --
+    _m_panel  = (_m_spar + _m_skin) / 0.83
+
+    M_TAIL    = 2.0 * _m_panel                                             # [kg] both panels
 
     M_MOTOR     = 0.165 * ((MAX_POWER * (1 + PM)) / N_MOTOR)
     M_MOTOR_TOT = M_MOTOR * N_MOTOR
