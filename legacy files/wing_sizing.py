@@ -23,13 +23,6 @@ V_cruise = V_CRUISE               # [m/s] cruise speed
 # For stall check
 rho_stall = RHO_ORIGIN            # [kg/m^3] usually sea-level density
 
-# ============================================================
-# 2. CONFIGURATION PARAMETERS
-# ============================================================
-
-number_of_wings = 2            # [-] e.g. 1 for conventional, 2 for Prandtl/box-wing
-area_split = 0.5                 # [-] fraction of total area assigned to one wing
-wing_span = 13                       # [-] span from the footprint constraint
 
 # ============================================================
 # 3. CHOSEN PARAMETERS
