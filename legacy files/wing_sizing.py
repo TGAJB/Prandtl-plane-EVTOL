@@ -6,7 +6,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from constants import G, RHO_ORIGIN, V_CRUISE, hcruise
+from constants import G, RHO_ORIGIN, V_CRUISE, hcruise, number_of_wings, area_split, wing_span
 
 # ============================================================
 # 1. INPUTS FROM MATCHING DIAGRAM AND WEIGHT ESTIMATION
@@ -20,6 +20,16 @@ V_cruise = V_CRUISE               # [m/s] cruise speed
 
 # For stall check
 rho_stall = RHO_ORIGIN            # [kg/m^3] usually sea-level density
+
+
+# ============================================================
+# 2. CONFIGURATION PARAMETERS
+# ============================================================
+number_of_wings     = number_of_wings     # [-] e.g. 1 for conventional, 2 for Prandtl/box-wing
+area_split          = area_split          # [-] fraction of total area assigned to one wing
+wing_span           = wing_span           # [-] span from the footprint constraint
+
+
 
 
 # ============================================================
