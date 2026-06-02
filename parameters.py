@@ -19,6 +19,9 @@ T_LANDING        = 71.47      # [s]   landing segment
 T_ELAPSED_VC     = 5.0        # [s]   vertical climb elapsed time
 V_AVG_TO         = 2.0        # [m/s] average takeoff vertical speed
 V_HOVER          = 3.0        # [m/s] hover climb speed
+D_VERT_LANDING   = 1676       # [m] vertical distance to land
+VI = 20.0                     # [m/s] initial velocity pre-climb acceleration
+VS_0 = D_VERT_LANDING / T_DESCENT # [m/s] landing phase initial velocity
 
 # ── Aerodynamic & propulsive parameters ───────────────────────────────────────
 

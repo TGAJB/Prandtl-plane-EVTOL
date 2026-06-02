@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from parameters import (
     G, RHO_ORIGIN, A_DISK, V_HOVER, T_ELAPSED_VC, V_AVG_TO,
     FM, POWER_SAFETY_FACTOR, N_MOTOR, N_PROP, N_BLADES,
-    M_PAYLOAD,
+    M_PAYLOAD, VI, VS_0
 )
 from energy import battery_mass
 from mass_components import (

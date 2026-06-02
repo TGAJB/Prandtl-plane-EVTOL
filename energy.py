@@ -10,8 +10,7 @@ from parameters import (
     G, FM, RHO_ORIGIN,
     ETA_POWERTRAIN_HOVER, ETA_CLIMB, ETA_CRUISE, LD_CRUISE, V_CRUISE,
     T_TAKEOFF, T_LANDING, T_CRUISE, T_CLIMB, T_CLIMB_ACC, T_VERTICAL_CLIMB,
-    D_PROP, N_PROP,
-    E_PACK_WH_KG, SOC_USABLE, CONTINGENCY,
+    D_PROP, N_PROP, E_PACK_WH_KG, SOC_USABLE, CONTINGENCY, VS_0, VI, T_DESCENT
 )
 
 _A_DISK_PROP = np.pi * (D_PROP / 2) ** 2   # disk area from D_PROP
@@ -62,10 +61,10 @@ def mission_energy(mtow_kg):
     """Total mission energy [W·s] for a given MTOW estimate."""
     p_to     = takeoff_power(mtow_kg, a_disk=_A_DISK_PROP, vs_avg=2, vs_f=3, n_prop=N_PROP)
     p_vc     = vertical_climb_power(mtow_kg, a_disk=_A_DISK_PROP, vs=3, n_prop=N_PROP)
-    p_cl_acc = climb_acceleration_power(mtow_kg, v_i=20, v_f=V_CRUISE, vs=3, acc_time=T_CLIMB_ACC)
+    p_cl_acc = climb_acceleration_power(mtow_kg, VI, v_f=V_CRUISE, vs=3, acc_time=T_CLIMB_ACC)
     p_cl     = climb_power(mtow_kg, climb_angle_deg=3.09097, v_climb_horizontal=V_CRUISE, vs=3)
     p_c      = cruise_power(mtow_kg)
-    p_l      = landing_power(mtow_kg, a_disk=_A_DISK_PROP, vs_0=7.6, n_prop=N_PROP)
+    p_l      = landing_power(mtow_kg, a_disk=_A_DISK_PROP, vs_0=VS_0, n_prop=N_PROP)
     return (p_to  * T_TAKEOFF
             + p_vc   * T_VERTICAL_CLIMB
             + p_c    * T_CRUISE

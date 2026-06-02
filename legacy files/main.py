@@ -4,6 +4,7 @@ from scipy.integrate import solve_ivp
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from ambiance import Atmosphere
+from parameters import *
 
 M_PAYLOAD = 400 #[kg]
 
@@ -129,10 +130,10 @@ def COMPUTE_MTOW(MTOW):
 
         p_to = takeoff_power(mtow_kg, A_disk=np.pi*(PROP_DIAMETER/2)**2, Vs_avg=2, Vs_f=3, N_prop=6)
         p_vc = vertical_climb_power(mtow_kg, A_disk=np.pi*(PROP_DIAMETER/2)**2, Vs=3, N_prop=6)
-        p_cl_acc = climb_acceleration_power(mtow_kg, V_i=20, V_f=V_CRUISE, Vs=3, acc_time=T_CLIMB_ACC)
+        p_cl_acc = climb_acceleration_power(mtow_kg, V_i=20.0, V_f=V_CRUISE, Vs=3, acc_time=T_CLIMB_ACC)
         p_cl = climb_power(mtow_kg, climb_angle_deg=3.09097, V_climb_horizontal=V_CRUISE, Vs=3)
         p_c = cruise_power(mtow_kg)
-        p_l = landing_power(mtow_kg, A_disk=np.pi*(PROP_DIAMETER/2)**2, Vs_0=7.6, N_prop=6)
+        p_l = landing_power(mtow_kg, A_disk=np.pi*(PROP_DIAMETER/2)**2, Vs_0=5.37, N_prop=6)
 
         return (p_to * T_TAKEOFF
                 + p_vc * T_VERTICAL_CLIMB
