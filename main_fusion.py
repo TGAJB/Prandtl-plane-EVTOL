@@ -8,7 +8,7 @@ Run this file to execute the MTOW iteration and view the convergence plot.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from constants import (
+from parameters import (
     G, RHO_ORIGIN, A_DISK, V_HOVER, T_ELAPSED_VC, V_AVG_TO,
     FM, POWER_SAFETY_FACTOR, N_MOTOR, N_PROP, N_BLADES,
     M_PAYLOAD,
@@ -36,7 +36,7 @@ def compute_mtow(mtow_kg):
 
     # Component masses
     m_fuselage = fuselage_mass(mtow_kg)
-    m_wing     = wing_mass()
+    m_wing     = wing_mass(mtow_kg)
     m_lg       = landing_gear_mass(mtow_kg)
     m_tail     = tail_mass(mtow_kg)
     m_motors   = motor_mass(max_power_kw)
