@@ -1,3 +1,9 @@
+"""
+file to check the influence of the cl_max and taper ratio 
+help for the airfoil and taper ratio choice
+can be use for the validation of the airfoil/taper ratio choice
+"""
+
 import math
 import sys
 from pathlib import Path
@@ -6,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from constants import (
+from parameters import (
     G,
     RHO_ORIGIN,
     V_CRUISE,

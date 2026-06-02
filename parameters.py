@@ -58,7 +58,7 @@ L_FUS       = 7.0    # [m]   fuselage length
 PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
 S_W         = 30.0   # [m²]  total wing reference area
-AR_W        = 5.63   # [-]   wing aspect ratio
+AR_W        = 5.63   # [-]   wing aspect ratio -> this is now computed in aerodynamics functions so this may need removed
 S_TAIL      = 3.25   # [m²]  V-tail total panel area (both panels)
 AR_T        = 1.23   # [-]   V-tail aspect ratio
 
