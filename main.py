@@ -15,7 +15,7 @@ from parameters import (
 )
 from energy import battery_mass
 from mass_components import (
-    fuselage_mass, wing_mass, landing_gear_mass, tail_mass,
+    fuselage_mass, wing_geometry, wing_mass, landing_gear_mass, tail_mass,
     motor_mass, propeller_mass, hub_mass, misc_mass, hinge_mass,
 )
 from fusion_geometry import (
@@ -35,16 +35,17 @@ def compute_mtow(mtow_kg):
     max_power_kw = (POWER_SAFETY_FACTOR * avg_thrust * (v_avg_i + V_AVG_TO) / FM) / 1000
 
     # Component masses
-    m_fuselage = fuselage_mass(mtow_kg)
-    m_wing     = wing_mass(mtow_kg)
-    m_lg       = landing_gear_mass(mtow_kg)
-    m_tail     = tail_mass(mtow_kg)
-    m_motors   = motor_mass(max_power_kw)
-    m_props    = propeller_mass(max_power_kw, USE_FUSION_PROP, M_BLADE_FUSION)
-    m_hubs     = hub_mass(USE_FUSION_HUB, M_HUB_FUSION)
-    m_batt     = battery_mass(mtow_kg)
-    m_misc     = misc_mass(mtow_kg)
-    m_hinge    = hinge_mass(mtow_kg)
+    wing_geom   = wing_geometry(mtow_kg)
+    m_fuselage  = fuselage_mass(mtow_kg)
+    m_wing      = wing_mass(mtow_kg, wing_geom)
+    m_lg        = landing_gear_mass(mtow_kg)
+    m_tail      = tail_mass(mtow_kg)
+    m_motors    = motor_mass(max_power_kw)
+    m_props     = propeller_mass(max_power_kw, USE_FUSION_PROP, M_BLADE_FUSION)
+    m_hubs      = hub_mass(USE_FUSION_HUB, M_HUB_FUSION)
+    m_batt      = battery_mass(mtow_kg)
+    m_misc      = misc_mass(mtow_kg)
+    m_hinge     = hinge_mass(mtow_kg)
 
     mtow_new = (m_fuselage + m_wing + m_lg + m_tail
                 + m_motors + m_props + m_hubs
@@ -55,6 +56,9 @@ def compute_mtow(mtow_kg):
 
     print(f"\n  Fuselage        : {m_fuselage:.2f} kg")
     print(f"  Wing            : {m_wing:.2f} kg")
+    print(f"    Wing area     : {wing_geom['total_area_m2']:.2f} m^2")
+    print(f"    Wing AR       : {wing_geom['aspect_ratio']:.2f}")
+    print(f"    Root / tip c  : {wing_geom['root_chord_m']:.2f} / {wing_geom['tip_chord_m']:.2f} m")
     print(f"  Landing gear    : {m_lg:.2f} kg")
     print(f"  Tail            : {m_tail:.2f} kg")
     print(f"  Motors          : {m_motors / N_MOTOR:.2f} kg/motor  ({N_MOTOR} motors)")
@@ -111,5 +115,4 @@ if converged:
 
 #use this to call the mtow final pookies
 MTOW_FINAL = history[-1]
-
-
+WING_SIZING_FINAL = wing_geometry(MTOW_FINAL)

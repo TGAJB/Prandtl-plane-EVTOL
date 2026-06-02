@@ -15,6 +15,7 @@ from parameters import (
     F_REAR_WING, SIGMA_ALLOW_AL, RHO_AL, T_SKIN_MIN_AL,
     STRUCT_SF, C_N_TAIL_MAX, V_DIVE_FACTOR, V_CRUISE,
     N_PROP, N_MOTOR, N_BLADES, D_PROP, PM,
+    wing_span, area_split, WING_LOADING_N,
 )
 
 
@@ -27,14 +28,37 @@ def fuselage_mass(mtow_kg):
             * ((L_FUS * 3.28084) ** 0.383) * N_PAX ** 0.455)
 
 
-# ── Wing (physics-based cantilever sizing) ────────────────────────────────────
+# ── Wing (dynamic sizing from design-point W/S + Class II mass) ───────────────
 
-def wing_mass(mtow_kg):
+def wing_geometry(mtow_kg):
+    # -- Geometry from selected design point: S = W / (W/S) --
+    weight_n = mtow_kg * G
+    total_area_m2 = weight_n / WING_LOADING_N
+    area_per_wing_m2 = total_area_m2 * area_split
+    aspect_ratio = wing_span ** 2 / total_area_m2
+    root_chord_m = 2 * area_per_wing_m2 / ((1 + TAPER_W) * wing_span)
+    tip_chord_m = TAPER_W * root_chord_m
+
+    return {
+        "weight_n": weight_n,
+        "total_area_m2": total_area_m2,
+        "area_per_wing_m2": area_per_wing_m2,
+        "span_m": wing_span,
+        "aspect_ratio": aspect_ratio,
+        "root_chord_m": root_chord_m,
+        "tip_chord_m": tip_chord_m,
+    }
+
+
+def wing_mass(mtow_kg, geometry=None):
     # -- Geometry (identical for front and rear wings) --
-    b_w    = np.sqrt(AR_W * S_W)                      # full wing span [m]
-    s      = b_w / 2                                   # semi-span [m]
-    s_wing = S_W / 2                                   # planform area per wing [m²]
-    c_root = 2 * s_wing / ((1 + TAPER_W) * b_w)       # root chord [m]
+    if geometry is None:
+        geometry = wing_geometry(mtow_kg)
+
+    b_w    = geometry["span_m"]                         # full wing span [m]
+    s      = b_w / 2                                    # semi-span [m]
+    s_wing = geometry["area_per_wing_m2"]              # planform area per wing [m²]
+    c_root = 2 * s_wing / ((1 + TAPER_W) * b_w)        # root chord [m]
     h_spar = TIP_TO_CHORD_W * c_root                   # spar depth at root [m]
     # no h_eff correction: wing is horizontal, bending is about the chord axis
 

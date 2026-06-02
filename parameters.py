@@ -30,6 +30,14 @@ FM                   = 0.73   # [-]   rotor figure of merit
 POWER_SAFETY_FACTOR  = 1.4    # [-]   power safety factor
 PM                   = 0.5    # [-]   power margin
 
+# ── Aerodynamic geometry ──────────────────────────────────────────────────────
+
+number_of_wings     = 2        # [-] e.g. 1 for conventional, 2 for Prandtl/box-wing
+area_split          = 0.5      # [-] fraction of total area assigned to one wing
+wing_span           = 13       # [-] span from the footprint constraint
+WING_LOADING_N      = 760.0    # [N/m^2] selected design-point wing loading from matching diagram
+
+
 # ── Propulsion geometry ────────────────────────────────────────────────────────
 
 N_PROP   = 6      # [-]  number of rotors
