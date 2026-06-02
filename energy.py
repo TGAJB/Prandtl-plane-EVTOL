@@ -6,7 +6,7 @@ at any point in the MTOW iteration.
 """
 
 import numpy as np
-from constants import (
+from parameters import (
     G, FM, RHO_ORIGIN,
     ETA_POWERTRAIN_HOVER, ETA_CLIMB, ETA_CRUISE, LD_CRUISE, V_CRUISE,
     T_TAKEOFF, T_LANDING, T_CRUISE, T_CLIMB, T_CLIMB_ACC, T_VERTICAL_CLIMB,

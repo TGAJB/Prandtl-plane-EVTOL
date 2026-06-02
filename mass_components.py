@@ -6,10 +6,11 @@ Functions that depend on MTOW take it as their first argument.
 """
 
 import numpy as np
-from constants import (
+from parameters import (
     G, RHO_ORIGIN,
     L_FUS, PER_FUS_MAX, N_PAX,
-    S_W, AR_W, N_W,
+    S_W, AR_W, N_W, TAPER_W, TIP_TO_CHORD_W,
+    SIGMA_ALLOW_CFRP, RHO_CFRP, T_SKIN_MIN_CFRP,
     S_TAIL, AR_T, TAPER_TAIL, TIP_TO_CHORD, V_ANGLE,
     F_REAR_WING, SIGMA_ALLOW_AL, RHO_AL, T_SKIN_MIN_AL,
     STRUCT_SF, C_N_TAIL_MAX, V_DIVE_FACTOR, V_CRUISE,
@@ -26,12 +27,35 @@ def fuselage_mass(mtow_kg):
             * ((L_FUS * 3.28084) ** 0.383) * N_PAX ** 0.455)
 
 
-# ── Wing (statistical regression) ─────────────────────────────────────────────
+# ── Wing (physics-based cantilever sizing) ────────────────────────────────────
 
-def wing_mass():
-    return (0.453592
-            * 0.002933 * ((S_W * 3.28084 ** 2) ** 1.018)
-            * (AR_W ** 2.473) * N_W ** 0.611)
+def wing_mass(mtow_kg):
+    # -- Geometry (identical for front and rear wings) --
+    b_w    = np.sqrt(AR_W * S_W)                      # full wing span [m]
+    s      = b_w / 2                                   # semi-span [m]
+    s_wing = S_W / 2                                   # planform area per wing [m²]
+    c_root = 2 * s_wing / ((1 + TAPER_W) * b_w)       # root chord [m]
+    h_spar = TIP_TO_CHORD_W * c_root                   # spar depth at root [m]
+    # no h_eff correction: wing is horizontal, bending is about the chord axis
+
+    # -- Size front and rear wings independently (general for F_REAR_WING ≠ 0.5) --
+    m_total = 0.0
+    for f_lift in [(1.0 - F_REAR_WING), F_REAR_WING]:
+        l_wing = f_lift * N_W * mtow_kg * G
+
+        # Correct spar cap volume for elliptical lift distribution.
+        # ∫₀ˢ M(y) dy = L_wing·s²/8  (derived analytically from elliptical l(y))
+        # vol_caps = STRUCT_SF · L·s² / (8·σ·h)
+        vol_caps = STRUCT_SF * l_wing * s**2 / (8 * SIGMA_ALLOW_CFRP * h_spar)
+        m_spar   = 1.4 * vol_caps * RHO_CFRP    # caps + web, CFRP
+
+        # Skins: min-gauge CFRP (8-ply prepreg), upper + lower surface
+        m_skin   = 2 * s_wing * T_SKIN_MIN_CFRP * RHO_CFRP
+
+        # Primary fraction 0.76 recovers ribs + secondary structure
+        m_total += (m_spar + m_skin) / 0.76
+
+    return m_total
 
 
 # ── Landing gear ───────────────────────────────────────────────────────────────

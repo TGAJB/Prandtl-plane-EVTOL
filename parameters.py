@@ -61,6 +61,16 @@ AR_W        = 5.63   # [-]   wing aspect ratio
 S_TAIL      = 3.25   # [m²]  V-tail total panel area (both panels)
 AR_T        = 1.23   # [-]   V-tail aspect ratio
 
+# ── Wing structural parameters ────────────────────────────────────────────────
+
+TAPER_W          = 0.40    # [-]    wing chord taper ratio (c_tip / c_root)
+TIP_TO_CHORD_W   = 0.12    # [-]    wing thickness-to-chord ratio
+
+# Wing material: CFRP (standard for modern eVTOL primary structure)
+SIGMA_ALLOW_CFRP = 500e6   # [Pa]   UD CFRP compression allowable, B-basis (MIL-HDBK-17-1F)
+RHO_CFRP         = 1550.0  # [kg/m³] CFRP density
+T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin — 8 plies × 0.125 mm prepreg (MIL-HDBK-17-3F)
+
 # ── V-tail structural parameters ───────────────────────────────────────────────
 
 V_ANGLE        = 45.0    # [deg]  V-tail dihedral from horizontal
