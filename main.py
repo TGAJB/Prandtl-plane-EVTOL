@@ -18,7 +18,7 @@ from mass_components import (
     fuselage_mass, wing_mass, landing_gear_mass, tail_mass,
     motor_mass, propeller_mass, hub_mass, misc_mass, hinge_mass,
 )
-from fusion.fusion_geometry import (
+from fusion_geometry import (
     USE_FUSION_PROP, M_BLADE_FUSION,
     USE_FUSION_HUB,  M_HUB_FUSION,
 )
