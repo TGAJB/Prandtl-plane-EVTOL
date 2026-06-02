@@ -108,3 +108,8 @@ if converged:
               f" | total {M_HUB_FUSION * N_PROP:.2f} kg")
     else:
         print(f"  Hub source   : not modelled (set to zero)")
+
+#use this to call the mtow final pookies
+MTOW_FINAL = history[-1]
+
+
