@@ -2,6 +2,8 @@ from parameters import *
 import matplotlib.pyplot as plt
 import numpy as np
 
+###Returns c.g range for aircraft
+
 def bubble_diagram(mtow_kg, x_cg_oew):
     #Payload consists of 4 80kg passengers, 20kg each of cargo
     OEM = mtow_kg - M_PAYLOAD
@@ -64,7 +66,7 @@ def add_mass(masslst, cglst, mass, cg):
     masslst.append(masslst[-1] + mass)
     return masslst, cglst
 
-bubble_diagram(1600, 2.5)
 
 
+#bubble_diagram(1600, 2.5)
 #print(add_mass([2], [0], 2, 1))
