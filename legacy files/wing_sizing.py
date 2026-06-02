@@ -103,8 +103,8 @@ def main():
     c_avg_total, c_avg_wing = compute_average_chords(S_total, S_wing, b)
     c_root, c_tip = compute_root_tip_chords(S_wing, b, taper_ratio)
 
-    CL_cruise = compute_cruise_lift_coefficient(W, RHO_ORIGIN, V_CRUISE, S_total)
-    V_stall = compute_stall_speed(W, rho_stall, S_total, CL_max)
+    CL_cruise = compute_cruise_lift_coefficient(W, rho_cruise, V_CRUISE, S_total)
+    V_stall = compute_stall_speed(W, RHO_ORIGIN, S_total, CL_max)
 
     print(f"Aircraft weight W = {W:.2f} N")
     print(f"Total reference wing area S = {S_total:.2f} m^2")
