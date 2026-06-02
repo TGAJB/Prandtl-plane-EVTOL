@@ -108,33 +108,3 @@ if converged:
               f" | total {M_HUB_FUSION * N_PROP:.2f} kg")
     else:
         print(f"  Hub source   : not modelled (set to zero)")
-
-
-# ── Convergence plot ───────────────────────────────────────────────────────────
-
-fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-fig.suptitle("MTOW Convergence", fontweight="bold")
-
-iters = list(range(len(history)))
-
-axes[0].plot(iters, history, marker="o", linewidth=2, color="steelblue")
-axes[0].axhline(guess_new, color="red", linestyle="--", linewidth=1,
-                label=f"Converged: {guess_new:.1f} kg")
-axes[0].set_xlabel("Iteration")
-axes[0].set_ylabel("MTOW estimate [kg]")
-axes[0].set_title("MTOW per Iteration")
-axes[0].legend()
-axes[0].grid(True, alpha=0.3)
-
-residuals = [abs(history[i+1] - history[i]) / history[i] * 100
-             for i in range(len(history) - 1)]
-axes[1].semilogy(range(1, len(history)), residuals, marker="s", linewidth=2, color="darkorange")
-axes[1].axhline(1.0, color="red", linestyle="--", linewidth=1, label="1% threshold")
-axes[1].set_xlabel("Iteration")
-axes[1].set_ylabel("Relative change [%]")
-axes[1].set_title("Relative Change per Iteration")
-axes[1].legend()
-axes[1].grid(True, which="both", alpha=0.3)
-
-plt.tight_layout()
-plt.show()
