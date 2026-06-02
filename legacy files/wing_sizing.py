@@ -15,13 +15,12 @@ from constants import G, RHO_ORIGIN, V_CRUISE, hcruise
 MTOW =  2000                      # [kg] Class I / Class II mass estimate |  CHANGE THIS TO IMPORT MTOW
 W_S = 760                       # [N/m^2] selected wing loading from matching diagram | CHANGE THIS TO IMPORT W/S
 
-# ============================================================
-# 2. CONFIGURATION PARAMETERS
-# ============================================================
+# For cruise check
+V_cruise = V_CRUISE               # [m/s] cruise speed
 
-number_of_wings = 2            # [-] e.g. 1 for conventional, 2 for Prandtl/box-wing
-area_split = 0.5                 # [-] fraction of total area assigned to one wing
-wing_span = 13                       # [-] span from the footprint constraint
+# For stall check
+rho_stall = RHO_ORIGIN            # [kg/m^3] usually sea-level density
+
 
 # ============================================================
 # 3. CHOSEN PARAMETERS
