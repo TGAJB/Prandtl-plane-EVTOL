@@ -12,16 +12,8 @@ from constants import G, RHO_ORIGIN, V_CRUISE, hcruise
 # 1. INPUTS FROM MATCHING DIAGRAM AND WEIGHT ESTIMATION
 # ============================================================
 
-g = G                             # [m/s^2]
-
-MTOW =  2000                      # [kg] Class I / Class II mass estimate |     CHANGE THIS TO IMPORT MTOW
+MTOW =  2000                      # [kg] Class I / Class II mass estimate |  CHANGE THIS TO IMPORT MTOW
 W_S = 760                       # [N/m^2] selected wing loading from matching diagram | CHANGE THIS TO IMPORT W/S
-
-# For cruise check
-V_cruise = V_CRUISE               # [m/s] cruise speed
-
-# For stall check
-rho_stall = RHO_ORIGIN            # [kg/m^3] usually sea-level density
 
 # ============================================================
 # 2. CONFIGURATION PARAMETERS
@@ -38,18 +30,25 @@ wing_span = 13                       # [-] span from the footprint constraint
 CL_max = 2.0                   # [-] assumed maximum lift coefficient 
 taper_ratio = 0.8              # [-] lambda = c_tip / c_root
 
+# ============================================================
+# 4. CRUISE DENSITY
+# ============================================================
 
 def compute_isa_density(altitude_m):
     temperature_k = 288.15 - 0.0065 * altitude_m
     pressure_pa = 101325.0 * (temperature_k / 288.15) ** 5.25588
     return pressure_pa / (287.05 * temperature_k)
 
+altitude = 3000 # temporary
+# CHANGE TO hcruise IN BRACKETS when hcruise DEFINED IN @constants.py
+rho_cruise = compute_isa_density(altitude)  # [kg/m^3] air density at cruise altitude
 
-rho_cruise = compute_isa_density(hcruise)  # [kg/m^3] air density at cruise altitude
-
+# ============================================================
+# 5. WING-RELATED PARAMETERS CALCULATIONS
+# ============================================================
 
 def compute_weight(mtow_kg):
-    return mtow_kg * g
+    return mtow_kg * G
 
 
 def compute_total_wing_area(weight_n, wing_loading_n_m2):
@@ -95,7 +94,7 @@ def main():
     c_avg_total, c_avg_wing = compute_average_chords(S_total, S_wing, b)
     c_root, c_tip = compute_root_tip_chords(S_wing, b, taper_ratio)
 
-    CL_cruise = compute_cruise_lift_coefficient(W, rho_cruise, V_cruise, S_total)
+    CL_cruise = compute_cruise_lift_coefficient(W, RHO_ORIGIN, V_CRUISE, S_total)
     V_stall = compute_stall_speed(W, rho_stall, S_total, CL_max)
 
     print(f"Aircraft weight W = {W:.2f} N")
