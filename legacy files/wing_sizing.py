@@ -17,9 +17,9 @@ from parameters import (
     RHO_ORIGIN,
     V_CRUISE,
     hcruise,
-    number_of_wings,
-    area_split,
-    wing_span,
+    NUMBER_OF_WINGS,
+    AREA_SPLIT,
+    WING_SPAN,
 )
 
 
@@ -31,9 +31,9 @@ class WingSizing:
         cruise_altitude_m=hcruise,
         cruise_speed_m_s=V_CRUISE,
         stall_density_kg_m3=RHO_ORIGIN,
-        number_of_wings=number_of_wings,
-        area_split=area_split,
-        wing_span_m=wing_span,
+        number_of_wings=NUMBER_OF_WINGS,
+        area_split=AREA_SPLIT,
+        wing_span_m=WING_SPAN,
         cl_max=2.0,
         taper_ratio=0.8,
     ):

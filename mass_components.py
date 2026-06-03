@@ -9,13 +9,13 @@ import numpy as np
 from parameters import (
     G, RHO_ORIGIN,
     L_FUS, PER_FUS_MAX, N_PAX,
-    S_W, AR_W, N_W, TAPER_W, TIP_TO_CHORD_W,
+    N_W, TAPER_W, TIP_TO_CHORD_W,
     SIGMA_ALLOW_CFRP, RHO_CFRP, T_SKIN_MIN_CFRP,
     S_TAIL, AR_T, TAPER_TAIL, TIP_TO_CHORD, V_ANGLE,
     F_REAR_WING, SIGMA_ALLOW_AL, RHO_AL, T_SKIN_MIN_AL,
     STRUCT_SF, C_N_TAIL_MAX, V_DIVE_FACTOR, V_CRUISE,
     N_PROP, N_MOTOR, N_BLADES, D_PROP, PM,
-    wing_span, area_split, WING_LOADING_N,
+    WING_SPAN, AREA_SPLIT, WING_LOADING_N,
 )
 
 
@@ -34,17 +34,20 @@ def wing_geometry(mtow_kg):
     # -- Geometry from selected design point: S = W / (W/S) --
     weight_n = mtow_kg * G
     total_area_m2 = weight_n / WING_LOADING_N
-    area_per_wing_m2 = total_area_m2 * area_split
-    aspect_ratio = wing_span ** 2 / total_area_m2
-    root_chord_m = 2 * area_per_wing_m2 / ((1 + TAPER_W) * wing_span)
+    area_per_wing_m2 = total_area_m2 * AREA_SPLIT
+    aspect_ratio = WING_SPAN ** 2 / total_area_m2
+    aspect_ratio_per_wing = WING_SPAN ** 2 / area_per_wing_m2
+    mean_chord_m = WING_SPAN / aspect_ratio_per_wing
+    root_chord_m = 2 * area_per_wing_m2 / ((1 + TAPER_W) * WING_SPAN)
     tip_chord_m = TAPER_W * root_chord_m
 
     return {
         "weight_n": weight_n,
         "total_area_m2": total_area_m2,
         "area_per_wing_m2": area_per_wing_m2,
-        "span_m": wing_span,
+        "span_m": WING_SPAN,
         "aspect_ratio": aspect_ratio,
+        "mean_chord_m": mean_chord_m,
         "root_chord_m": root_chord_m,
         "tip_chord_m": tip_chord_m,
     }
@@ -58,8 +61,8 @@ def wing_mass(mtow_kg, geometry=None):
     b_w    = geometry["span_m"]                         # full wing span [m]
     s      = b_w / 2                                    # semi-span [m]
     s_wing = geometry["area_per_wing_m2"]              # planform area per wing [m²]
-    c_root = 2 * s_wing / ((1 + TAPER_W) * b_w)        # root chord [m]
-    h_spar = TIP_TO_CHORD_W * c_root                   # spar depth at root [m]
+    c_mean = geometry["mean_chord_m"]       # root chord [m]
+    h_spar_mean = TIP_TO_CHORD_W * c_mean                   # spar depth at root [m]
     # no h_eff correction: wing is horizontal, bending is about the chord axis
 
     # -- Size front and rear wings independently (general for F_REAR_WING ≠ 0.5) --
@@ -70,7 +73,7 @@ def wing_mass(mtow_kg, geometry=None):
         # Correct spar cap volume for elliptical lift distribution.
         # ∫₀ˢ M(y) dy = L_wing·s²/8  (derived analytically from elliptical l(y))
         # vol_caps = STRUCT_SF · L·s² / (8·σ·h)
-        vol_caps = STRUCT_SF * l_wing * s**2 / (8 * SIGMA_ALLOW_CFRP * h_spar)
+        vol_caps = STRUCT_SF * l_wing * s**2 / (8 * SIGMA_ALLOW_CFRP * h_spar_mean)
         m_spar   = 1.4 * vol_caps * RHO_CFRP    # caps + web, CFRP
 
         # Skins: min-gauge CFRP (8-ply prepreg), upper + lower surface

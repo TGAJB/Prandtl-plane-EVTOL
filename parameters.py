@@ -32,11 +32,31 @@ PM                   = 0.5    # [-]   power margin
 
 # ── Aerodynamic geometry ──────────────────────────────────────────────────────
 
-number_of_wings     = 2        # [-] e.g. 1 for conventional, 2 for Prandtl/box-wing
-area_split          = 0.5      # [-] fraction of total area assigned to one wing
-wing_span           = 13       # [-] span from the footprint constraint
+NUMBER_OF_WINGS     = 2        # [-] e.g. 1 for conventional, 2 for Prandtl/box-wing
+AREA_SPLIT         = 0.5      # [-] fraction of total area assigned to one wing
+WING_SPAN          = 13       # [-] span from the footprint constraint
 WING_LOADING_N      = 760.0    # [N/m^2] selected design-point wing loading from matching diagram
+TAPER_W          = 0.40    # [-]    wing chord taper ratio (c_tip / c_root)
+TIP_TO_CHORD_W   = 0.12    # [-]    wing thickness-to-chord ratio
 
+# Wing material: CFRP (standard for modern eVTOL primary structure)
+SIGMA_ALLOW_CFRP = 500e6   # [Pa]   UD CFRP compression allowable, B-basis (MIL-HDBK-17-1F)
+RHO_CFRP         = 1550.0  # [kg/m³] CFRP density
+T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin — 8 plies × 0.125 mm prepreg (MIL-HDBK-17-3F)
+
+# ── V-tail structural parameters ───────────────────────────────────────────────
+
+V_ANGLE        = 45.0    # [deg]  V-tail dihedral from horizontal
+TAPER_TAIL     = 0.40    # [-]    chord taper ratio (c_tip / c_root)
+TIP_TO_CHORD   = 0.10    # [-]    thickness-to-chord ratio
+F_REAR_WING    = 0.50    # [-]    rear Prandtl-wing lift fraction
+N_W            = 3.5     # [-]    design limit load factor
+SIGMA_ALLOW_AL = 260e6   # [Pa]   2024-T3 compression allowable (MMPDS-01)
+RHO_AL         = 2700.0  # [kg/m³] aluminium alloy density
+T_SKIN_MIN_AL  = 1.2e-3  # [m]    minimum skin gauge (Niu 1988)
+STRUCT_SF      = 1.5     # [-]    ultimate safety factor (FAR/CS 25.303)
+C_N_TAIL_MAX   = 1.2     # [-]    peak normal force coefficient at max deflection
+V_DIVE_FACTOR  = 1.25    # [-]    V_dive / V_cruise (FAR/CS 25.335 lower bound)
 
 # ── Propulsion geometry ────────────────────────────────────────────────────────
 
@@ -62,29 +82,6 @@ AR_W        = 5.63   # [-]   wing aspect ratio -> this is now computed in aerody
 S_TAIL      = 3.25   # [m²]  V-tail total panel area (both panels)
 AR_T        = 1.23   # [-]   V-tail aspect ratio
 
-# ── Wing structural parameters ────────────────────────────────────────────────
-
-TAPER_W          = 0.40    # [-]    wing chord taper ratio (c_tip / c_root)
-TIP_TO_CHORD_W   = 0.12    # [-]    wing thickness-to-chord ratio
-
-# Wing material: CFRP (standard for modern eVTOL primary structure)
-SIGMA_ALLOW_CFRP = 500e6   # [Pa]   UD CFRP compression allowable, B-basis (MIL-HDBK-17-1F)
-RHO_CFRP         = 1550.0  # [kg/m³] CFRP density
-T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin — 8 plies × 0.125 mm prepreg (MIL-HDBK-17-3F)
-
-# ── V-tail structural parameters ───────────────────────────────────────────────
-
-V_ANGLE        = 45.0    # [deg]  V-tail dihedral from horizontal
-TAPER_TAIL     = 0.40    # [-]    chord taper ratio (c_tip / c_root)
-TIP_TO_CHORD   = 0.10    # [-]    thickness-to-chord ratio
-F_REAR_WING    = 0.50    # [-]    rear Prandtl-wing lift fraction
-N_W            = 3.5     # [-]    design limit load factor
-SIGMA_ALLOW_AL = 260e6   # [Pa]   2024-T3 compression allowable (MMPDS-01)
-RHO_AL         = 2700.0  # [kg/m³] aluminium alloy density
-T_SKIN_MIN_AL  = 1.2e-3  # [m]    minimum skin gauge (Niu 1988)
-STRUCT_SF      = 1.5     # [-]    ultimate safety factor (FAR/CS 25.303)
-C_N_TAIL_MAX   = 1.2     # [-]    peak normal force coefficient at max deflection
-V_DIVE_FACTOR  = 1.25    # [-]    V_dive / V_cruise (FAR/CS 25.335 lower bound)
 
 # ── Miscellaneous design constants ─────────────────────────────────────────────
 
