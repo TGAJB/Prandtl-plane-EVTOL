@@ -5,7 +5,15 @@ Each function returns mass in kg.
 Functions that depend on MTOW take it as their first argument.
 """
 
+import sys
+from pathlib import Path
+
 import numpy as np
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
 from parameters import (
     G, RHO_ORIGIN,
     L_FUS, PER_FUS_MAX, N_PAX,
