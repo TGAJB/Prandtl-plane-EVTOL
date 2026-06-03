@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -95,7 +94,22 @@ def compute_mtow(mtow_kg, verbose=True):
         print(f"  {'-' * 33}")
         print(f"  MTOW estimate   : {mtow_new:.2f} kg\n")
 
-    return mtow_new
+    return {
+        "mtow": mtow_new,
+        "fuselage": m_fuselage,
+        "wing": m_wing,
+        "landing_gear": m_lg,
+        "tail": m_tail,
+        "motors": m_motors,
+        "props": m_props,
+        "hubs": m_hubs,
+        "battery": m_batt,
+        "payload": M_PAYLOAD,
+        "misc": m_misc,
+        "hinge": m_hinge,
+        "wing_geom": wing_geom,
+        "max_power_kw": max_power_kw,
+    }
 
 
 def run_mtow_sizing(
@@ -108,9 +122,12 @@ def run_mtow_sizing(
     history = [guess]
     converged = False
     count = 0
+    final_breakdown = None
 
     while True:
-        guess_new = compute_mtow(guess, verbose=verbose)
+        breakdown = compute_mtow(guess, verbose=verbose)
+        guess_new = breakdown["mtow"]
+        final_breakdown = breakdown
         count += 1
 
         if guess_new > bound_high or guess_new < bound_low:
@@ -126,8 +143,10 @@ def run_mtow_sizing(
         history.append(guess)
 
     history.append(guess_new)
-    mtow_final = history[-1]
-    wing_sizing_final = wing_geometry(mtow_final)
+    mtow_final = guess_new
+    wing_sizing_final = (
+        final_breakdown["wing_geom"] if final_breakdown is not None else wing_geometry(mtow_final)
+    )
 
     if verbose and converged:
         print(f"Converged in {count} iterations.  Final MTOW: {guess_new:.2f} kg")
@@ -148,10 +167,24 @@ def run_mtow_sizing(
 
     return {
         "mtow_final_kg": mtow_final,
+        "mtow": mtow_final,
         "wing_sizing_final": wing_sizing_final,
         "history": history,
         "converged": converged,
         "iterations": count,
+        "fuselage": final_breakdown["fuselage"],
+        "wing": final_breakdown["wing"],
+        "landing_gear": final_breakdown["landing_gear"],
+        "tail": final_breakdown["tail"],
+        "motors": final_breakdown["motors"],
+        "props": final_breakdown["props"],
+        "hubs": final_breakdown["hubs"],
+        "battery": final_breakdown["battery"],
+        "payload": final_breakdown["payload"],
+        "misc": final_breakdown["misc"],
+        "hinge": final_breakdown["hinge"],
+        "wing_geom": wing_sizing_final,
+        "max_power_kw": final_breakdown["max_power_kw"],
     }
 
 
@@ -166,8 +199,15 @@ def load_final_design_state(force_recompute=False, verbose=False):
     return _FINAL_DESIGN_STATE
 
 
+def converged_mass(force_recompute=False, verbose=False):
+    return load_final_design_state(force_recompute=force_recompute, verbose=verbose)
+
+
 def main():
     load_final_design_state(force_recompute=True, verbose=True)
+
+
+load_final_design_state(verbose=False)
 
 
 if __name__ == "__main__":

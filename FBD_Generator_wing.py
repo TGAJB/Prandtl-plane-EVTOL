@@ -5,11 +5,9 @@ from scipy.integrate import trapezoid
 from scipy.integrate import cumulative_trapezoid
 import pandas as pd
 import parameters
-from main import MTOW_FINAL as MTOW
-from main import converged_mass
-from mass_components import wing_mass
-from mass_components import motor_mass
-from mass_components import propeller_mass
+from class_II_sizing.mtow_sizing import MTOW_FINAL as MTOW
+from class_II_sizing.mtow_sizing import converged_mass
+from class_II_sizing.mass_components import wing_mass
 
 
 # ============================================================
@@ -207,7 +205,7 @@ wing_weight_load = FunctionDistributedLoad(
 
 engine1 = PointLoad(
     location=2.0,
-    magnitude=-(converged_mass()["motors"] / 6 + converged_mass()["props"] + converged_mass()["hubs"]) * 9.81 ,
+    magnitude=-(converged_mass()["motors"] / 6 + converged_mass()["props"] + converged_mass()["hubs"]) * 9.81,
     label="Engine 1"
 )
 
