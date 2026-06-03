@@ -203,7 +203,7 @@ def run(context):
             )
         lines += [
             "",
-            "Next: re-run main_fusion.py to update MTOW with hub mass.",
+            "Next: re-run class_II_sizing.mtow_sizing.py to update MTOW with hub mass.",
         ]
         ui.messageBox("\n".join(lines))
 

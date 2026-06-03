@@ -9,7 +9,7 @@ Workflow:
          fusion/hub/hub.py                          → writes "propeller_hub"
        Each script merges its entry into geometry.json without overwriting others.
        Assign correct materials first: CFRP for blade, aluminium for hub.
-    2. Run main_fusion.py. Missing entries fall back to analytical formulae.
+    2. Run class_II_sizing.mtow_sizing.py. Missing entries fall back to analytical formulae.
 """
 
 import json
