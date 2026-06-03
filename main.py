@@ -7,6 +7,7 @@ Run this file to execute the MTOW iteration and view the convergence plot.
 
 import numpy as np
 import matplotlib.pyplot as plt
+#from fontTools.misc.symfont import printGreenPen
 
 from parameters import (
     G, RHO_ORIGIN, A_DISK, V_HOVER, T_ELAPSED_VC, V_AVG_TO,
@@ -71,48 +72,98 @@ def compute_mtow(mtow_kg):
     print(f"  {'─' * 33}")
     print(f"  MTOW estimate   : {mtow_new:.2f} kg\n")
 
-    return mtow_new
+    return {
+        "mtow": mtow_new,
+        "fuselage": m_fuselage,
+        "wing": m_wing,
+        "landing_gear": m_lg,
+        "tail": m_tail,
+        "motors": m_motors,
+        "props": m_props,
+        "hubs": m_hubs,
+        "battery": m_batt,
+        "payload": M_PAYLOAD,
+        "misc": m_misc,
+        "hinge": m_hinge,
+        "wing_geom": wing_geom,
+        "max_power_kw": max_power_kw
+    }
+
 
 
 # ── MTOW iteration ─────────────────────────────────────────────────────────────
+def converged_mass():
+    BOUND_LOW  = 1000
+    BOUND_HIGH = 5500
+    guess      = (BOUND_LOW + BOUND_HIGH) / 2
+    history    = [guess]
+    converged  = False
+    count      = 0
 
-BOUND_LOW  = 1000
-BOUND_HIGH = 5500
-guess      = (BOUND_LOW + BOUND_HIGH) / 2
-history    = [guess]
-converged  = False
-count      = 0
+    while True:
+        guess_new = compute_mtow(guess)["mtow"]
+        count += 1
 
-while True:
-    guess_new = compute_mtow(guess)
-    count += 1
+        if guess_new > BOUND_HIGH or guess_new < BOUND_LOW:
+            print("MTOW out of bounds — check your inputs.")
+            break
 
-    if guess_new > BOUND_HIGH or guess_new < BOUND_LOW:
-        print("MTOW out of bounds — check your inputs.")
-        break
+        if np.abs(guess_new - guess) / guess < 0.01:
+            converged = True
 
-    if np.abs(guess_new - guess) / guess < 0.01:
-        converged = True
-        break
+            mtow_final = compute_mtow(guess)["mtow"]
+            fuselage_final = compute_mtow(guess)["fuselage"]
+            wing_final = compute_mtow(guess)["wing"]
+            landing_gear_final = compute_mtow(guess)["landing_gear"]
+            tail_final = compute_mtow(guess)["tail"]
+            motors_final = compute_mtow(guess)["motors"]
+            props_final = compute_mtow(guess)["props"]
+            hubs_final = compute_mtow(guess)["hubs"]
+            battery_final = compute_mtow(guess)["battery"]
+            payload_final = compute_mtow(guess)["payload"]
+            misc_final = compute_mtow(guess)["misc"]
+            hinge_final = compute_mtow(guess)["hinge"]
+            max_power_kw_final = compute_mtow(guess)["max_power_kw"]
 
-    guess = guess + (guess_new - guess) / 2
-    history.append(guess)
+            return {
+                "mtow": mtow_final,
+                "fuselage": fuselage_final,
+                "wing": wing_final,
+                "landing_gear": landing_gear_final,
+                "tail": tail_final,
+                "motors": motors_final,
+                "props": props_final,
+                "hubs": hubs_final,
+                "battery": battery_final,
+                "payload": payload_final,
+                "misc": misc_final,
+                "hinge": hinge_final,
+                "max_power_kw": max_power_kw_final
 
-history.append(guess_new)
+            }
 
-if converged:
-    print(f"Converged in {count} iterations.  Final MTOW: {guess_new:.2f} kg")
-    if USE_FUSION_PROP:
-        print(f"  Blade source : Fusion 360 | single blade {M_BLADE_FUSION:.4f} kg"
-              f" | total {M_BLADE_FUSION * N_BLADES * N_PROP:.2f} kg")
-    else:
-        print(f"  Blade source : analytical regression")
-    if USE_FUSION_HUB:
-        print(f"  Hub source   : Fusion 360 | single hub {M_HUB_FUSION:.4f} kg"
-              f" | total {M_HUB_FUSION * N_PROP:.2f} kg")
-    else:
-        print(f"  Hub source   : not modelled (set to zero)")
+            break
+
+        guess = guess + (guess_new - guess) / 2
+        history.append(guess)
+
+    history.append(guess_new)
+
+    if converged:
+        print(f"Converged in {count} iterations.  Final MTOW: {guess_new:.2f} kg")
+
+        if USE_FUSION_PROP:
+            print(f"  Blade source : Fusion 360 | single blade {M_BLADE_FUSION:.4f} kg"
+                  f" | total {M_BLADE_FUSION * N_BLADES * N_PROP:.2f} kg")
+        else:
+            print(f"  Blade source : analytical regression")
+        if USE_FUSION_HUB:
+            print(f"  Hub source   : Fusion 360 | single hub {M_HUB_FUSION:.4f} kg"
+                  f" | total {M_HUB_FUSION * N_PROP:.2f} kg")
+        else:
+            print(f"  Hub source   : not modelled (set to zero)")
 
 #use this to call the mtow final pookies
-MTOW_FINAL = history[-1]
+MTOW_FINAL = converged_mass()["mtow"]
 WING_SIZING_FINAL = wing_geometry(MTOW_FINAL)
+print(converged_mass()["motors"])

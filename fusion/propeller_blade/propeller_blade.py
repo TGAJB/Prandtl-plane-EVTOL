@@ -6,7 +6,7 @@ Change any constant in the "Iterable constants" block and re-run the script
 to rebuild the geometry.  All values are SI (metres / degrees) — the single
 cm() helper handles the Fusion-internal centimetre conversion.
 
-Linked to main.py sizing constants:
+Linked to class_II_sizing/mtow_sizing.py sizing constants:
     D_PROP   = 1.9 m   →  BLADE_RADIUS_M = D_PROP / 2 = 0.95
     N_BLADES = 5       →  use Fusion's circular pattern on the Z-axis
                           to replicate to a full rotor after running this script
@@ -303,7 +303,7 @@ def run(context):
         lines += [
             "",
             "Next step: use Fusion's circular pattern feature",
-            f"  Axis: Z-axis,  Quantity: {5}  (N_BLADES from main.py)",
+            f"  Axis: Z-axis,  Quantity: {5}  (N_BLADES from class_II_sizing/mtow_sizing.py)",
         ]
         ui.messageBox("\n".join(lines))
 

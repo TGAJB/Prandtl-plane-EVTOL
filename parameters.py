@@ -29,6 +29,12 @@ ETA_CLIMB            = 0.90   # [-]   climb powertrain efficiency
 FM                   = 0.73   # [-]   rotor figure of merit
 POWER_SAFETY_FACTOR  = 1.4    # [-]   power safety factor
 PM                   = 0.5    # [-]   power margin
+CD0                  = 0.0205 # [-]   zero-lift drag coefficient
+OSWALD_EFFICIENCY    = 1.26   # [-]   Oswald efficiency factor
+CL_MAX_OPERATIONAL   = 2.0    # [-]   operational upper lift coefficient limit
+CL_PLOT_MIN          = -0.5   # [-]   lower bound for drag-polar plotting
+CL_PLOT_MAX          = 2.20   # [-]   upper bound for drag-polar plotting
+DRAG_POLAR_N_POINTS  = 100    # [-]   number of points used for drag-polar plots
 
 # ── Aerodynamic geometry ──────────────────────────────────────────────────────
 
