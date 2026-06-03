@@ -95,18 +95,20 @@ def compute_mtow(mtow_kg):
 
 BOUND_LOW  = 1000
 BOUND_HIGH = 5500
-guess      = (BOUND_LOW + BOUND_HIGH) / 2
-history    = [guess]
-converged  = False
-count      = 0
+
+def converged_mass():
+    guess      = (BOUND_LOW + BOUND_HIGH) / 2
+    history    = [guess]
+    converged  = False
+    count      = 0
 
     while True:
         guess_new = compute_mtow(guess)["mtow"]
         count += 1
 
-    if guess_new > BOUND_HIGH or guess_new < BOUND_LOW:
-        print("MTOW out of bounds - check your inputs.")
-        break
+        if guess_new > BOUND_HIGH or guess_new < BOUND_LOW:
+            print("MTOW out of bounds - check your inputs.")
+            break
 
         if np.abs(guess_new - guess) / guess < 0.01:
             converged = True
