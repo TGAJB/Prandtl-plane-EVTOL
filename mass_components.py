@@ -15,7 +15,7 @@ from parameters import (
     F_REAR_WING, SIGMA_ALLOW_AL, RHO_AL, T_SKIN_MIN_AL,
     STRUCT_SF, C_N_TAIL_MAX, V_DIVE_FACTOR, V_CRUISE,
     N_PROP, N_MOTOR, N_BLADES, D_PROP, PM,
-    wing_span, area_split, WING_LOADING_N,
+    WING_SPAN, AREA_SPLIT, WING_LOADING_N,
 )
 
 
@@ -34,9 +34,9 @@ def wing_geometry(mtow_kg):
     # -- Geometry from selected design point: S = W / (W/S) --
     weight_n = mtow_kg * G
     total_area_m2 = weight_n / WING_LOADING_N
-    area_per_wing_m2 = total_area_m2 * area_split
-    aspect_ratio = wing_span ** 2 / total_area_m2
-    root_chord_m = 2 * area_per_wing_m2 / ((1 + TAPER_W) * wing_span)
+    area_per_wing_m2 = total_area_m2 * AREA_SPLIT
+    aspect_ratio = WING_SPAN ** 2 / total_area_m2
+    root_chord_m = 2 * area_per_wing_m2 / ((1 + TAPER_W) * WING_SPAN)
     tip_chord_m = TAPER_W * root_chord_m
 
     return {
