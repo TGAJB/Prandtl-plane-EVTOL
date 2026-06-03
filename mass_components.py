@@ -92,14 +92,16 @@ def landing_gear_mass(mtow_kg,E,rho):
     if class1 == True:
         m_total = 0.03 * mtow_kg
     else:
+        
         I = (np.pi() / 64) * ((D_O_SKID**4) - (D_I_SKID**4))
+        A = (np.pi()/4) * ((D_O_SKID**2) - (D_I_SKID**2))
         k = (3 * E * I)/(L_EFF ** 2) #K is basically the spring constant
         P = F_MAX / N_REACT
         K = k * N_REACT
         F_MAX = K * DELTA
         M = P * L_EFF #max root moment
-        n = F_MAX / (mtow_kg * G) 
-        DELTA = (VS_0 ** 2)/(2 * G * ETA * n) 
+        N = F_MAX / (mtow_kg * G) #load factor on cross tube
+        DELTA = (VS_0 ** 2)/(2 * G * ETA * N) 
         SIGMA_STRESS_SKID = (M * (D_O_SKID / 2))/I  
     return m_total
 
