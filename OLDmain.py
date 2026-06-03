@@ -13,6 +13,7 @@ from parameters import (
     G, RHO_ORIGIN, A_DISK, V_HOVER, T_ELAPSED_VC, V_AVG_TO,
     FM, POWER_SAFETY_FACTOR, N_MOTOR, N_PROP, N_BLADES,
     M_PAYLOAD,
+    E_AL, RHO_AL, SIGMA_ALLOW_AL,
 )
 from class_II_sizing.energy import battery_mass
 from class_II_sizing.mass_components import (
@@ -25,11 +26,11 @@ from fusion_geometry import (
 )
 
 
-# ── MTOW computation ───────────────────────────────────────────────────────────
+# MTOW computation
 
 def compute_mtow(mtow_kg):
 
-    # Max installed power [kW] — sized to hover out-of-ground-effect
+    # Max installed power [kW] - sized to hover out-of-ground-effect
     avg_thrust   = mtow_kg * (G + (V_HOVER / T_ELAPSED_VC))
     v_hover_i    = np.sqrt(avg_thrust / (2 * N_PROP * RHO_ORIGIN * A_DISK))
     v_avg_i      = -V_AVG_TO / 2 + np.sqrt((V_AVG_TO / 2) ** 2 + v_hover_i ** 2)
@@ -39,7 +40,7 @@ def compute_mtow(mtow_kg):
     wing_geom   = wing_geometry(mtow_kg)
     m_fuselage  = fuselage_mass(mtow_kg)
     m_wing      = wing_mass(mtow_kg, wing_geom)
-    m_lg        = landing_gear_mass(mtow_kg)
+    m_lg        = landing_gear_mass(mtow_kg, E_AL, RHO_AL, SIGMA_ALLOW_AL)
     m_tail      = tail_mass(mtow_kg)
     m_motors    = motor_mass(max_power_kw)
     m_props     = propeller_mass(max_power_kw, USE_FUSION_PROP, M_BLADE_FUSION)
@@ -69,7 +70,6 @@ def compute_mtow(mtow_kg):
     print(f"  Payload         : {M_PAYLOAD:.2f} kg")
     print(f"  Miscellaneous   : {m_misc:.2f} kg")
     print(f"  Hinge           : {m_hinge:.2f} kg")
-    print(f"  {'─' * 33}")
     print(f"  MTOW estimate   : {mtow_new:.2f} kg\n")
 
     return {
@@ -91,22 +91,22 @@ def compute_mtow(mtow_kg):
 
 
 
-# ── MTOW iteration ─────────────────────────────────────────────────────────────
-def converged_mass():
-    BOUND_LOW  = 1000
-    BOUND_HIGH = 5500
-    guess      = (BOUND_LOW + BOUND_HIGH) / 2
-    history    = [guess]
-    converged  = False
-    count      = 0
+# MTOW iteration
+
+BOUND_LOW  = 1000
+BOUND_HIGH = 5500
+guess      = (BOUND_LOW + BOUND_HIGH) / 2
+history    = [guess]
+converged  = False
+count      = 0
 
     while True:
         guess_new = compute_mtow(guess)["mtow"]
         count += 1
 
-        if guess_new > BOUND_HIGH or guess_new < BOUND_LOW:
-            print("MTOW out of bounds — check your inputs.")
-            break
+    if guess_new > BOUND_HIGH or guess_new < BOUND_LOW:
+        print("MTOW out of bounds - check your inputs.")
+        break
 
         if np.abs(guess_new - guess) / guess < 0.01:
             converged = True
@@ -166,4 +166,5 @@ def converged_mass():
 #use this to call the mtow final pookies
 MTOW_FINAL = converged_mass()["mtow"]
 WING_SIZING_FINAL = wing_geometry(MTOW_FINAL)
-print(converged_mass()["motors"])
+
+
