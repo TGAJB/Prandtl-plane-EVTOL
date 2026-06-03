@@ -112,16 +112,10 @@ def compute_mtow(mtow_kg, verbose=True):
     }
 
 
-def run_mtow_sizing(
-    bound_low=BOUND_LOW,
-    bound_high=BOUND_HIGH,
-    tolerance=CONVERGENCE_TOLERANCE,
-    verbose=True,
-):
-    guess = (bound_low + bound_high) / 2
-    history = [guess]
-    converged = False
+def _solve_converged_mass(verbose=True):
+    guess = (BOUND_LOW + BOUND_HIGH) / 2
     count = 0
+    converged = False
     final_breakdown = None
 
     while True:
@@ -130,19 +124,17 @@ def run_mtow_sizing(
         final_breakdown = breakdown
         count += 1
 
-        if guess_new > bound_high or guess_new < bound_low:
+        if guess_new > BOUND_HIGH or guess_new < BOUND_LOW:
             if verbose:
                 print("MTOW out of bounds - check your inputs.")
             break
 
-        if np.abs(guess_new - guess) / guess < tolerance:
+        if np.abs(guess_new - guess) / guess < CONVERGENCE_TOLERANCE:
             converged = True
             break
 
         guess = guess + (guess_new - guess) / 2
-        history.append(guess)
 
-    history.append(guess_new)
     mtow_final = guess_new
     wing_sizing_final = (
         final_breakdown["wing_geom"] if final_breakdown is not None else wing_geometry(mtow_final)
@@ -169,9 +161,6 @@ def run_mtow_sizing(
         "mtow_final_kg": mtow_final,
         "mtow": mtow_final,
         "wing_sizing_final": wing_sizing_final,
-        "history": history,
-        "converged": converged,
-        "iterations": count,
         "fuselage": final_breakdown["fuselage"],
         "wing": final_breakdown["wing"],
         "landing_gear": final_breakdown["landing_gear"],
@@ -192,8 +181,8 @@ def load_final_design_state(force_recompute=False, verbose=False):
     global _FINAL_DESIGN_STATE, MTOW_FINAL, WING_SIZING_FINAL
 
     if force_recompute or _FINAL_DESIGN_STATE is None:
-        _FINAL_DESIGN_STATE = run_mtow_sizing(verbose=verbose)
-        MTOW_FINAL = _FINAL_DESIGN_STATE["mtow_final_kg"]
+        _FINAL_DESIGN_STATE = _solve_converged_mass(verbose=verbose)
+        MTOW_FINAL = _FINAL_DESIGN_STATE["mtow"]
         WING_SIZING_FINAL = _FINAL_DESIGN_STATE["wing_sizing_final"]
 
     return _FINAL_DESIGN_STATE
@@ -204,10 +193,10 @@ def converged_mass(force_recompute=False, verbose=False):
 
 
 def main():
-    load_final_design_state(force_recompute=True, verbose=True)
+    converged_mass(force_recompute=True, verbose=True)
 
 
-load_final_design_state(verbose=False)
+converged_mass(verbose=False)
 
 
 if __name__ == "__main__":

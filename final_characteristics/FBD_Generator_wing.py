@@ -1,13 +1,21 @@
-import numpy as np
+import sys
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-from pandas.io.sas.sas_constants import header_size_length
-from scipy.integrate import trapezoid
-from scipy.integrate import cumulative_trapezoid
+import numpy as np
 import pandas as pd
+from pandas.io.sas.sas_constants import header_size_length
+from scipy.integrate import cumulative_trapezoid
+from scipy.integrate import trapezoid
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
 import parameters
+from class_II_sizing.mass_components import wing_mass
 from class_II_sizing.mtow_sizing import MTOW_FINAL as MTOW
 from class_II_sizing.mtow_sizing import converged_mass
-from class_II_sizing.mass_components import wing_mass
 
 
 # ============================================================
@@ -126,7 +134,7 @@ class WingLoadDiagram:
 
         # Wing reference line
         ax.plot([0, self.span], [0, 0],
-                color='black', linewidth=3)
+                color="black", linewidth=3)
 
         for load in self.loads:
             load.plot(ax)
@@ -149,7 +157,7 @@ class WingLoadDiagram:
 span = parameters.WING_SPAN / 2  # m
 
 # Aircraft total weight supported by both wings
-aircraft_weight = MTOW * 9.81 / 2 # N
+aircraft_weight = MTOW * 9.81 / 2  # N
 
 # Half-wing must carry half the aircraft weight
 required_lift = aircraft_weight / 2
@@ -170,6 +178,7 @@ L = span
 # = q0 * 2L/3
 
 q0 = required_lift / (2 * L / 3)
+
 
 def lift_distribution(x):
     return q0 * (1 - (x / L)**2)
@@ -214,6 +223,7 @@ engine2 = PointLoad(
     magnitude=-(converged_mass()["motors"] / 6 + converged_mass()["props"] + converged_mass()["hubs"]) * 9.81,
     label="Engine 2"
 )
+
 
 def Vertical_force_diagram():
     # ============================================================
