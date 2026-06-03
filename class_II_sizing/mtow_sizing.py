@@ -18,6 +18,7 @@ from parameters import (
     G, RHO_ORIGIN, A_DISK, V_HOVER, T_ELAPSED_VC, V_AVG_TO,
     FM, POWER_SAFETY_FACTOR, N_MOTOR, N_PROP, N_BLADES,
     M_PAYLOAD,
+    E_AL, RHO_AL, SIGMA_ALLOW_AL,
 )
 from class_II_sizing.energy import battery_mass
 from class_II_sizing.mass_components import (
@@ -50,7 +51,7 @@ def compute_mtow(mtow_kg, verbose=True):
     wing_geom = wing_geometry(mtow_kg)
     m_fuselage = fuselage_mass(mtow_kg)
     m_wing = wing_mass(mtow_kg, wing_geom)
-    m_lg = landing_gear_mass(mtow_kg)
+    m_lg = landing_gear_mass(mtow_kg, E_AL, RHO_AL, SIGMA_ALLOW_AL)
     m_tail = tail_mass(mtow_kg)
     m_motors = motor_mass(max_power_kw)
     m_props = propeller_mass(max_power_kw, USE_FUSION_PROP, M_BLADE_FUSION)
