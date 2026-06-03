@@ -23,6 +23,16 @@ V_HOVER          = 3.0        # [m/s] hover climb speed
 V_I               = 20.0       # [m/s] initial climbing speed
 VS_0             = D_VERT_DESCENT / T_DESCENT # [m/s] 
 
+# ── Material parameters ───────────────────────────────────────
+
+SIGMA_ALLOW_CFRP = 500e6   # [Pa]   UD CFRP compression allowable, B-basis (MIL-HDBK-17-1F)
+RHO_CFRP         = 1550.0  # [kg/m³] CFRP density
+E_CFRP           = 100 * 10 ** 9 # [Pa] CFRP young modulus (TO BE UPDATED)
+
+SIGMA_ALLOW_AL = 260e6   # [Pa]   2024-T3 compression allowable (MMPDS-01)
+RHO_AL         = 2700.0  # [kg/m³] aluminium alloy density
+E_AL           = 73.1 * 10 ** 9   # [Pa] aluminium young modulus
+
 # ── Aerodynamic & propulsive parameters ───────────────────────────────────────
 
 LD_CRUISE            = 14.7   # [-]   box-wing cruise L/D
@@ -43,8 +53,6 @@ TAPER_W          = 0.40    # [-]    wing chord taper ratio (c_tip / c_root)
 TIP_TO_CHORD_W   = 0.12    # [-]    wing thickness-to-chord ratio
 
 # Wing material: CFRP (standard for modern eVTOL primary structure)
-SIGMA_ALLOW_CFRP = 500e6   # [Pa]   UD CFRP compression allowable, B-basis (MIL-HDBK-17-1F)
-RHO_CFRP         = 1550.0  # [kg/m³] CFRP density
 T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin — 8 plies × 0.125 mm prepreg (MIL-HDBK-17-3F)
 
 # ── V-tail structural parameters ───────────────────────────────────────────────
@@ -54,8 +62,6 @@ TAPER_TAIL     = 0.40    # [-]    chord taper ratio (c_tip / c_root)
 TIP_TO_CHORD   = 0.10    # [-]    thickness-to-chord ratio
 F_REAR_WING    = 0.50    # [-]    rear Prandtl-wing lift fraction
 N_W            = 3.5     # [-]    design limit load factor
-SIGMA_ALLOW_AL = 260e6   # [Pa]   2024-T3 compression allowable (MMPDS-01)
-RHO_AL         = 2700.0  # [kg/m³] aluminium alloy density
 T_SKIN_MIN_AL  = 1.2e-3  # [m]    minimum skin gauge (Niu 1988)
 STRUCT_SF      = 1.5     # [-]    ultimate safety factor (FAR/CS 25.303)
 C_N_TAIL_MAX   = 1.2     # [-]    peak normal force coefficient at max deflection
@@ -84,6 +90,15 @@ S_W         = 30.0   # [m²]  total wing reference area
 AR_W        = 5.63   # [-]   wing aspect ratio -> this is now computed in aerodynamics functions so this may need removed
 S_TAIL      = 3.25   # [m²]  V-tail total panel area (both panels)
 AR_T        = 1.23   # [-]   V-tail aspect ratio
+
+# ── Landing Gear design constants ─────────────────────────────────────────────
+
+ETA = 0.003
+D_O_SKID = 1
+D_I_SKID = 1
+L_EFF = 1.2
+N_REACT = 4
+
 
 
 # ── Miscellaneous design constants ─────────────────────────────────────────────
