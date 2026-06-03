@@ -43,7 +43,7 @@ def wing_geometry(mtow_kg):
         "weight_n": weight_n,
         "total_area_m2": total_area_m2,
         "area_per_wing_m2": area_per_wing_m2,
-        "span_m": wing_span,
+        "span_m": WING_SPAN,
         "aspect_ratio": aspect_ratio,
         "root_chord_m": root_chord_m,
         "tip_chord_m": tip_chord_m,
