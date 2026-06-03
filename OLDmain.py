@@ -14,8 +14,8 @@ from parameters import (
     FM, POWER_SAFETY_FACTOR, N_MOTOR, N_PROP, N_BLADES,
     M_PAYLOAD,
 )
-from energy import battery_mass
-from mass_components import (
+from class_II_sizing.energy import battery_mass
+from class_II_sizing.mass_components import (
     fuselage_mass, wing_geometry, wing_mass, landing_gear_mass, tail_mass,
     motor_mass, propeller_mass, hub_mass, misc_mass, hinge_mass,
 )
