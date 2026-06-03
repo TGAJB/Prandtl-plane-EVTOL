@@ -36,7 +36,8 @@ def wing_geometry(mtow_kg):
     total_area_m2 = weight_n / WING_LOADING_N
     area_per_wing_m2 = total_area_m2 * AREA_SPLIT
     aspect_ratio = WING_SPAN ** 2 / total_area_m2
-    mean_chord_m = WING_SPAN / aspect_ratio
+    aspect_ratio_per_wing = WING_SPAN ** 2 / area_per_wing_m2
+    mean_chord_m = WING_SPAN / aspect_ratio_per_wing
     root_chord_m = 2 * area_per_wing_m2 / ((1 + TAPER_W) * WING_SPAN)
     tip_chord_m = TAPER_W * root_chord_m
 
