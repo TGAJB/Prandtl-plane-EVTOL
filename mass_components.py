@@ -15,7 +15,7 @@ from parameters import (
     F_REAR_WING, SIGMA_ALLOW_AL, RHO_AL, T_SKIN_MIN_AL,
     STRUCT_SF, C_N_TAIL_MAX, V_DIVE_FACTOR, V_CRUISE,
     N_PROP, N_MOTOR, N_BLADES, D_PROP, PM,
-    WING_SPAN, AREA_SPLIT, WING_LOADING_N,
+    WING_SPAN, AREA_SPLIT, WING_LOADING_N, VS_0, ETA, D_I_SKID, D_O_SKID, L_EFF, N_REACT
 )
 
 
@@ -87,9 +87,21 @@ def wing_mass(mtow_kg, geometry=None):
 
 # ── Landing gear ───────────────────────────────────────────────────────────────
 
-def landing_gear_mass(mtow_kg):
-    gb;owi4jb;o
-    return 0.03 * mtow_kg
+def landing_gear_mass(mtow_kg,E,rho):
+    class1 = False
+    if class1 == True:
+        m_total = 0.03 * mtow_kg
+    else:
+        I = (np.pi() / 64) * ((D_O_SKID**4) - (D_I_SKID**4))
+        k = (3 * E * I)/(L_EFF ** 2) #K is basically the spring constant
+        P = F_MAX / N_REACT
+        K = k * N_REACT
+        F_MAX = K * DELTA
+        M = P * L_EFF #max root moment
+        n = F_MAX / (mtow_kg * G) 
+        DELTA = (VS_0 ** 2)/(2 * G * ETA * n) 
+        SIGMA_STRESS_SKID = (M * (D_O_SKID / 2))/I  
+    return m_total
 
 
 # ── V-tail (physics-based cantilever sizing) ───────────────────────────────────
