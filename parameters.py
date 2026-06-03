@@ -8,6 +8,7 @@ RHO_ORIGIN = 1.225         # [kg/m³] ISA sea-level air density
 M_PAYLOAD        = 400.0      # [kg]  fixed payload (4 pax + luggage)
 W_CREW           = 0.0        # [kg]  0 for autonomous; 85 if piloted
 RANGE_M          = 200000.0   # [m]   design range
+D_VERT_DESCENT   = 1676.0     # [m]   vertical descent distance
 V_CRUISE         = 200 / 3.6  # [m/s] cruise speed
 T_CRUISE         = 2194.7     # [s]   cruise segment
 T_TAKEOFF        = 5.0        # [s]   takeoff segment
@@ -19,6 +20,8 @@ T_LANDING        = 71.47      # [s]   landing segment
 T_ELAPSED_VC     = 5.0        # [s]   vertical climb elapsed time
 V_AVG_TO         = 2.0        # [m/s] average takeoff vertical speed
 V_HOVER          = 3.0        # [m/s] hover climb speed
+V_I               = 20.0       # [m/s] initial climbing speed
+VS_0             = D_VERT_DESCENT / T_DESCENT # [m/s] 
 
 # ── Aerodynamic & propulsive parameters ───────────────────────────────────────
 
