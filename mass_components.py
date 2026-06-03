@@ -88,6 +88,7 @@ def wing_mass(mtow_kg, geometry=None):
 # ── Landing gear ───────────────────────────────────────────────────────────────
 
 def landing_gear_mass(mtow_kg):
+    gb;owi4jb;o
     return 0.03 * mtow_kg
 
 
