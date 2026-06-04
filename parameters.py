@@ -104,12 +104,9 @@ N_PAX       = 4      # [-]   passenger count
 ETA = 0.003       # legacy placeholder - superseded by ETA_LG_* below
 D_O_SKID = 0.06   # [m]  placeholder outer diameter (sizing sweeps DO_SKID_MIN->MAX)
 D_I_SKID = 0.054  # [m]  placeholder inner diameter (sizing uses T_WALL_SKID)
-L_EFF    = 1.2    # [m]  effective cantilever length of each skid leg
-                  #       CALIBRATION REQUIRED: with the simple cantilever model,
-                  #       sigma ~ n*W*L/(Do^2*t), so the Do that keeps n<=N_LIMIT_LG
-                  #       is too small to carry the root bending moment for L~1 m.
-                  #       Set L_EFF to the actual bent-section arm (often 0.2-0.5 m
-                  #       for helicopter skid cross-tubes), not the full half-track.
+L_EFF     = 0.25  # [m]  effective cantilever arm: horizontal distance from fuselage
+                  #       attachment bracket to skid runner (NOT the half-track span).
+                  #       Typical range 0.2–0.5 m; also swept via L_EFF_MIN/MAX below.
 N_REACT  = 4      # [-]  total reaction points = 2 * n_cross (2 cross-tubes)
 
 # CS-27/29 certification conditions
@@ -126,16 +123,22 @@ ETA_LG_RESERVE   = 0.50   # [-]  absorption efficiency (reserve); override per m
 N_LIMIT_LG       = 7.0    # [-]  landing-gear ultimate load-factor limit (placeholder)
 KAPPA_LG         = 1.0    # [-]  lift fraction at touchdown; 1.0 = full rotor lift (powered VTOL landing)
 GROUND_CLEARANCE = 0.30   # [m]  maximum allowable stroke (30 cm; covers reserve case)
+MU_DRAG          = 0.50   # [-]  CS-27.725 drag friction coefficient (skid on hard surface)
 
 # Tube geometry
 T_WALL_SKID  = 0.003  # [m]  skid tube wall thickness (placeholder - refine from sizing)
 DO_SKID_MIN  = 0.03   # [m]  outer-diameter sweep lower bound
 DO_SKID_MAX  = 0.30   # [m]  outer-diameter sweep upper bound
+DI_SKID_MIN  = 0.01   # [m]  inner-diameter sweep lower bound
+DI_SKID_MAX  = 0.28   # [m]  inner-diameter sweep upper bound
 
 # Frame geometry
+W_FUS      = 1.5   # [m]  fuselage maximum width (cabin + structure)
 L_TRACK    = 2.0   # [m]  lateral track width (cross-tube chord)
 L_SKID     = 3.0   # [m]  skid runner length (each side)
 K_FITTINGS = 1.3   # [-]  mass knockup factor for fittings and attachments
+L_EFF_MIN  = (L_TRACK - W_FUS) / 2   # [m]  min cantilever arm: half the clearance between fuselage and runner
+L_EFF_MAX  = 0.50  # [m]  upper bound for L_EFF sweep
 
 
 
