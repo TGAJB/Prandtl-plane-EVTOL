@@ -1,7 +1,10 @@
+import numpy as np
+
 # ── Physical constants ─────────────────────────────────────────────────────────
 
 G          = 9.81          # [m/s²]  gravitational acceleration
 RHO_ORIGIN = 1.225         # [kg/m³] ISA sea-level air density
+R_AIR = 287.05             # [J/(Kg*K)] Air gas constant
 
 # ── Mission parameters ─────────────────────────────────────────────────────────
 
@@ -102,3 +105,9 @@ aircraft_person_proximity  = 0    # [m]
 aircraft_building_proximity = 0   # [m]
 rho_propeller_hub        = 2700.0 # [kg/m³] hub material density (aluminium)
 rho_propeller_blade      = 1550.0 # [kg/m³] blade material density (CFRP)
+
+
+# useful funcs
+
+def norm(vector):
+    return vector/np.sqrt(np.dot(vector, vector))
