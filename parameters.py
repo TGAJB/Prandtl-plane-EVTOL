@@ -1,3 +1,5 @@
+import numpy as np
+
 # ── Physical constants ─────────────────────────────────────────────────────────
 
 G          = 9.81          # [m/s²]  gravitational acceleration
@@ -102,3 +104,38 @@ aircraft_person_proximity  = 0    # [m]
 aircraft_building_proximity = 0   # [m]
 rho_propeller_hub        = 2700.0 # [kg/m³] hub material density (aluminium)
 rho_propeller_blade      = 1550.0 # [kg/m³] blade material density (CFRP)
+
+
+def project_vector(v1, v2, return_perpendicular=False):
+    """
+    Projects vector v1 onto vector v2.
+
+    Parameters:
+    v1 (array-like): The vector being projected.
+    v2 (array-like): The vector being projected onto.
+    return_perpendicular (bool): If True, also returns the perpendicular component.
+
+    Returns:
+    v1_parallel (np.ndarray): Component of v1 parallel to v2.
+    v1_perpendicular (np.ndarray): Component of v1 perpendicular to v2 (if requested).
+    """
+    # Convert inputs to numpy arrays just in case they are passed as lists
+    v1 = np.asarray(v1)
+    v2 = np.asarray(v2)
+
+    # Formula: v1_parallel = (np.dot(v1, v2) / np.dot(v2, v2)) * v2
+    # Note: np.dot(v2, v2) is equivalent to ||v2||^2
+    v2_squared_mag = np.dot(v2, v2)
+
+    # Handle the edge case where v2 is a zero vector to avoid division by zero
+    if v2_squared_mag == 0:
+        raise ValueError("Cannot project onto a zero vector.")
+
+    scalar_factor = np.dot(v1, v2) / v2_squared_mag
+    v1_parallel = scalar_factor * v2
+
+    if return_perpendicular:
+        v1_perpendicular = v1 - v1_parallel
+        return v1_parallel, v1_perpendicular
+
+    return v1_parallel
