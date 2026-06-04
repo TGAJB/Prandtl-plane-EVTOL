@@ -618,6 +618,18 @@ def plot_overlays(reference: PolarData, candidate: PolarData, output_dir: Path) 
     return [png_path, pdf_path]
 
 
+def _relative_difference_percent(
+    reference_values: np.ndarray,
+    candidate_values: np.ndarray,
+    min_reference_abs: float = 1e-8,
+) -> np.ndarray:
+    difference = candidate_values - reference_values
+    valid = np.abs(reference_values) >= min_reference_abs
+    percent = np.full_like(reference_values, math.nan, dtype=float)
+    percent[valid] = difference[valid] / reference_values[valid] * 100.0
+    return percent
+
+
 def plot_differences(
     reference: PolarData,
     candidate: PolarData,
@@ -626,29 +638,50 @@ def plot_differences(
 ) -> list[Path]:
     alpha_mask = (reference.alpha >= overlap[0]) & (reference.alpha <= overlap[1])
     alpha = reference.alpha[alpha_mask]
-    delta_cl = _interp(candidate, "CL", alpha) - reference.values("CL")[alpha_mask]
-    delta_cd_counts = (_interp(candidate, "CD", alpha) - reference.values("CD")[alpha_mask]) * 10000.0
-    delta_cm = _interp(candidate, "Cm", alpha) - reference.values("Cm")[alpha_mask]
+    reference_cl = reference.values("CL")[alpha_mask]
+    reference_cd = reference.values("CD")[alpha_mask]
+    reference_cm = reference.values("Cm")[alpha_mask]
+    delta_cl_percent = _relative_difference_percent(
+        reference_cl,
+        _interp(candidate, "CL", alpha),
+        min_reference_abs=0.02,
+    )
+    delta_cd_percent = _relative_difference_percent(
+        reference_cd,
+        _interp(candidate, "CD", alpha),
+    )
+    delta_cm_percent = _relative_difference_percent(
+        reference_cm,
+        _interp(candidate, "Cm", alpha),
+    )
 
     figure, axes = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
-    axes[0].plot(alpha, delta_cl, color="tab:blue")
+    axes[0].plot(alpha, delta_cl_percent, color="tab:blue")
     axes[0].axhline(0.0, color="black", linewidth=0.8)
-    _setup_axis(axes[0], "", r"$\Delta C_L$ [-]", r"$C_L$ difference")
+    _setup_axis(axes[0], "", r"Relative $\Delta C_L$ [%]", r"$C_L$ relative difference")
+    axes[0].text(
+        0.01,
+        0.90,
+        r"Near-zero $C_L$ reference points omitted",
+        transform=axes[0].transAxes,
+        fontsize=9,
+        va="top",
+    )
 
-    axes[1].plot(alpha, delta_cd_counts, color="tab:orange")
+    axes[1].plot(alpha, delta_cd_percent, color="tab:orange")
     axes[1].axhline(0.0, color="black", linewidth=0.8)
-    _setup_axis(axes[1], "", r"$\Delta C_D$ [counts]", r"$C_D$ difference")
+    _setup_axis(axes[1], "", r"Relative $\Delta C_D$ [%]", r"$C_D$ relative difference")
 
-    axes[2].plot(alpha, delta_cm, color="tab:green")
+    axes[2].plot(alpha, delta_cm_percent, color="tab:green")
     axes[2].axhline(0.0, color="black", linewidth=0.8)
     _setup_axis(
         axes[2],
         r"Angle of attack $\alpha$ [deg]",
-        r"$\Delta C_m$ [-]",
-        r"$C_m$ difference",
+        r"Relative $\Delta C_m$ [%]",
+        r"$C_m$ relative difference",
     )
 
-    figure.suptitle("Flow5 minus AirfoilTools Differences")
+    figure.suptitle("Flow5 minus AirfoilTools Relative Differences")
     figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
 
     png_path = output_dir / "airfoil_validation_differences.png"
