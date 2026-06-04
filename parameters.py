@@ -49,16 +49,18 @@ CL_PLOT_MIN          = -0.5   # [-]   lower bound for drag-polar plotting
 CL_PLOT_MAX          = 2.20   # [-]   upper bound for drag-polar plotting
 DRAG_POLAR_N_POINTS  = 100    # [-]   number of points used for drag-polar plots
 
-# Aerodynamic geometry
+# Wing structural parameters
 
-NUMBER_OF_WINGS     = 2        # [-] e.g. 1 for conventional, 2 for Prandtl/box-wing
-AREA_SPLIT         = 0.5      # [-] fraction of total area assigned to one wing
-WING_SPAN          = 13       # [-] span from the footprint constraint
-WING_LOADING_N      = 760.0    # [N/m^2] selected design-point wing loading from matching diagram
-TAPER_W          = 0.40    # [-]    wing chord taper ratio (c_tip / c_root)
-TIP_TO_CHORD_W   = 0.12    # [-]    wing thickness-to-chord ratio
-
-# Wing material: CFRP (standard for modern eVTOL primary structure)
+NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing
+AREA_SPLIT         = 0.5      # [-]     fraction of total area assigned to one wing
+WING_SPAN          = 13       # [-]     span from the footprint constraint
+WING_LOADING_N      = 760.0   # [N/m^2] selected design-point wing loading from matching diagram
+TAPER_W          = 0.40       # [-]     wing chord taper ratio (c_tip / c_root)
+TIP_TO_CHORD_W   = 0.12       # [-]     wing thickness-to-chord ratio
+#    Class I parameters (OUTDATED - CLASS II AVAILABLE)
+S_W         = 30.0            # [m^2]   class I total wing reference area 
+AR_W        = 5.63            # [-]     class I wing aspect ratio 
+#    Wing material: CFRP (standard for modern eVTOL primary structure)
 T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prepreg (MIL-HDBK-17-3F)
 
 # V-tail structural parameters
@@ -72,6 +74,8 @@ T_SKIN_MIN_AL  = 1.2e-3  # [m]    minimum skin gauge (Niu 1988)
 STRUCT_SF      = 1.5     # [-]    ultimate safety factor (FAR/CS 25.303)
 C_N_TAIL_MAX   = 1.2     # [-]    peak normal force coefficient at max deflection
 V_DIVE_FACTOR  = 1.25    # [-]    V_dive / V_cruise (FAR/CS 25.335 lower bound)
+S_TAIL      = 3.25   # [m^2]  V-tail total panel area (both panels)
+AR_T        = 1.23   # [-]   V-tail aspect ratio
 
 # Propulsion geometry
 
@@ -92,10 +96,7 @@ CONTINGENCY  = 1.05    # [-]     energy contingency factor
 L_FUS       = 7.0    # [m]   fuselage length
 PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
-S_W         = 30.0   # [m^2]  total wing reference area
-AR_W        = 5.63   # [-]   wing aspect ratio -> this is now computed in aerodynamics functions so this may need removed
-S_TAIL      = 3.25   # [m^2]  V-tail total panel area (both panels)
-AR_T        = 1.23   # [-]   V-tail aspect ratio
+
 
 # Landing Gear design constants
 
