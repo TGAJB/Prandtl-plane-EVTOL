@@ -26,7 +26,7 @@ from parameters import (
     N_PROP, N_MOTOR, N_BLADES, D_PROP, PM,
     WING_SPAN, AREA_SPLIT, WING_LOADING_N,
     # landing gear
-    L_EFF_MIN, L_EFF_MAX, N_REACT,
+    L_EFF_MIN, L_EFF_MAX, N_REACT, N_CROSS,
     V_Z_LIMIT, V_Z_RESERVE,
     N_LIMIT_LG, KAPPA_LG, GROUND_CLEARANCE, MU_DRAG,
     T_WALL_SKID, DO_SKID_MIN, DO_SKID_MAX,
@@ -101,158 +101,287 @@ def wing_mass(mtow_kg, geometry=None):
 
 
 # Landing gear
+#
+# Two CS-27/29 drop conditions, each with its OWN consistent mechanics. The section
+# modulus AND the energy balance switch together as a pair (never independently):
+#
+#   RESERVE-ENERGY drop (V_Z_RESERVE) -> rigid-plastic hinge (_size_plastic)
+#       The cross-tube forms a plastic hinge at the fuselage root. Force is the
+#       constant plastic-collapse value, the F-delta curve is a rectangle, and the
+#       absorption efficiency is eta ~ 1 by construction. Plastic modulus Z_p governs.
+#       Ductile metals only (a plastic plateau requires yield).
+#
+#   LIMIT / no-yield drop (V_Z_LIMIT) -> elastic cantilever spring (_size_elastic)
+#       The leg stays elastic; force ramps linearly with stroke, so the F-delta curve
+#       is a triangle and it stores only 1/2 F_max*delta (eta ~ 0.5). Cantilever
+#       stiffness 3EI/l^3 governs the stroke; a sigma = M c / I check governs strength.
+#       All materials (metals AND CFRP) are sized on this condition.
+#
+# Sizing each condition over (Do, Di, l_eff) with the energy balance of the WRONG
+# mechanics over-credits energy by ~2x and overstates strength, so the pairing is
+# enforced in code. The governing (heavier) feasible section is returned.
 
-def landing_gear_mass(mtow_kg, rho, sigma_allow=SIGMA_ALLOW_AL):
+# Gear-mass convergence seed / book-keeping (CHANGE 4).
+GEAR_FRAC_SEED      = 0.03   # [-]  class-1 seed: gear ~ 3% of MTOW
+INPUT_INCLUDES_GEAR = True   # True if mtow_kg already carries a gear allowance to remove;
+                             # False if mtow_kg is the gear-excluded "rest" mass.
+
+
+def _section_props(Do, Di):
+    """Thin-walled round-tube section properties [SI].
+
+    Z_p = (Do^3 - Di^3) / 6           plastic section modulus  (full-plasticity hinge)
+    S   = pi (Do^4 - Di^4) / (32 Do)  elastic section modulus  (first-yield bending)
+    I   = pi (Do^4 - Di^4) / 64       second moment of area    (3EI/l^3 stiffness, M c / I)
+    A   = pi (Do^2 - Di^2) / 4        cross-sectional area      (mass)
+    Note S < Z_p for any hollow section (elastic stores less than plastic).
     """
-    Physics-based skid landing gear mass [kg] via rigid-plastic energy-balance sizing.
+    if Di <= 0 or Di >= Do or (Do - Di) / 2 < T_WALL_SKID:
+        raise ValueError(f"Invalid Di={Di:.4f} m for Do={Do:.4f} m (min wall {T_WALL_SKID} m)")
+    Z_p = (Do**3 - Di**3) / 6.0
+    S   = np.pi * (Do**4 - Di**4) / (32.0 * Do)
+    I   = np.pi * (Do**4 - Di**4) / 64.0
+    A   = (np.pi / 4.0) * (Do**2 - Di**2)
+    return Z_p, S, I, A
 
-    Sizes two CS-27/29 certification conditions (limit drop, V_Z_LIMIT; and
-    reserve-energy drop, V_Z_RESERVE).  Cross-tube section is found by sweeping
-    outer diameter and cantilever arm, with inner diameter derived analytically
-    to minimise mass subject to:
 
-        delta  ≤ GROUND_CLEARANCE  (plastic stroke from energy balance)
-        n      ≤ N_LIMIT_LG        (peak load factor)
-        t_wall ≥ T_WALL_SKID       (minimum manufacturable gauge)
+def _gear_mass(A, rho):
+    """Structural skid mass [kg]: N_CROSS cross-tubes (L_TRACK) + 2 runners (L_SKID),
+    same tube section A, with a fittings/attachment knockup K_FITTINGS."""
+    return (N_CROSS * L_TRACK * A + 2.0 * L_SKID * A) * rho * K_FITTINGS
 
-    Plastic hinge model at cross-tube root (fuselage attachment):
-        F_max = N_REACT · Mp / l_eff
-        Mp    = (sigma_allow / sqrt(1 + MU_DRAG²)) · Z_p / STRUCT_SF
 
-    The MU_DRAG term accounts for simultaneous horizontal drag bending
-    (CS-27.725, μ = 0.5).  STRUCT_SF = 1.5 matches wing_mass / tail_mass.
-    The governing (heavier) condition is returned; gear mass is iterated
-    because it is part of the total drop mass.
+def _size_plastic(Do, Di, l_eff, Vz, m_total, rho, sigma_allow, ductile=True):
+    """RESERVE-ENERGY rigid-plastic hinge sizing for one section (CHANGE 1, 3).
+
+    Mechanics (rectangular F-delta plateau, eta ~ 1):
+        sigma_eff = sigma_allow / sqrt(1 + MU_DRAG^2)   biaxial (vertical + drag) reduction
+        Mp        = sigma_eff * Z_p                     UNFACTORED plastic moment  [N.m]
+        F_max     = N_REACT * Mp / l_eff                UNFACTORED collapse force  [N]
+        net       = F_max - (W - L),  W = m g,  L = KAPPA_LG * W
+        delta     = 0.5 m Vz^2 / net                    flat-plateau work-energy balance
+        n         = F_max / W                           honest (unfactored) load factor
+
+    CHANGE 3: STRUCT_SF is NOT divided into F_max. The force the occupants and the
+    energy balance see is the real, unfactored plastic-hinge reaction. STRUCT_SF is
+    applied separately as a section fracture/strength margin: it is carried in the
+    ultimate-vs-yield basis of sigma_allow (ductile metals have sigma_ult/sigma_yield
+    > STRUCT_SF), so the plastic hinge forms before fracture. A fiber-stress check of
+    the kind used in the elastic branch is self-referential here (the hinge stress is
+    sigma_eff by definition) and is therefore not applied.
+
+    CHANGE 2: brittle materials (CFRP) have no yield plateau -> no plastic hinge.
+    Calling this with ductile=False raises ValueError.
+    """
+    if not ductile:
+        raise ValueError(
+            "CFRP/brittle material has no plastic hinge (it fractures, no yield "
+            "plateau); size it on the elastic limit condition only (_size_elastic)."
+        )
+    Z_p, S, I, A = _section_props(Do, Di)
+    sigma_eff = sigma_allow / np.sqrt(1.0 + MU_DRAG**2)
+    Mp        = sigma_eff * Z_p              # unfactored plastic moment [N.m]
+    F_max     = N_REACT * Mp / l_eff         # unfactored collapse force  [N]
+
+    W = m_total * G
+    L = KAPPA_LG * W
+    net = F_max - (W - L)
+    if net <= 0:
+        raise ValueError(f"Net restoring force {net:.1f} N <= 0: tube too weak")
+    n     = F_max / W                        # honest load factor (no STRUCT_SF de-rating)
+    delta = 0.5 * m_total * Vz**2 / net      # rectangular plateau, eta ~ 1
+
+    return {
+        "mechanics": "plastic",
+        "n": n,
+        "delta": delta,
+        "F_max": F_max,
+        "A": A,
+        "m_gear": _gear_mass(A, rho),
+        "strength_ok": True,                 # margin carried in sigma_allow ultimate basis
+    }
+
+
+def _size_elastic(Do, Di, l_eff, Vz, m_total, rho, sigma_allow, E):
+    """LIMIT / no-yield elastic cantilever-spring sizing for one section (CHANGE 1).
+
+    Mechanics (triangular F-delta, eta ~ 0.5):
+        I      = pi (Do^4 - Di^4) / 64
+        k_leg  = 3 E I / l_eff^3                cantilever tip stiffness per leg  [N/m]
+        K      = N_REACT * k_leg                total landing-gear stiffness
+        solve  0.5 K delta^2 = 0.5 m Vz^2 + (m g - L) delta   (work-energy, positive root)
+               => delta = [ (mg - L) + sqrt((mg - L)^2 + K m Vz^2) ] / K
+        F_max  = K * delta                      peak elastic reaction  [N]
+        n      = F_max / W
+
+    Strength (separate from the energy balance, since F_max here comes from stiffness
+    and stroke, NOT from the section's strength):
+        sigma = M c / I = (F_max / N_REACT) * l_eff * (Do/2) / I  <=  sigma_eff / STRUCT_SF
+    With sigma_eff = sigma_allow / sqrt(1 + MU_DRAG^2). STRUCT_SF lives on this stress
+    check, not inside F_max.
+    """
+    Z_p, S, I, A = _section_props(Do, Di)
+    k_leg = 3.0 * E * I / l_eff**3
+    K     = N_REACT * k_leg                  # total stiffness [N/m]
+
+    W    = m_total * G
+    L    = KAPPA_LG * W
+    grav = W - L                             # (m g - L), positive work over the stroke
+    # 0.5 K d^2 - grav d - 0.5 m Vz^2 = 0  ->  positive root
+    disc  = grav**2 + K * m_total * Vz**2
+    delta = (grav + np.sqrt(disc)) / K
+    F_max = K * delta
+    n     = F_max / W
+
+    sigma_eff = sigma_allow / np.sqrt(1.0 + MU_DRAG**2)
+    M_leg     = (F_max / N_REACT) * l_eff    # per-leg root bending moment [N.m]
+    sigma     = M_leg * (Do / 2.0) / I       # sigma = M c / I
+    strength_ok = sigma <= sigma_eff / STRUCT_SF
+
+    return {
+        "mechanics": "elastic",
+        "n": n,
+        "delta": delta,
+        "F_max": F_max,
+        "A": A,
+        "m_gear": _gear_mass(A, rho),
+        "sigma": sigma,
+        "strength_ok": strength_ok,
+    }
+
+
+def landing_gear_mass(mtow_kg, rho, sigma_allow, E, ductile=True,
+                      return_details=False, gear_seed_kg=None):
+    """
+    Physics-based skid landing-gear mass [kg] via condition-specific energy-balance sizing.
+
+    Sizes the CS-27/29 drop conditions with their own consistent mechanics (CHANGE 1):
+        - LIMIT (V_Z_LIMIT)    -> elastic cantilever spring  (_size_elastic), all materials
+        - RESERVE (V_Z_RESERVE)-> rigid-plastic hinge        (_size_plastic), ductile metals only
+
+    Ductile metals (Al, Ti) run BOTH branches; CFRP (ductile=False) runs the elastic
+    branch only because it has no plastic hinge (CHANGE 2). The cross-tube section is
+    found by sweeping outer diameter, inner diameter and effective bent-arm l_eff
+    subject to:
+
+        delta       <= GROUND_CLEARANCE   (stroke from the per-condition energy balance)
+        n           <= N_LIMIT_LG         (peak load factor)
+        strength_ok                       (elastic: sigma = M c / I <= sigma_eff/STRUCT_SF)
+        t_wall      >= T_WALL_SKID         (minimum manufacturable gauge)
+
+    The governing (heavier) feasible condition is returned. The gear is sized for the
+    FULL landing mass (it decelerates itself too), so its mass is iterated; the non-gear
+    mass is held fixed and MTOW is re-formed with the current gear each pass, removing
+    the gear allowance exactly once (CHANGE 4).
 
     Returns
     -------
-    (mass_kg, Do_m, Di_m, l_eff_m) — geometry is None if no feasible section.
+    (mass_kg, Do_m, Di_m, l_eff_m)         if return_details is False (geometry None on fail)
+    dict with per-condition + governing info if return_details is True
 
     Parameters
     ----------
-    mtow_kg     : float  Aircraft OEW + payload, excl. gear [kg]
-    rho         : float  Density of skid tube material [kg/m³]
-    sigma_allow : float  Allowable bending stress [Pa] (default SIGMA_ALLOW_AL)
+    mtow_kg     : float  Aircraft mass [kg]; gear allowance removed if INPUT_INCLUDES_GEAR.
+    rho         : float  Skid tube material density [kg/m^3]
+    sigma_allow : float  Allowable bending stress [Pa]
+    E           : float  Young's modulus of the tube material [Pa] (elastic branch)
+    ductile     : bool   True for metals (both branches); False for CFRP (elastic only)
+    gear_seed_kg: float  Optional initial guess for the gear-mass iteration. The non-gear
+                         mass removed from MTOW is always GEAR_FRAC_SEED*mtow_kg (a fixed
+                         allowance, removed once), so the converged result is independent
+                         of this starting guess; it only changes the iteration path.
     """
-    n_cross    = N_REACT // 2
-    conditions = [
-        (V_Z_LIMIT,   'limit'),
-        (V_Z_RESERVE, 'reserve'),
-    ]
+    # Condition -> mechanics pairing (the flag switches modulus AND balance together).
+    conditions = [(V_Z_LIMIT, "limit", "elastic")]
+    if ductile:
+        conditions.append((V_Z_RESERVE, "reserve", "plastic"))
 
-    def _size_condition(Do, Di, l_eff, Vz, m_total):
-        """
-        Rigid-plastic cantilever sizing for one (Do, Di, l_eff, condition).
-
-        Cross-tube forms a plastic hinge at fuselage root:
-            Mp    = sigma_eff · Z_p / STRUCT_SF   (biaxial + safety factor)
-            F_max = N_REACT · Mp / l_eff
-        Energy balance:
-            F_max · δ = 0.5 · m · Vz²   (net force = F_max when KAPPA_LG = 1)
-        """
-        if Di <= 0 or Di >= Do or (Do - Di) / 2 < T_WALL_SKID:
-            raise ValueError(f"Invalid Di={Di:.4f} m for Do={Do:.4f} m")
-        Z_p       = (Do**3 - Di**3) / 6                         # plastic section modulus [m³]
-        sigma_eff = sigma_allow / np.sqrt(1.0 + MU_DRAG**2)    # biaxial (vert + drag) reduction
-        Mp        = sigma_eff * Z_p / STRUCT_SF                 # effective plastic moment [N·m]
-        A     = (np.pi / 4) * (Do**2 - Di**2)  # cross-sectional area [m²]
-
-        W         = m_total * G
-        L         = KAPPA_LG * W
-        F_max     = N_REACT * Mp / l_eff        # total collapse force [N]
-        net_force = F_max - (W - L)
-        if net_force <= 0:
-            raise ValueError(f"Net restoring force {net_force:.1f} N ≤ 0: tube too weak")
-        n     = F_max / W                        # load factor [-]
-        delta = 0.5 * m_total * Vz**2 / net_force  # plastic stroke [m]
-
-        m_gear = (n_cross * L_TRACK * A + 2 * L_SKID * A) * rho * K_FITTINGS
-        return n, delta, m_gear
+    def _size_condition(Do, Di, l_eff, Vz, m_total, mechanics):
+        if mechanics == "elastic":
+            return _size_elastic(Do, Di, l_eff, Vz, m_total, rho, sigma_allow, E)
+        return _size_plastic(Do, Di, l_eff, Vz, m_total, rho, sigma_allow, ductile)
 
     def _find_governing(m_total):
-        """Sweep Do and l_eff; compute optimal Di analytically; return governing tuple or None.
+        """Sweep Do, l_eff and Di; per condition keep the minimum-mass feasible section;
+        return the governing (heavier) condition's result dict, or None.
 
-        Di is derived analytically rather than swept:
-          - delta ≤ GROUND_CLEARANCE  →  Z_p ≥ Z_p_min  →  Di ≤ Di_delta
-          - n ≤ N_LIMIT_LG           →  Z_p ≤ Z_p_max  →  Di ≥ Di_n
-          - wall gauge               →  Di ≤ Do − 2·T_WALL_SKID
-        Optimal (minimum mass) Di = min(Di_delta, Do − 2·T_WALL_SKID).
-        """
-        Do_arr   = np.linspace(DO_SKID_MIN, DO_SKID_MAX, 60)
-        Leff_arr = np.linspace(L_EFF_MIN,   L_EFF_MAX,   20)
-
-        W         = m_total * G
-        sigma_eff = sigma_allow / np.sqrt(1.0 + MU_DRAG**2)
+        Di is swept (not derived analytically) because the two mechanics bound the
+        section differently; minimum mass = minimum area = the lightest feasible Di."""
+        Do_arr   = np.linspace(DO_SKID_MIN, DO_SKID_MAX, 40)
+        Leff_arr = np.linspace(L_EFF_MIN,   L_EFF_MAX,   12)
 
         best = {}
-        for Vz, name in conditions:
-            F_net_min = 0.5 * m_total * Vz**2 / GROUND_CLEARANCE
-            F_max_min = F_net_min + (1.0 - KAPPA_LG) * W   # from delta constraint
-            F_max_max = N_LIMIT_LG * W                       # from n constraint
-
-            if F_max_min > F_max_max:
-                continue
-
-            for l_eff in Leff_arr:
-                # F_max = N_REACT * sigma_eff * Z_p / (STRUCT_SF * l_eff)  →  Z_p = F * l * SF / (N * σ)
-                Z_p_min = F_max_min * l_eff * STRUCT_SF / (N_REACT * sigma_eff)
-                Z_p_max = F_max_max * l_eff * STRUCT_SF / (N_REACT * sigma_eff)
-
-                for Do in Do_arr:
-                    # Di_delta: largest Di that keeps delta ≤ GROUND_CLEARANCE (Z_p ≥ Z_p_min)
-                    rhs_delta = Do**3 - 6.0 * Z_p_min
-                    if rhs_delta <= 0.0:
-                        continue
-                    Di_delta = rhs_delta ** (1.0 / 3.0)
-
-                    # Di_n: smallest Di that keeps n ≤ N_LIMIT_LG (Z_p ≤ Z_p_max)
-                    rhs_n = Do**3 - 6.0 * Z_p_max
-                    Di_n = rhs_n ** (1.0 / 3.0) if rhs_n > 0.0 else 0.0
-
-                    # Wall thickness upper bound on Di
-                    Di_wall = Do - 2.0 * T_WALL_SKID
-
-                    # Optimal Di: maximum Di (minimum area) satisfying all bounds
-                    Di = min(Di_delta, Di_wall)
-                    if Di < max(Di_n, 0.0) or Di <= 0.0 or Di >= Do:
-                        continue
-
-                    try:
-                        n, delta, mg = _size_condition(Do, Di, l_eff, Vz, m_total)
-                    except ValueError:
-                        continue
-                    if n <= N_LIMIT_LG and delta <= GROUND_CLEARANCE:
-                        if name not in best or mg < best[name][0]:
-                            best[name] = (mg, Do, Di, l_eff, n, delta, name)
+        for Vz, name, mechanics in conditions:
+            for Do in Do_arr:
+                Di_hi = Do - 2.0 * T_WALL_SKID           # thinnest wall -> largest Di (lightest)
+                if Di_hi <= 0.0:
+                    continue
+                Di_lo = max(0.1 * Do, 1e-3)
+                if Di_lo >= Di_hi:
+                    continue
+                for Di in np.linspace(Di_lo, Di_hi, 30):
+                    for l_eff in Leff_arr:
+                        try:
+                            res = _size_condition(Do, Di, l_eff, Vz, m_total, mechanics)
+                        except ValueError:
+                            continue
+                        if (res["delta"] <= GROUND_CLEARANCE
+                                and res["n"] <= N_LIMIT_LG
+                                and res["strength_ok"]):
+                            if name not in best or res["m_gear"] < best[name]["m_gear"]:
+                                res.update(Do=Do, Di=Di, l_eff=l_eff, condition=name)
+                                best[name] = res
 
         if not best:
             return None
-        return max(best.values(), key=lambda x: x[0])   # governing = heavier condition
+        governing = max(best.values(), key=lambda r: r["m_gear"])
+        governing = dict(governing)
+        governing["per_condition"] = {k: v["m_gear"] for k, v in best.items()}
+        return governing
 
-    # Outer mass-convergence loop (gear mass appears in m_total it decelerates)
-    m_gear = 0.03 * mtow_kg   # seed: 3% of aircraft mass
+    # ---- Outer mass-convergence loop (CHANGE 4): hold non-gear mass fixed, re-form MTOW ----
+    # The gear allowance baked into mtow_kg is removed exactly ONCE here, using the fixed
+    # GEAR_FRAC_SEED (not the iteration's starting guess), so m_rest - and hence the fixed
+    # point - is independent of gear_seed_kg.
+    m_rest = (mtow_kg - GEAR_FRAC_SEED * mtow_kg) if INPUT_INCLUDES_GEAR else mtow_kg
+    m_gear = GEAR_FRAC_SEED * mtow_kg if gear_seed_kg is None else gear_seed_kg
+    result = None
     for _ in range(50):
-        result = _find_governing(mtow_kg + m_gear)
+        m_total = m_rest + m_gear            # full landing mass, gear folded in exactly once
+        result = _find_governing(m_total)
         if result is None:
-            # No feasible tube in [DO_SKID_MIN, DO_SKID_MAX] for all three constraints.
-            # With a simple cantilever model, stress scales as σ ~ n·W·L_EFF/(Do²·t).
-            # The Do that keeps n ≤ N_LIMIT_LG is too small to carry the bending moment —
-            # a known incompatibility when placeholder parameters are used.  Calibrate
-            # L_EFF (should be the effective bent-section arm, NOT the full track half-span)
-            # and T_WALL_SKID before trusting this result.
             warnings.warn(
-                "landing_gear_mass: no feasible section found in Do sweep - "
-                "returning class-1 fallback (3% MTOW).  "
-                "Calibrate L_EFF and T_WALL_SKID in parameters.py.",
+                "landing_gear_mass: no feasible section found in the (Do, Di, l_eff) "
+                "sweep - returning class-1 fallback (3% MTOW). Check L_EFF, T_WALL_SKID "
+                "and the per-material allowables in parameters.py.",
                 stacklevel=2,
             )
-            return 0.03 * mtow_kg, None, None, None
-        m_new, Do_opt, Di_opt, Leff_opt = result[0], result[1], result[2], result[3]
+            if return_details:
+                return None
+            return GEAR_FRAC_SEED * mtow_kg, None, None, None
+        m_new = result["m_gear"]
         if abs(m_new - m_gear) / max(m_new, 1e-9) < 0.005:
-            return m_new, Do_opt, Di_opt, Leff_opt
-        m_gear = 0.4 * m_gear + 0.6 * m_new   # under-relaxation λ = 0.6
+            m_gear = m_new
+            break
+        m_gear = 0.4 * m_gear + 0.6 * m_new  # under-relax lambda = 0.6, converge on MASS
 
-    return result[0], result[1], result[2], result[3]   # geometry-consistent best estimate
+    if return_details:
+        return result
+    return result["m_gear"], result["Do"], result["Di"], result["l_eff"]
+
+
+# ---------------------------------------------------------------------------
+# STUB - asymmetric one-skid / 6-DOF landing load case.
+# A real CS-27.727 sideload / one-gear-first condition needs a 6-DOF reaction
+# solve (asymmetric vertical + drag + side loads, torsion of the cross-tube,
+# unequal leg reactions). This is NOT modelled here; the symmetric two-skid
+# drop above does not bound it. Do NOT treat the result above as covering it.
+def landing_gear_asymmetric_stub(*args, **kwargs):
+    raise NotImplementedError(
+        "Asymmetric one-skid / 6-DOF landing load case is not implemented. "
+        "Requires a 6-DOF reaction solve (side + drag + vertical, cross-tube "
+        "torsion, unequal leg reactions); the symmetric drop does not bound it."
+    )
 
 
 # V-tail (physics-based cantilever sizing)

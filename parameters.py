@@ -100,33 +100,42 @@ N_PAX       = 4      # [-]   passenger count
 
 
 # Landing Gear design constants
+#
+# Absorption efficiency is NO LONGER a free parameter: it is encoded structurally
+# by the two condition-specific models (mass_components.landing_gear_mass):
+#   - reserve-energy  -> rigid-plastic hinge, rectangular F-delta plateau, eta ~ 1
+#   - limit (no yield)-> elastic cantilever spring, triangular F-delta, eta ~ 0.5
+# The old scalar ETA / ETA_LG_* knockdowns have been removed to avoid double-counting.
 
-ETA = 0.003       # legacy placeholder - superseded by ETA_LG_* below
-D_O_SKID = 0.06   # [m]  placeholder outer diameter (sizing sweeps DO_SKID_MIN->MAX)
-D_I_SKID = 0.054  # [m]  placeholder inner diameter (sizing uses T_WALL_SKID)
-L_EFF     = 0.25  # [m]  effective cantilever arm: horizontal distance from fuselage
-                  #       attachment bracket to skid runner (NOT the half-track span).
-                  #       Typical range 0.2–0.5 m; also swept via L_EFF_MIN/MAX below.
-N_REACT  = 4      # [-]  total reaction points = 2 * n_cross (2 cross-tubes)
+N_CROSS  = 2          # [-]  number of cross-tubes (fore + aft)
+N_REACT  = 2 * N_CROSS # [-]  total reaction points = 2 per cross-tube
+
+# Nominal tube section (representative feasible result; the sizer sweeps
+# DO_SKID_MIN -> DO_SKID_MAX and derives the wall from T_WALL_SKID).
+D_O_SKID = 0.10   # [m]  nominal outer diameter
+D_I_SKID = 0.091  # [m]  nominal inner diameter
+
+L_EFF    = 0.40   # [m]  effective BENT-ARM of the cross-member: horizontal distance
+                  #       from the fuselage attachment (plastic hinge / cantilever root)
+                  #       to the skid runner.  This is NOT the full track half-span.
+                  #       Typical range 0.2-0.6 m for a 2-3 t vehicle; swept L_EFF_MIN/MAX.
 
 # CS-27/29 certification conditions
 V_Z_LIMIT        = 2.44   # [m/s]  limit-condition sink rate
 V_Z_RESERVE      = 3.7    # [m/s]  reserve-energy sink rate
-# Efficiency: keep ETA_LG_RESERVE = 0.50 for CFRP (brittle; no plastic plateau).
-# For ductile metals (Al, Ti) the reserve value may be raised to 0.60-0.80.
-ETA_LG_LIMIT     = 0.50   # [-]  elastic absorption efficiency (limit condition)
-ETA_LG_RESERVE   = 0.50   # [-]  absorption efficiency (reserve); override per material
 
 # Load-factor and stroke constraints
 # N_LIMIT_LG is the landing-gear load-factor limit, NOT the wing limit N_W = 3.5.
 # Typical skid-gear values: 4-8 g depending on aircraft category and cert basis.
 N_LIMIT_LG       = 7.0    # [-]  landing-gear ultimate load-factor limit (placeholder)
-KAPPA_LG         = 1.0    # [-]  lift fraction at touchdown; 1.0 = full rotor lift (powered VTOL landing)
+KAPPA_LG         = 0.0    # [-]  rotor-lift credit at touchdown as a fraction of weight.
+                          #       0.0 = conservative (no lift credit; full weight reacted).
+                          #       Cap per CS 27.725: assumed lift may not exceed weight (<= 1.0).
 GROUND_CLEARANCE = 0.30   # [m]  maximum allowable stroke (30 cm; covers reserve case)
 MU_DRAG          = 0.50   # [-]  CS-27.725 drag friction coefficient (skid on hard surface)
 
 # Tube geometry
-T_WALL_SKID  = 0.003  # [m]  skid tube wall thickness (placeholder - refine from sizing)
+T_WALL_SKID  = 0.003  # [m]  minimum manufacturable skid tube wall thickness
 DO_SKID_MIN  = 0.03   # [m]  outer-diameter sweep lower bound
 DO_SKID_MAX  = 0.30   # [m]  outer-diameter sweep upper bound
 DI_SKID_MIN  = 0.01   # [m]  inner-diameter sweep lower bound
@@ -137,8 +146,8 @@ W_FUS      = 1.5   # [m]  fuselage maximum width (cabin + structure)
 L_TRACK    = 2.0   # [m]  lateral track width (cross-tube chord)
 L_SKID     = 3.0   # [m]  skid runner length (each side)
 K_FITTINGS = 1.3   # [-]  mass knockup factor for fittings and attachments
-L_EFF_MIN  = (L_TRACK - W_FUS) / 2   # [m]  min cantilever arm: half the clearance between fuselage and runner
-L_EFF_MAX  = 0.50  # [m]  upper bound for L_EFF sweep
+L_EFF_MIN  = 0.20  # [m]  lower bound for the effective bent-arm sweep
+L_EFF_MAX  = 0.60  # [m]  upper bound for the effective bent-arm sweep
 
 
 
