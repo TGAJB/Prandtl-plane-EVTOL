@@ -150,6 +150,50 @@ L_EFF_MIN  = 0.20  # [m]  lower bound for the effective bent-arm sweep
 L_EFF_MAX  = 0.60  # [m]  upper bound for the effective bent-arm sweep
 
 
+# Landing-gear ARCHITECTURE trade study
+#
+# A bending TUBE cannot react these sink speeds elastically in ANY metal (a min-wall tube
+# is too stiff: soft needs small I, strong needs large I - it cannot be both). So a gear
+# that stays elastic (springs back, reusable) at the limit drop must be a constant-stress
+# LEAF spring, or carry a dedicated absorber. The sizer builds every feasible architecture
+# and trades them off on mass + reusability:
+#   plastic_tube     - ductile metal tube, plastic hinge at BOTH drops (lightest, not reusable)
+#   metal_spring     - ductile metal leaf : elastic limit + plastic-hinge reserve
+#   composite_spring - GFRP leaf          : elastic at BOTH drops (fully reusable)
+#   two_stage        - elastomeric absorber (elastic limit) + plastic tube (reserve)
+
+# Spring materials (used by the spring architectures; the tube archs use the caller's metal)
+SIGMA_YIELD_TI   = 880e6   # [Pa]    Ti-6Al-4V yield (MMPDS-01); ductile -> plastic hinge available
+E_TI             = 114e9   # [Pa]    Ti-6Al-4V Young's modulus
+RHO_TI           = 4430.0  # [kg/m^3] Ti-6Al-4V density
+SIGMA_ALLOW_GFRP = 900e6   # [Pa]    S-glass/epoxy UD flexural allowable, knocked down (CMH-17)
+E_GFRP           = 45e9    # [Pa]    S-glass/epoxy UD modulus (low E -> high resilience sigma^2/2E)
+RHO_GFRP         = 2000.0  # [kg/m^3] S-glass/epoxy density
+
+# Constant-stress (triangular plan) leaf-spring leg geometry sweep
+LEAF_B_MIN   = 0.05   # [m]  root width lower bound
+LEAF_B_MAX   = 0.80   # [m]  root width upper bound
+LEAF_T_MIN   = 0.004  # [m]  thickness lower bound
+LEAF_T_MAX   = 0.060  # [m]  thickness upper bound
+LEAF_L_MIN   = 0.30   # [m]  cantilever length lower bound
+LEAF_L_MAX   = 1.20   # [m]  cantilever length upper bound
+LEAF_N_SWEEP = 28     # [-]  sweep points per axis (vectorised)
+
+# Two-stage energy absorber (elastomeric / crushable element at the skid-fuselage joint)
+ABSORBER_STROKE     = 0.20   # [m]    available absorber stroke (within gear height)
+ABSORBER_EFFICIENCY = 0.60   # [-]    F-delta area efficiency of an elastomeric absorber
+ABSORBER_SEA        = 1500.0 # [J/kg] specific energy absorption incl. mounting hardware
+                             #         (the one modelling assumption with real uncertainty)
+
+# Architecture selection objective:
+#   'prefer_reusable' : lightest gear that stays ELASTIC (reusable) at the limit drop;
+#                       if none is reusable, the lightest feasible (plastic) gear
+#   'min_mass'        : the absolute lightest feasible gear (ignores reusability)
+#   'weighted'        : minimise m_gear * (1 + REUSE_PENALTY * yields_at_limit)
+GEAR_OBJECTIVE = "prefer_reusable"
+REUSE_PENALTY  = 0.5
+
+
 
 # Miscellaneous design constants
 
