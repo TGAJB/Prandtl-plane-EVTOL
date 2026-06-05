@@ -21,7 +21,7 @@ from parameters import (
     N_W, TAPER_W, TIP_TO_CHORD_W,
     SIGMA_ALLOW_CFRP, RHO_CFRP, T_SKIN_MIN_CFRP,
     S_TAIL, AR_T, TAPER_TAIL, TIP_TO_CHORD, V_ANGLE,
-    F_REAR_WING, SIGMA_ALLOW_AL, RHO_AL, T_SKIN_MIN_AL,
+    F_REAR_WING,
     STRUCT_SF, C_N_TAIL_MAX, V_DIVE_FACTOR, V_CRUISE,
     N_PROP, N_MOTOR, N_BLADES, D_PROP, PM,
     WING_SPAN, AREA_SPLIT, WING_LOADING_N,
@@ -540,12 +540,17 @@ def landing_gear_asymmetric_stub(*args, **kwargs):
 
 
 # V-tail (physics-based cantilever sizing)
+#
+# Design: TWO SEPARATE angled tails (no shared centerline apex). Each tail is an
+# independent cantilever fixed at its own root, so the structure is sized as one
+# surface and doubled. S_TAIL is the planform area of ONE tail and AR_T is that
+# tail's aspect ratio, so l_panel = sqrt(AR_T * S_TAIL) -- NOT a combined-V half-span.
 
 def tail_mass(mtow_kg):
-    # -- Geometry --
-    l_panel = 0.5 * np.sqrt(AR_T * S_TAIL)
-    b_half  = l_panel * np.cos(np.radians(V_ANGLE))
-    c_root  = S_TAIL / ((1 + TAPER_TAIL) * l_panel)
+    # -- Geometry (per individual tail) --
+    l_panel = np.sqrt(AR_T * S_TAIL)                      # root-to-tip cantilever length [m]
+    b_half  = l_panel * np.cos(np.radians(V_ANGLE))       # horizontal projection (vert-load arm)
+    c_root  = 2 * S_TAIL / ((1 + TAPER_TAIL) * l_panel)  # trapezoid: S = 1/2 (c_r+c_t) l_panel
     h_spar  = TIP_TO_CHORD * c_root
     h_eff   = h_spar * np.cos(np.radians(V_ANGLE))
 
@@ -555,24 +560,24 @@ def tail_mass(mtow_kg):
 
     # -- Load case 2: V-tail own aero load at dive speed, max deflection --
     q_dive  = 0.5 * RHO_ORIGIN * (V_DIVE_FACTOR * V_CRUISE) ** 2
-    f_aero  = q_dive * (S_TAIL / 2) * C_N_TAIL_MAX
+    f_aero  = q_dive * S_TAIL * C_N_TAIL_MAX              # S_TAIL is per-tail area
     m_aero  = f_aero * l_panel / 2
 
     # -- Ultimate root moment --
     m_root  = STRUCT_SF * (m_rear + m_aero)
 
-    # -- Spar (caps + web): Euler-Bernoulli cantilever --
-    vol_caps = m_root * l_panel / (SIGMA_ALLOW_AL * h_eff)
+    # -- Spar (caps + web): Euler-Bernoulli cantilever, CFRP --
+    vol_caps = m_root * l_panel / (SIGMA_ALLOW_CFRP * h_eff)
     vol_spar = 1.4 * vol_caps          # web adds ~40% of cap volume
-    m_spar   = vol_spar * RHO_AL
+    m_spar   = vol_spar * RHO_CFRP
 
-    # -- Skins: min-gauge governs --
-    m_skin   = 2 * (S_TAIL / 2) * T_SKIN_MIN_AL * RHO_AL
+    # -- Skins: min-gauge CFRP governs --
+    m_skin   = 2 * S_TAIL * T_SKIN_MIN_CFRP * RHO_CFRP
 
     # -- Primary fraction 0.76 accounts for ribs + fittings (secondary structure) --
     m_panel  = (m_spar + m_skin) / 0.76
 
-    return 2.0 * m_panel               # both panels
+    return 2.0 * m_panel               # both tails
 
 
 # Motors
