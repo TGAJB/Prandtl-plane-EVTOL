@@ -2,7 +2,7 @@ from parameters import *
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-
+import csv
 
 class Wing():
     def __init__(self, geometry, forces, alpha=0.0):
@@ -42,6 +42,28 @@ class Wing():
             plot_single_vector(ax, self.weight[0], origin=self.weight[1], color="orange")
         if plotaxes:
             plot_axes(self.axes)
+class Load():
+    def __init__(self, magn, dir, loc, label, color):
+        self.magn = magn
+        self.dir = dir
+        self.loc = loc
+        #For plotting
+        self.label = label
+        self.color = color
+# 1. PointLoad Subclass
+class PointLoad(Load):
+    def __init__(self, magn, dir, loc, label, color):
+        # Inherits everything directly from the parent Load class
+        super().__init__(magn, dir, loc, label, color)
+# 2. DistributedLoad Subclass
+class DistributedLoad(Load):
+    def __init__(self, magn, dir, loc, label, color, load_dir):
+        super().__init__(magn, dir, loc, label, color)
+        self.load_dir = load_dir
+
+    @classmethod
+    def import_from_csv(cls, file_path):
+        pass
 
 
 def transform_axes(theta_deg, phi_deg):
@@ -234,7 +256,6 @@ def plot_axes(axis):
     plot_single_vector(ax, axis[0], color='r', label='Vector 1')
     plot_single_vector(ax, axis[1], color='g', label='Vector 1')
     plot_single_vector(ax, axis[2], color='b', label='Vector 1')
-
 
 if __name__ == "__main__":
 

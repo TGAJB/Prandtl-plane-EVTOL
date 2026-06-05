@@ -16,7 +16,7 @@ from mass_components import propeller_mass
 # Base Load Classes
 # ============================================================
 
-class Load:
+class Load:<<
     def plot(self, ax):
         raise NotImplementedError
 
