@@ -164,29 +164,64 @@ def test_mass_loop_no_inflation_and_seed_independent():
 
 
 # ---------------------------------------------------------------------------
-# CHANGE 5 - calibrated bent-arm L_EFF yields a feasible section.
+# CHANGE 5 - calibrated bent-arm L_EFF yields a feasible plastic-tube section.
 # ---------------------------------------------------------------------------
-def test_calibrated_leff_is_feasible_and_lighter_than_long_arm():
-    mtow = 2500.0
+def test_long_bent_arm_makes_plastic_tube_heavier():
+    m_total = 2500.0
 
-    # Calibrated bent-arm sweep (0.2-0.6 m): a feasible governing section exists.
-    d = mc.landing_gear_mass(mtow, RHO_AL, SIGMA_ALLOW_AL, E_AL, return_details=True)
-    assert d is not None, "no feasible section with the calibrated bent-arm"
-    assert 0.20 <= d["l_eff"] <= 0.60          # bent-arm, NOT the full track half-span
-    assert d["n"] <= N_LIMIT_LG + 1e-9
-    assert d["delta"] <= GROUND_CLEARANCE + 1e-9
-    m_calibrated = d["m_gear"]
+    base = mc._governing_plastic_tube(m_total, RHO_AL, SIGMA_ALLOW_AL)
+    assert base is not None, "no feasible tube with the calibrated bent-arm"
+    assert 0.20 <= base["l_eff"] <= 0.60       # bent-arm, NOT the full track half-span
+    assert base["n"] <= N_LIMIT_LG + 1e-9
+    assert base["delta"] <= GROUND_CLEARANCE + 1e-9
 
-    # An over-long arm (the old, mis-set 1.2 m "half-track" value) drives the section
-    # much heavier - a smaller collapse force per unit Z_p needs a larger, heavier tube.
+    # An over-long arm (the old, mis-set 1.2 m "half-track") drives a heavier tube: a smaller
+    # collapse force per unit Z_p needs a larger section.
     saved_min, saved_max = mc.L_EFF_MIN, mc.L_EFF_MAX
     mc.L_EFF_MIN = mc.L_EFF_MAX = 1.2
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            d_long = mc.landing_gear_mass(mtow, RHO_AL, SIGMA_ALLOW_AL, E_AL,
-                                          return_details=True)
+        long = mc._governing_plastic_tube(m_total, RHO_AL, SIGMA_ALLOW_AL)
     finally:
         mc.L_EFF_MIN, mc.L_EFF_MAX = saved_min, saved_max
+    assert long is None or long["m_gear"] > base["m_gear"]
 
-    assert d_long is None or d_long["m_gear"] > m_calibrated
+
+# ---------------------------------------------------------------------------
+# Architecture trade study: every feasible gear architecture is sized and the
+# selected one honours the objective (default: lightest reusable-at-limit gear).
+# ---------------------------------------------------------------------------
+def test_architecture_trade_study_and_selection():
+    mtow = 2500.0
+    d = mc.landing_gear_mass(mtow, RHO_AL, SIGMA_ALLOW_AL, E_AL, return_details=True)
+    assert d is not None
+
+    # the selected gear satisfies the drop constraints
+    assert d["n"] <= N_LIMIT_LG + 1e-9
+    assert d["delta"] <= GROUND_CLEARANCE + 1e-9
+
+    archs = {r["arch"]: r for r in d["all_architectures"]}
+    assert set(archs) == {"plastic_tube", "metal_spring", "composite_spring", "two_stage"}
+
+    # the plastic tube is always feasible for ductile metal, with a bent-arm in the sweep
+    # band, and it is NOT reusable (it yields at the limit drop)
+    pt = archs["plastic_tube"]
+    assert pt["feasible"]
+    assert 0.20 <= pt["geom"]["l_eff"] <= 0.60
+    assert not pt["reusable_limit"]
+
+    # the GFRP leaf spring is fully reusable (elastic at BOTH drops)
+    cs = archs["composite_spring"]
+    assert cs["feasible"] and cs["reusable_limit"] and cs["reusable_reserve"]
+
+    # default objective 'prefer_reusable' -> lightest gear that is elastic at the limit drop
+    reusable = [r for r in d["all_architectures"] if r.get("feasible") and r["reusable_limit"]]
+    assert reusable, "expected at least one reusable architecture"
+    assert d["reusable_limit"] is True
+    assert d["m_gear"] == pytest.approx(min(r["m_gear"] for r in reusable), rel=1e-6)
+
+
+def test_min_mass_objective_picks_lightest_overall(monkeypatch):
+    monkeypatch.setattr(mc, "GEAR_OBJECTIVE", "min_mass")
+    d = mc.landing_gear_mass(2500.0, RHO_AL, SIGMA_ALLOW_AL, E_AL, return_details=True)
+    feasible = [r["m_gear"] for r in d["all_architectures"] if r.get("feasible")]
+    assert d["m_gear"] == pytest.approx(min(feasible), rel=1e-6)

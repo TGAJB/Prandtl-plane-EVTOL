@@ -51,7 +51,8 @@ def compute_mtow(mtow_kg, verbose=True):
     wing_geom = wing_geometry(mtow_kg)
     m_fuselage = fuselage_mass(mtow_kg)
     m_wing = wing_mass(mtow_kg, wing_geom)
-    m_lg, lg_do, lg_di, lg_leff = landing_gear_mass(mtow_kg, RHO_AL, SIGMA_ALLOW_AL, E_AL)
+    lg = landing_gear_mass(mtow_kg, RHO_AL, SIGMA_ALLOW_AL, E_AL, return_details=True)
+    m_lg = lg["m_gear"] if lg is not None else 0.03 * mtow_kg
     m_tail = tail_mass(mtow_kg)
     m_motors = motor_mass(max_power_kw)
     m_props = propeller_mass(max_power_kw, USE_FUSION_PROP, M_BLADE_FUSION)
@@ -83,10 +84,13 @@ def compute_mtow(mtow_kg, verbose=True):
         print(f"    Wing area     : {wing_geom['total_area_m2']:.2f} m^2")
         print(f"    Wing AR       : {wing_geom['aspect_ratio']:.2f}")
         print(f"    Root / tip c  : {wing_geom['root_chord_m']:.2f} / {wing_geom['tip_chord_m']:.2f} m")
-        if lg_do is not None:
-            print(f"  Landing gear    : {m_lg:.2f} kg  (Do={lg_do*1e3:.1f} mm  Di={lg_di*1e3:.1f} mm  t={(lg_do-lg_di)/2*1e3:.1f} mm  L_eff={lg_leff*1e3:.0f} mm)")
+        if lg is not None:
+            print(f"  Landing gear    : {m_lg:.2f} kg  [{lg['arch']}]")
+            _g = lg.get("geom", {})
+            if _g.get("Do") is not None:
+                print(f"                     Do={_g['Do']*1e3:.1f} mm  Di={_g['Di']*1e3:.1f} mm  t={(_g['Do']-_g['Di'])/2*1e3:.1f} mm  L_eff={_g['l_eff']*1e3:.0f} mm")
         else:
-            print(f"  Landing gear    : {m_lg:.2f} kg  (fallback 3% MTOW – no feasible section)")
+            print(f"  Landing gear    : {m_lg:.2f} kg  (fallback 3% MTOW – no feasible architecture)")
         print(f"  Tail            : {m_tail:.2f} kg")
         print(f"  Motors          : {m_motors / N_MOTOR:.2f} kg/motor  ({N_MOTOR} motors)")
         print(f"  Blades [{prop_src:10s}]: {m_props:.2f} kg  ({N_PROP} rotors x {N_BLADES} blades)")
