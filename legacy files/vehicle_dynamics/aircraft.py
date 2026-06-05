@@ -234,3 +234,35 @@ class Aircraft:
         """
         return self.CL_q_front_wing() + self.CL_q_aft_wing()
     
+    def CM_q_front_wing(self):
+        """
+        Front wing pitching moment coefficient gradient with respect to pitch rate (per rad/s).
+        """
+        wg = self.params.wing_geometry
+        ac = self.params.aerodynamics  
+        m = self.params.mass
+
+        c_ref = self._require(wg.MAC_fw, "wing_geometry.MAC_fw")
+        S_fw = self._require(wg.S_fw,   "wing_geometry.S_fw")
+        b_fw = self._require(wg.b_fw,   "wing_geometry.b_fw")
+        x_cg  = self._require(m.x_cg_opt, "mass.x_cg_opt")
+        x_ac  = self._require(ac.x_ac_fw_cruise, "aerodynamics.x_ac_fw_cruise")
+
+        A = b_fw**2 / S_fw
+        sweep_c4_fw = self._le_to_c4(wg.LE_sweep_fw, A, wg.taper_fw)
+        x_bar = (x_ac - x_cg) / c_ref
+
+        first_term = (A*(0.5*x_bar + 2*(x_bar**2)))/(A + 2*np.cos(sweep_c4_fw))
+        second_term = (1/24)*(((A**3)*(np.tan(sweep_c4_fw))**2)/(A + 6*np.cos(sweep_c4_fw)))
+        third_term = 1/8
+
+        CM_q = -0.7*self.CL_alpha_section(t_c, phi_te, ratio)*np.cos(sweep_c4_fw)*(first_term + second_term + third_term)
+
+        B = np.sqrt(1 - (self.fc.mach**2)*(np.cos(sweep_c4_fw)**2))
+
+        num = (((A**3)*(np.tan(sweep_c4_fw))**2)/(A*B + 6*np.cos(sweep_c4_fw))) + (3/B)
+        den = (((A**3)*(np.tan(sweep_c4_fw))**2)/(A + 6*np.cos(sweep_c4_fw))) + 3
+
+        return (num/den)*CM_q
+    
+    
