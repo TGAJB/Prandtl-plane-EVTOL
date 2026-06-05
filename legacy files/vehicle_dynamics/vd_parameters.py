@@ -44,6 +44,9 @@ class WingGeometry:
     MAC_fw:               float = None  # [m]
     MAC_aw:               float = None  # [m]
 
+    taper_fw:             float = None  # [-]
+    taper_aw:             float = None  # [-]
+
     LE_sweep_fw:          float = None  # [deg.]
     LE_sweep_aw:          float = None  # [deg.]
 
