@@ -5,67 +5,188 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import csv
 
 class Wing():
-    def __init__(self, geometry, forces, alpha=0.0):
+    def __init__(self, geometry, theta_deg, phi_deg, alpha=0.0):
+        #plot
+        self.fig = plt.figure(figsize=(8, 8))
+        self.ax = self.fig.add_subplot(111, projection='3d')
         self.geometry = geometry
-        self.forces = forces
-        self.alpha = alpha
-        self.weight = ([0, 0.5, 0], [0, 0, 0.5])
-        self.axes = np.eye(3)
+        self.point_loads = []
+        self.nonangled_point_loads = [PointLoad((0, 200, 0), (0, 0, 5), color="orange")]
+        self.moments = []
+        self.distributed_loads = []
+        self._angle = 0
+        self.hinge_axes = transform_axes(theta_deg, phi_deg)
+        self.hinge_vector = self.hinge_axes[0]
+    @property
+    def angle(self):
+        return self._angle
+    @angle.setter
+    def angle(self, value):
 
-    def rotate_around_axis(self, axis, angle):
-        self.geometry = rotate_vectors_around_axis(axis, angle, self.geometry)
+        for point_load in self.nonangled_point_loads:
+            point_load.dir = rotate_vectors_around_axis(self.hinge_vector, self._angle, point_load.dir)
 
-        self.axes = rotate_vectors_around_axis(axis, angle, self.axes)
+        self._angle = value
 
-        for i in range(len(self.forces)):
-            print(self.forces[i][0])
-            print(self.forces[i][1])
-            total_vector = self.forces[i][0] + np.array(self.forces[i][1])
-            total_vector = rotate_vectors_around_axis(axis, angle, total_vector)
-            rotated_origin = rotate_vectors_around_axis(axis, angle, self.forces[i][1])
-            self.forces[i] = (total_vector - rotated_origin, rotated_origin)
+        for point_load in self.nonangled_point_loads:
+            point_load.dir = rotate_vectors_around_axis(self.hinge_vector, -self._angle, point_load.dir)
+    def add_point_load(self, load):
+        if isinstance(load, PointLoad):
+            self.point_loads.append(load)
+        else: raise TypeError
+    def add_distributed_load(self, distributed_load):
+        if isinstance(distributed_load, DistributedLoad):
+            self.distributed_loads.append(distributed_load)
+        else: raise TypeError
+    def plot_wing(self):
 
-            #full_vector = self.forces[i][0] + np.array(self.forces[i][1])
-            #full_vector = rotate_vectors_around_axis(axis, angle, full_vector)
-            #origin_vector = rotate_vectors_around_axis(axis, angle, np.array(self.forces[i][1]))
+        plot_quadrilateral(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, self.geometry), alpha=0)
 
-        self.weight = (self.weight[0], rotate_vectors_around_axis(axis, angle, self.weight[1]))
+        plot_single_vector(self.ax, self.hinge_vector, color="yellow")
 
-    def plot_wing(self, alpha=None, plotwing=True, plotforces=True, plotaxes=True):
-        if alpha != None:
-            self.alpha = alpha
-        if plotwing:
-            plot_quadrilateral(ax, self.geometry, face_color='cyan', edge_color='black', alpha=self.alpha)
-        if plotforces:
-            for force in self.forces:
-                plot_single_vector(ax, force[0], origin=force[1], color="purple")
-            plot_single_vector(ax, self.weight[0], origin=self.weight[1], color="orange")
-        if plotaxes:
-            plot_axes(self.axes)
+        #find max scale factor among loads
+        maxload = 0
+        for load in self.point_loads:
+            if load.magn > maxload:
+                maxload = load.magn
+        for load in self.nonangled_point_loads:
+            if load.magn > maxload:
+                maxload = load.magn
+
+        maxload /= 1
+
+        for point_load in self.point_loads:
+            point_dir_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.dir)
+            point_loc_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.loc)
+            plot_single_vector(self.ax, point_dir_rotated*point_load.magn/maxload, point_loc_rotated, point_load.color)
+
+        for point_load in self.nonangled_point_loads:
+            point_dir_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.dir)
+            point_loc_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.loc)
+            plot_single_vector(self.ax, point_dir_rotated*point_load.magn/maxload, point_loc_rotated, point_load.color)
+
+
+        number_of_points = 10 #points for plotting distributed loads
+
+        for load in self.distributed_loads:
+
+            geo = []
+            geo.append(load.loc)
+            for i in range(number_of_points + 1):
+                x = np.sqrt(np.dot(load.load_dir, load.load_dir))/number_of_points*i
+                y = load.func(x)
+                load_dir_normalized = load.load_dir/np.sqrt(np.dot(load.load_dir, load.load_dir))
+                geo.append(load.loc + load.dir*y + load_dir_normalized*x)
+
+
+            geo.append(load.loc + load.load_dir)
+
+            plot_polygon_3d(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, geo), face_color=load.color)
+
+            #geo = (load.loc, load.loc + load.dir*load.magn/maxload, load.loc + load.dir*load.magn/maxload + load.load_dir, load.loc + load.load_dir)
+
+            #plot_quadrilateral(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, geo), face_color=load.color)
+
+
+        plot_axes(self.ax)
+
+        #plot_axes(self.ax, self.hinge_axes)
+
+        # 4. Add finishing touches
+        self.ax.set_xlabel('X Axis')
+        self.ax.set_ylabel('Y Axis')
+        self.ax.set_zlabel('Z Axis')
+        self.ax.view_init(elev=30, azim=45, vertical_axis='y')
+        self.ax.invert_yaxis()
+        self.ax.invert_zaxis()
+        self.ax.legend()
+
+        # 3. EQUAL SCALING FIX: Calculate the cubic bounding box
+        # Force the axes to have equal visual scale
+        x_limits = self.ax.get_xlim3d()
+        y_limits = self.ax.get_ylim3d()
+        z_limits = self.ax.get_zlim3d()
+
+        x_range = abs(x_limits[1] - x_limits[0])
+        y_range = abs(y_limits[1] - y_limits[0])
+        z_range = abs(z_limits[1] - z_limits[0])
+
+        x_mid = np.mean(x_limits)
+        y_mid = np.mean(y_limits)
+        z_mid = np.mean(z_limits)
+
+        # Find the maximum range to make a cube
+        plot_radius = 0.5 * max([x_range, y_range, z_range])
+
+        self.ax.set_xlim3d([x_mid - plot_radius, x_mid + plot_radius])
+        self.ax.set_ylim3d([y_mid - plot_radius, y_mid + plot_radius])
+        self.ax.set_zlim3d([z_mid - plot_radius, z_mid + plot_radius])
+
+        self.ax.invert_yaxis()
+        self.ax.invert_zaxis()
+
+        # Final aspect lock
+        try:
+            self.ax.set_box_aspect([1, 1, 1])
+        except AttributeError:
+            # Fallback for older matplotlib versions
+            self.ax.set_aspect('equal')
+
+    def discretize(self, res, distributed_mesh_size=11):
+        ###Numpy array with discretized force positions
+
+        discretized_forces = []
+        discretized_positions = []
+
+        for load in self.point_loads:
+            discretized_positions.append(np.round(load.loc / res) * res)
+            discretized_forces.append(load.dir*load.magn)
+
+        for load in self.nonangled_point_loads:
+            discretized_positions.append(np.round(load.loc / res) * res)
+            discretized_forces.append(load.dir*load.magn)
+
+        for load in self.distributed_loads:
+
+            load_dir_magn = np.sqrt(np.dot(load.load_dir,load.load_dir))
+            load_dir_norm = load.load_dir/load_dir_magn
+            for i in range(distributed_mesh_size):
+                x = load_dir_magn/(distributed_mesh_size - 1)*i
+                y = load.func(x)
+                discretized_forces.append(load.dir * y)
+                discretized_positions.append(load.loc + load_dir_norm*x)
+            discretized_pos = np.round(load.loc / res) * res
+
+
+        print("forces")
+        print(discretized_forces)
+        print("positions")
+        print(discretized_positions)
+
+        return np.array(discretized_forces), np.array(discretized_positions)
+
+
 class Load():
-    def __init__(self, magn, dir, loc, label, color):
-        self.magn = magn
-        self.dir = dir
-        self.loc = loc
+    def __init__(self, force, loc, label="", color="purple"):
+        self.dir = np.array(force/np.sqrt(np.dot(force, force)))
+        self.loc = np.array(loc)
         #For plotting
         self.label = label
         self.color = color
-# 1. PointLoad Subclass
 class PointLoad(Load):
-    def __init__(self, magn, dir, loc, label, color):
+    def __init__(self, force, loc, label="", color="purple"):
         # Inherits everything directly from the parent Load class
-        super().__init__(magn, dir, loc, label, color)
-# 2. DistributedLoad Subclass
+        super().__init__(force, loc, label, color)
+        self.magn = np.sqrt(np.dot(force, force))
 class DistributedLoad(Load):
-    def __init__(self, magn, dir, loc, label, color, load_dir):
-        super().__init__(magn, dir, loc, label, color)
-        self.load_dir = load_dir
-
+    def __init__(self, force, loc, load_dir, func, label="", color="purple"):
+        super().__init__(force, loc, label, color)
+        self.load_dir = np.array(load_dir)
+        self.func = func
+        self.magn = 5
     @classmethod
     def import_from_csv(cls, file_path):
         pass
-
-
 def transform_axes(theta_deg, phi_deg):
     """
     Transforms the three standard unit axes by rotating theta around the Y axis,
@@ -230,8 +351,8 @@ def plot_single_vector(ax, vector, origin=(0, 0, 0), color='b', label=None):
     # 3. Plot
     ax.quiver(x_start, y_start, z_start,
               u, v, w,
-              color=color, arrow_length_ratio=0.1, linewidth=2, label=label)
-def plot_quadrilateral(ax, vertices, scale_factor=0.1, face_color='cyan', edge_color='black', alpha=0.4):
+              color=color, arrow_length_ratio=0.5, linewidth=2, label=label)
+def plot_quadrilateral(ax, vertices, scale_factor=1, face_color='cyan', edge_color='black', alpha=0.4):
     """
     Plots a 3D quadrilateral (or any polygon) from a list of vertices.
 
@@ -252,34 +373,73 @@ def plot_quadrilateral(ax, vertices, scale_factor=0.1, face_color='cyan', edge_c
 
     # Add the polygon to the axis
     ax.add_collection3d(polygon)
-def plot_axes(axis):
+def plot_axes(ax, axis=np.eye(3)):
     plot_single_vector(ax, axis[0], color='r', label='Vector 1')
     plot_single_vector(ax, axis[1], color='g', label='Vector 1')
     plot_single_vector(ax, axis[2], color='b', label='Vector 1')
+def plot_polygon_3d(ax, vertices, scale_factor=1, face_color='cyan', edge_color='black', alpha=0.4):
+    """
+    Plots a 3D polygon from a list of vertices with any number of corners.
+
+    Parameters:
+    ax (Axes3D): The matplotlib 3D axis object.
+    vertices (list or array): A list of (N, 3) coordinates defining the corners.
+                              Must contain at least 3 vertices.
+    scale_factor (float): Multiplier to scale the size of the polygon.
+    face_color (str): Color of the solid polygon.
+    edge_color (str): Color of the boundary lines.
+    alpha (float): Transparency (0.0 is invisible, 1.0 is solid).
+    """
+    # Convert to a numpy array for easy mathematical operations
+    verts = np.asarray(vertices)
+
+    # Safety check: A polygon needs at least 3 points (a triangle)
+    if verts.shape[0] < 3:
+        raise ValueError(f"A polygon requires at least 3 vertices. You provided {verts.shape[0]}.")
+
+    # Apply the scale factor
+    verts = verts * scale_factor
+
+    # Poly3DCollection requires a list of polygons.
+    # We wrap our N-vertex array in a single outer list to draw one face.
+    polygon = Poly3DCollection([verts], alpha=alpha, facecolors=face_color, edgecolors=edge_color)
+
+    # Add the polygon to the axis
+    ax.add_collection3d(polygon)
 
 if __name__ == "__main__":
 
     #Initialize plot
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(111, projection='3d')
-
 
     ###3 coords systems used in this model, fuselage (a.c), wing and hinge
 
     theta_input = -45 #deg
     phi_input = 36 #deg
-    hinge_axes = transform_axes(theta_input, phi_input)
-    hinge_vector = hinge_axes[0]
-
 
     wing_planform = Wing(
-                        np.array([[2, 0, 0], [1, 0, 10], [-1, 0, 10], [-1, 0, 0]]),
-                [
-                    (np.array([0.3, 0, 0]), np.array([0, 0, 0.3])),
-                    (np.array([0.3, 0, 0]), (0, 0, 0.7)),
-                       ])
+                np.array([[2, 0, 0], [0, 0, 10], [-1, 0, 10], [-1, 0, 0]]),
+                theta_input,
+                phi_input)
+
+    wing_planform.add_point_load(PointLoad((200, 0, 0), (1, 0, 3.001)))
+    wing_planform.add_point_load(PointLoad((200, 0, 0), (0.5, 0, 6.001)))
+
+    def wing_loading(x):
+        return -(x/5)**2 + 4
+        #return x
+    wing_planform.add_distributed_load(DistributedLoad((0, -1, 0), (0.5, 0, 0), (-1, 0, 10), wing_loading))
+
+    wing_planform.discretize(0.01)
+
+    wing_planform.angle = 60
+    wing_planform.plot_wing()
 
 
+
+
+    plt.show()
+
+    """
     steps = 50
     for i in range(steps + 1):
         wing_planform.plot_wing(0.4/(steps + 1)*i, plotwing=False, plotaxes=False)
@@ -294,23 +454,4 @@ if __name__ == "__main__":
     plot_axes(np.eye(3))
     plot_axes(wing_axes)
     plot_single_vector(ax, hinge_vector, color='y', label='Vector 3')
-
-    # --- Critical Step: Manually set limits for 3D quiver plots ---
-    # Find the maximum absolute value among all vectors to make a neat cube
-    all_vectors = np.array([wing_axes[0], wing_axes[1], wing_axes[2]])
-    max_val = np.max(np.abs(all_vectors))
-
-    ax.set_xlim([-max_val, max_val])
-    ax.set_ylim([-max_val, max_val])
-    ax.set_zlim([-max_val, max_val])
-
-    # 4. Add finishing touches
-    ax.set_xlabel('X Axis')
-    ax.set_ylabel('Y Axis')
-    ax.set_zlabel('Z Axis')
-    ax.view_init(elev=15, azim=45, vertical_axis='y')
-    ax.invert_yaxis()
-    ax.invert_zaxis()
-    ax.legend()
-
-    plt.show()
+    """
