@@ -66,12 +66,12 @@ T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prep
 
 # V-tail structural parameters
 
-V_ANGLE        = 45.0    # [deg]  V-tail dihedral from horizontal
+V_ANGLE        = 25.0    # [deg]  V-tail dihedral from horizontal
 TAPER_TAIL     = 0.40    # [-]    chord taper ratio (c_tip / c_root)
 TIP_TO_CHORD   = 0.10    # [-]    thickness-to-chord ratio
 F_REAR_WING    = 0.50    # [-]    rear Prandtl-wing lift fraction
 N_W            = 3.5     # [-]    design limit load factor
-T_SKIN_MIN_AL  = 1.2e-3  # [m]    minimum skin gauge (Niu 1988)
+T_SKIN_MIN_AL  = 2.0e-3  # [m]    minimum skin gauge (Niu 1988)
 STRUCT_SF      = 1.5     # [-]    ultimate safety factor (FAR/CS 25.303)
 C_N_TAIL_MAX   = 1.2     # [-]    peak normal force coefficient at max deflection
 V_DIVE_FACTOR  = 1.25    # [-]    V_dive / V_cruise (FAR/CS 25.335 lower bound)
