@@ -47,6 +47,11 @@ class WingGeometry:
     taper_fw:             float = None  # [-]
     taper_aw:             float = None  # [-]
 
+    chord_fw_root:        float = None  # [m]
+    chord_fw_tip:         float = None  # [m]
+    chord_aw_root:        float = None  # [m]
+    chord_aw_tip:         float = None  # [m]
+
     LE_sweep_fw:          float = None  # [deg.]
     LE_sweep_aw:          float = None  # [deg.]
 
