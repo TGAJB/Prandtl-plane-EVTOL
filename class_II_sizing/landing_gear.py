@@ -38,12 +38,29 @@ warnings.filterwarnings("ignore")  # hide benign SLSQP "outside bounds" notices
 # 1a.  PRIMARY INPUTS  (swap these for your eVTOL numbers)
 # =====================================================================
 G        = 9.81      # m/s^2
-M_EFF    = 700.0     # kg   TOTAL effective drop mass on the whole gear   PLACEHOLDER
-H_L      = 0.25      # m    limit drop height (>= 0.20)                   PLACEHOLDER
-LIFT_L   = 0.0       # -    lift credit at limit  (0 = conservative)
-LIFT_R   = 0.0       # -    lift credit at reserve
-N_LIMIT  = 20.0      # g    max allowed peak deceleration                 PLACEHOLDER
-ENVELOPE = 0.40      # m    available vertical stroke envelope            PLACEHOLDER
+
+# -- whole-aircraft drop inputs --
+MTOW     = 700.0     # kg   max take-off mass                            PLACEHOLDER
+H_L      = 0.25      # m    limit drop height (>= 0.20)                  PLACEHOLDER
+D_EST    = 0.15      # m    estimated impact deflection (gear stroke;    PLACEHOLDER
+                     #      skids have no tyre) - used ONLY to size M_EFF
+LIFT     = 0.0       # -    rotor/lift credit ratio L (0 = conservative, no credit)
+N_LIMIT  = 20.0      # g    max allowed peak deceleration                PLACEHOLDER
+ENVELOPE = 0.40      # m    available vertical stroke envelope           PLACEHOLDER
+
+def effective_mass(MTOW, h, d, L, g=G):
+    """CS/FAR-27.725(b) effective drop mass from MTOW.   [SOURCE: S8]
+       W_e = W * (h + (1-L)*d) / (h + d),  with W = MTOW*g for a symmetric
+       flat skid drop (the whole gear reacts the whole weight).
+       M_eff = W_e/g.   L=0 -> M_eff = MTOW (no lift credit; gear absorbs all).
+       For an asymmetric / single-skid-first attitude, pass the reacted
+       fraction of MTOW instead of the full value."""
+    W  = MTOW * g
+    We = W * (h + (1.0 - L) * d) / (h + d)
+    return We / g
+
+# TOTAL effective drop mass on the whole gear (4 hinges across 2 skids)
+M_EFF = effective_mass(MTOW, H_L, D_EST, LIFT)
 
 # Materials: E [Pa], sy [Pa], rho [kg/m3], eu [-], Gc [J/m2]   [SOURCE: M1]
 AL    = {"E": 71.7e9, "sy": 503e6,  "rho": 2810, "eu": 0.11,  "Gc": 0}
@@ -99,10 +116,11 @@ def v_limit():   return math.sqrt(2 * G * H_L)
 def v_reserve(): return math.sqrt(2 * G * 1.5 * H_L)
 
 def E_limit(delta):
-    return 0.5 * M_EFF * v_limit()**2 + M_EFF * G * (1 - LIFT_L) * delta
+    # lift credit is already folded into M_EFF, so use the full effective weight
+    return 0.5 * M_EFF * v_limit()**2 + M_EFF * G * delta
 
 def E_reserve(delta):
-    return 0.5 * M_EFF * v_reserve()**2 + M_EFF * G * (1 - LIFT_R) * delta
+    return 0.5 * M_EFF * v_reserve()**2 + M_EFF * G * delta
 
 
 # =====================================================================
@@ -468,6 +486,11 @@ def main():
 #  S7  ELASTO_FIXED_MASS, ELASTO_MASS_PER_N: fit mass = a + b*F to a
 #      vendor catalogue. Parker-LORD / Enidine elastomeric isolators list
 #      weight against static load rating per part (e.g. LORD HT2 series).
+#
+#  S8  effective_mass(): CS/FAR-27.725(b) effective-weight formula
+#      W_e = W (h + (1-L)d)/(h + d).  W = static reaction on the gear
+#      (= MTOW for a symmetric flat skid drop). L = assumed lift/weight
+#      ratio (limit drop caps lift at the weight; reserve allows 1.5x).
 # =====================================================================
 
 if __name__ == "__main__":
