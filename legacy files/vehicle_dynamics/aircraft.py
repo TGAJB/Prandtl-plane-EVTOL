@@ -114,7 +114,9 @@ class Aircraft:
         K_lambda = (10 - 3*wg.taper_fw) / 7
         K_H = (1 - (np.abs(wg.gap)/b))/(((2*wg.stagger)/b)**(1/3))
 
-        return 4.44*(K_A*K_lambda*K_H*(np.sqrt(np.cos(sweep_c4_fw))))**(1.19)
+        beta = self.beta()
+
+        return 4.44*(K_A*K_lambda*K_H*(np.sqrt(np.cos(sweep_c4_fw))))**(1.19) * (1/beta)
     
     def CL_alpha_aircraft(self, S_e_fw, S_e_aft): # These are all placeholders for now, add them to param sheet after  
         """
