@@ -56,7 +56,7 @@ NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/b
 AREA_SPLIT         = 0.5      # [-]     fraction of total area assigned to one wing
 WING_SPAN          = 13       # [-]     span from the footprint constraint
 WING_LOADING_N      = 760.0   # [N/m^2] selected design-point wing loading from matching diagram
-TAPER_W          = 0.40       # [-]     wing chord taper ratio (c_tip / c_root)
+TAPER_W          = 0.45       # [-]     wing chord taper ratio (c_tip / c_root)
 TIP_TO_CHORD_W   = 0.12       # [-]     wing thickness-to-chord ratio
 #    Class I parameters (OUTDATED - CLASS II AVAILABLE)
 S_W         = 30.0            # [m^2]   class I total wing reference area 
