@@ -41,10 +41,10 @@ class DatcomChartInputs:
     section_slope_ratio_aw:   float = 1.0   # (unused; retained for reference)
     section_slope_ratio_vt:   float = 1.0
  
-    # Vertical-tail effective aspect ratio (Eq 5.3.1.1-a, Figs 5.3.1.1-22a/b)
-    vtail_AvB:                float = None  # (A)_V(B)
-    vtail_AvHB_over_AvB:      float = None  # (A)_V(HB)/(A)_V(B)
-    vtail_KH:                 float = None  # K_H
+    # Vertical-tail effective aspect ratio and other ratios (Figs 5.3.1.1-22a/b)
+    vtail_Aeff_A:             float = None
+    cyb_v_over_cyb_v_eff:     float = None
+    cyb_v_eff:                float = None
     # Body-interference factor k  (Fig 5.3.1.1-7, f(b_v/2 r1))
     vtail_k:                  float = None
  
@@ -274,7 +274,7 @@ class Aircraft:
     def CL_alpha_aircraft(self):
         """
         Aircraft lift curve slope (per radian). DATCOM 4.5.1.1-a, referenced to S_ref.
-        Exposed areas read from the sheet (S_exposed_fw / S_exposed_aw).
+        Exposed areas read from the sheet (S_ex_fw / S_e_aw).
         Aft surface gets the wing-body interference K_WB only -- the nose
         carryover K_N applies to the forward surface alone.
         """
@@ -283,7 +283,6 @@ class Aircraft:
         fg = self.params.fuselage_geometry
         ac = self.params.aerodynamics
 
-<<<<<<< Updated upstream
         S_1 = self._require(wg.S_fw, "wing_geometry.S_fw")
         S_2 = self._require(wg.S_aw, "wing_geometry.S_aw")
         S_e_1 = self._require(wg.S_e_fw, "wing_geometry.S_e_fw")
@@ -291,15 +290,6 @@ class Aircraft:
         b_1 = self._require(wg.b_fw, "wing_geometry.b_fw")
         d_1 = self._require(fg.d_fw, "fuselage_geometry.d_fw")
         A_2 = self._require(wg.A_aw, "wing_geometry.A_aw")
-=======
-        S_ref, _, _ = self._ref()
-        b_fw = self._require(wg.b_fw, "wing_geometry.b_fw")
-        b_aw = self._require(wg.b_aw, "wing_geometry.b_aw")
-        d_fus = self._require(fg.fuselage_diameter, "fuselage_geometry.fuselage_diameter")
-        eta = self._require(ac.flow_speed_ratio_fw_to_aw, "aerodynamics.flow_speed_ratio_fw_to_aw")
-        S_e_fw = self._require(wg.S_exposed_fw, "wing_geometry.S_exposed_fw")
-        S_e_aft = self._require(wg.S_exposed_aw, "wing_geometry.S_exposed_aw")
->>>>>>> Stashed changes
 
         CL_alpha_1 = self._require(ac.CL_alpha_fw, "aerodynamics.CL_alpha_fw")
         CL_alpha_2 = self._require(ac.CL_alpha_aw, "aerodynamics.CL_alpha_aw")
@@ -307,7 +297,6 @@ class Aircraft:
         q_2_inf_ratio = self._require(ac.dyn_pres_ratio_fw_to_aw, "aerodynamics.dyn_pres_ratio_fw_to_aw")
         I_v = self._require(ac.I_v, "aerodynamics.I_v")
 
-<<<<<<< Updated upstream
         # COMPUTATIONS
         K_N = (np.pi*d_1**2)/(2*CL_alpha_1*S_e_1)
         wing_body_sum_1 = ((d_1/b_1) + 1)**2
@@ -324,15 +313,6 @@ class Aircraft:
 
         return a
     
-=======
-        K_WB_fw = self.wing_interference_factors(d_fus, b_fw)
-        K_WB_aft = self.wing_interference_factors(d_fus, b_aw)
-        K_N_fw = self.nose_carryover(d_fus, CL_alpha_fw, S_e_fw)   # forward only
-
-        front = CL_alpha_fw*(K_N_fw + K_WB_fw)*(S_e_fw/S_ref)
-        aft = CL_alpha_aft*K_WB_aft*(1 - downwash)*eta*(S_e_aft/S_ref)   # aft: K_WB, NOT K_N
-        return front + aft
->>>>>>> Stashed changes
     
     def CM_alpha_front_wing(self, n): # n is the selected location along the wing chord
         """
@@ -482,7 +462,7 @@ class Aircraft:
         ac = self.params.aerodynamics
 
         S_ref, _, c_ref = self._ref()
-        Se_aw = self._require(wg.S_exposed_aw, "wing_geometry.S_exposed_aw")
+        Se_aw = self._require(wg.S_e_aw, "wing_geometry.S_e_aw")
         d = self._require(fg.fuselage_diameter, "fuselage_geometry.fuselage_diameter")
         eta = self._require(ac.flow_speed_ratio_fw_to_aw, "aerodynamics.flow_speed_ratio_fw_to_aw")
         K_WB = self.wing_interference_factors(d, self._require(wg.b_aw, "wing_geometry.b_aw"))
@@ -500,7 +480,7 @@ class Aircraft:
         ac = self.params.aerodynamics
         
         S_ref, _, c_ref = self._ref()
-        Se_aw = self._require(wg.S_exposed_aw, "wing_geometry.S_exposed_aw")
+        Se_aw = self._require(wg.S_e_aw, "wing_geometry.S_e_aw")
         d = self._require(fg.fuselage_diameter, "fuselage_geometry.fuselage_diameter")
         eta = self._require(ac.flow_speed_ratio_fw_to_aw, "aerodynamics.flow_speed_ratio_fw_to_aw")
         K_WB = self.wing_interference_factors(d, self._require(wg.b_aw, "wing_geometry.b_aw"))
@@ -614,14 +594,12 @@ class Aircraft:
     # =======================================================================
     def vtail_effective_AR(self):
         """
-        A_eff = (A)_V(B){1 + K_H[(A)_V(HB)/(A)_V(B) - 1]}  (Eq 5.3.1.1-a).
+        A_eff
         """
-        ch = self.charts
+        tg, ch = self.params.tail_geometry ,self.charts
+        A_v = self._require(tg.AR_vert_tail, "tail_geometry.AR_vert_tail")
 
-        AvB = ch.vtail_AvB
-        ratio = ch.vtail_AvHB_over_AvB
-        KH = ch.vtail_KH
-        return AvB * (1 + KH*(ratio - 1))
+        return ch.vtail_Aeff_A*A_v
  
     def CL_alpha_vtail(self):
         """
@@ -661,11 +639,12 @@ class Aircraft:
         """
         (Delta C_Y_beta)_V = -k (CL_a)_V (1+ds/db)(q_v/q_inf)(S_v/S_ref)  (Eq 5.3.1.1-b, per rad).
         """
-        tg, ac, ch = self.params.tail_geometry, self.params.aerodynamics, self.charts
-        S_ref, _, _ = self._ref()
-        Sv = self._require(tg.S_vert_tail, "tail_geometry.S_vert_tail")
-        k = self._require(ch.vtail_k, "charts.vtail_k")
-        return -k * self.CL_alpha_vtail() * self.sidewash_factor() * (Sv/S_ref)
+        tg, wg, ch = self.params.tail_geometry, self.params.wing_geometry, self.charts
+
+        S_v = self._require(tg.S_vert_tail, "tail_geometry.S_vert_tail")
+        S_w = (self._require(wg.S_e_fw, "wing_geometry.S_e_fw") + self._require(wg.S_e_aw, "wing_geometry.S_e_aw"))
+
+        return -ch.cyb_v_over_cyb_v_eff*ch.cyb_v_eff*((2*S_v)/S_w)
  
     # ----- vertical-tail moment arms about the CG --------------------------
     def _vtail_arms(self):

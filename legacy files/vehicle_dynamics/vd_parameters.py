@@ -81,10 +81,6 @@ class WingGeometry:
     b_ref:                float = None  # [m]
     MAC_ref:              float = None  # [m]
 
-    # Exposed planform areas (fuselage carry-through removed) - interference terms
-    S_exposed_fw:         float = None  # [m^2]
-    S_exposed_aw:         float = None  # [m^2]
-
     # Airfoil thickness and trailing-edge angle.
     # NOTE: the front/aft WING lift-curve slopes now use the aero department's
     # section slope (cl_alpha_fw / cl_alpha_aw) directly, so these are no longer
