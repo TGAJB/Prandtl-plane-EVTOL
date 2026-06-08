@@ -1,18 +1,20 @@
 """
-Unit tests for the condition-specific skid landing-gear sizing
-(class_II_sizing.mass_components). One test per revision change:
+Unit tests for the multi-architecture skid landing-gear drop trade study
+(class_II_sizing.mass_components). The gear is sized for the CS-27.725 limit and
+27.727 reserve drops; five energy-absorber architectures are sized with scipy SLSQP and
+the MTOW loop uses the weighted-trade-off winner.
 
-  1. elastic (triangular) vs plastic (rectangular) energy balance
-  2. CFRP restricted to the elastic branch; plastic branch forbidden
-  3. STRUCT_SF removed from the plastic collapse force -> honest load factor n
-  4. gear is not double-counted in the mass loop; seed-independent fixed point
-  5. a feasible section exists with the calibrated bent-arm L_EFF (~0.4 m)
+Coverage:
+  1. effective drop mass (CS-27.725(b)) - lift credit reduces M_eff
+  2. drop velocities - reserve is sqrt(1.5) x limit
+  3. concept models return sane whole-gear dicts; whole_gear scaling
+  4. size() returns a feasible design that honours all four drop constraints
+  5. landing_gear_mass: deterministic, returns the weighted-score winner, sane mass
 
 All quantities are SI.
 """
 
 import sys
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -24,204 +26,107 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import class_II_sizing.mass_components as mc
 from parameters import (
-    RHO_AL, SIGMA_ALLOW_AL, E_AL,
-    RHO_CFRP, SIGMA_ALLOW_CFRP, E_CFRP,
-    N_REACT, G, MU_DRAG, STRUCT_SF,
-    N_LIMIT_LG, GROUND_CLEARANCE,
+    G, H_L, D_EST, LIFT, N_LIMIT, ENVELOPE,
+    N_SKID, SKID_RAIL_MASS, GEAR_OPT_BOUNDS,
 )
 
-# A representative section that runs in BOTH branches without raising.
-SECTION = dict(Do=0.12, Di=0.10, l_eff=0.40)
-VZ = 2.44
-M_TOTAL = 2500.0
+ARCH_NAMES = set(GEAR_OPT_BOUNDS)            # the five architecture names
+MTOW_TEST = 700.0                            # mass at which the placeholder bounds were tuned
 
 
 # ---------------------------------------------------------------------------
-# CHANGE 1 - the two mechanics use their own energy balance.
+# 1 - effective drop mass (CS-27.725(b))
 # ---------------------------------------------------------------------------
-def test_elastic_triangular_vs_plastic_rectangular_balance():
-    Do, Di, l = SECTION["Do"], SECTION["Di"], SECTION["l_eff"]
-
-    re = mc._size_elastic(Do, Di, l, VZ, M_TOTAL, RHO_AL, SIGMA_ALLOW_AL, E_AL)
-    _, _, I, _ = mc._section_props(Do, Di)
-    K = N_REACT * 3.0 * E_AL * I / l**3
-
-    delta_e = re["delta"]
-    F_e = re["F_max"]
-
-    # Closed-form triangular stroke: delta ~ Vz*sqrt(m/K) when the gravity term is
-    # small (it is, because K m Vz^2 >> (m g)^2 for a stiff leg).
-    assert delta_e == pytest.approx(VZ * np.sqrt(M_TOTAL / K), rel=0.05)
-
-    # Triangular work-energy balance is satisfied exactly: 1/2 K d^2 = 1/2 m Vz^2 + (mg)d.
-    grav = M_TOTAL * G  # KAPPA_LG = 0 -> L = 0
-    assert 0.5 * F_e * delta_e == pytest.approx(0.5 * M_TOTAL * VZ**2 + grav * delta_e)
-
-    # The bug this catches: switching the section modulus to elastic but keeping the
-    # PLASTIC (flat-plateau) balance delta = 1/2 m Vz^2 / F_max underpredicts the stroke
-    # by ~2x, because a triangle stores half the energy of a rectangle at equal peak force.
-    delta_plastic_balance = 0.5 * M_TOTAL * VZ**2 / F_e
-    assert delta_e / delta_plastic_balance == pytest.approx(2.0, abs=0.2)
-
-    # Plastic branch: stroke really is 1/2 m Vz^2 / net_force (rectangular plateau).
-    rp = mc._size_plastic(Do, Di, l, VZ, M_TOTAL, RHO_AL, SIGMA_ALLOW_AL)
-    net = rp["F_max"] - M_TOTAL * G  # net = F_max - (W - L), L = 0
-    assert rp["delta"] == pytest.approx(0.5 * M_TOTAL * VZ**2 / net)
-    assert rp["mechanics"] == "plastic" and re["mechanics"] == "elastic"
+def test_effective_mass_lift_credit():
+    m = 2000.0
+    # No lift credit -> the whole weight is reacted, M_eff == MTOW.
+    assert mc.effective_mass(m, H_L, D_EST, 0.0) == pytest.approx(m)
+    # Full lift credit reduces the effective drop mass below MTOW (but stays positive).
+    m_full = mc.effective_mass(m, H_L, D_EST, 1.0)
+    assert 0.0 < m_full < m
+    # Closed form: W_e = W (h + (1-L) d)/(h + d).
+    assert m_full == pytest.approx(m * H_L / (H_L + D_EST))
 
 
 # ---------------------------------------------------------------------------
-# CHANGE 2 - CFRP only goes through the elastic branch.
+# 2 - drop velocities
 # ---------------------------------------------------------------------------
-def test_cfrp_forbidden_in_plastic_runs_in_elastic():
-    Do, Di, l = SECTION["Do"], SECTION["Di"], SECTION["l_eff"]
-
-    # CFRP has no plastic hinge -> the plastic sizer must refuse it.
-    with pytest.raises(ValueError, match="no plastic hinge"):
-        mc._size_plastic(Do, Di, l, VZ, M_TOTAL, RHO_CFRP, SIGMA_ALLOW_CFRP, ductile=False)
-
-    # CFRP runs fine in the elastic branch.
-    re = mc._size_elastic(Do, Di, l, VZ, M_TOTAL, RHO_CFRP, SIGMA_ALLOW_CFRP, E_CFRP)
-    assert re["mechanics"] == "elastic" and re["F_max"] > 0.0
-
-    # Ductile metal runs the plastic branch without raising.
-    rp = mc._size_plastic(Do, Di, l, VZ, M_TOTAL, RHO_AL, SIGMA_ALLOW_AL, ductile=True)
-    assert rp["mechanics"] == "plastic"
-
-    # In the full sizer, ductile=False must NEVER touch the plastic branch.
-    original = mc._size_plastic
-
-    def _boom(*a, **k):
-        raise AssertionError("plastic branch must not be used for CFRP")
-
-    mc._size_plastic = _boom
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # CFRP elastic-only may be infeasible -> fallback
-            mc.landing_gear_mass(2500.0, RHO_CFRP, SIGMA_ALLOW_CFRP, E_CFRP, ductile=False)
-    finally:
-        mc._size_plastic = original
+def test_drop_velocities():
+    assert mc.v_limit() == pytest.approx(np.sqrt(2 * G * H_L))
+    assert mc.v_reserve() == pytest.approx(np.sqrt(1.5) * mc.v_limit())
 
 
 # ---------------------------------------------------------------------------
-# CHANGE 3 - STRUCT_SF is no longer baked into the plastic collapse force.
+# 3 - concept models + whole_gear scaling
 # ---------------------------------------------------------------------------
-def test_struct_sf_removed_from_plastic_force_raises_n():
-    Do, Di, l = SECTION["Do"], SECTION["Di"], SECTION["l_eff"]
-
-    rp = mc._size_plastic(Do, Di, l, VZ, M_TOTAL, RHO_AL, SIGMA_ALLOW_AL)
-    n_new = rp["n"]
-
-    # Old code used the de-rated moment Mp = sigma_eff * Z_p / STRUCT_SF inside F_max,
-    # so its reported n was a factor STRUCT_SF too low.
-    Z_p = (Do**3 - Di**3) / 6.0
-    sigma_eff = SIGMA_ALLOW_AL / np.sqrt(1.0 + MU_DRAG**2)
-    F_old = N_REACT * (sigma_eff * Z_p / STRUCT_SF) / l
-    n_old = F_old / (M_TOTAL * G)
-
-    assert n_new / n_old == pytest.approx(STRUCT_SF, rel=1e-9)
+def test_concepts_return_sane_dicts():
+    for name, cfg in GEAR_OPT_BOUNDS.items():
+        r = mc._GEAR_CONCEPTS[name](cfg["x0"], cfg["material"])
+        for key in ("k", "Ue", "Up", "Fmax", "mass", "dy", "dmax", "reusable"):
+            assert key in r, f"{name} missing {key}"
+        assert r["mass"] > 0 and r["k"] > 0 and r["Fmax"] > 0, name
+        assert r["Ue"] >= 0 and r["Up"] >= 0, name
+        assert r["dmax"] >= r["dy"] >= 0, name
 
 
-# ---------------------------------------------------------------------------
-# CHANGE 4 - no gear double-count; seed-independent fixed point.
-# ---------------------------------------------------------------------------
-def test_mass_loop_no_inflation_and_seed_independent():
-    mtow = 2500.0
-    seen = []
-
-    orig_p, orig_e = mc._size_plastic, mc._size_elastic
-
-    def rec_p(Do, Di, l, Vz, m_total, *a, **k):
-        seen.append(m_total)
-        return orig_p(Do, Di, l, Vz, m_total, *a, **k)
-
-    def rec_e(Do, Di, l, Vz, m_total, *a, **k):
-        seen.append(m_total)
-        return orig_e(Do, Di, l, Vz, m_total, *a, **k)
-
-    mc._size_plastic, mc._size_elastic = rec_p, rec_e
-    try:
-        m_final, *_ = mc.landing_gear_mass(mtow, RHO_AL, SIGMA_ALLOW_AL, E_AL)
-    finally:
-        mc._size_plastic, mc._size_elastic = orig_p, orig_e
-
-    # Pass 1 sizes the FULL landing mass with the gear folded in exactly once:
-    # m_total = (mtow - seed) + seed == mtow.  No ~1.03*MTOW inflation.
-    assert seen[0] == pytest.approx(mtow)
-
-    # Fixed point is independent of the iteration starting guess.
-    finals = [
-        mc.landing_gear_mass(mtow, RHO_AL, SIGMA_ALLOW_AL, E_AL, gear_seed_kg=s)[0]
-        for s in (5.0, 50.0, 300.0)
-    ]
-    for f in finals:
-        assert f == pytest.approx(m_final, rel=5e-3)
-
-    # Starting the loop AT the fixed point reproduces it (converged to < 0.5%).
-    m_at_fp = mc.landing_gear_mass(mtow, RHO_AL, SIGMA_ALLOW_AL, E_AL,
-                                   gear_seed_kg=m_final)[0]
-    assert m_at_fp == pytest.approx(m_final, rel=5e-3)
+def test_whole_gear_scaling():
+    count = 3
+    r = mc.whole_gear(k=1.0, Ue=2.0, Up=3.0, Fmax=4.0, mass1=5.0,
+                      dy=0.10, dmax=0.20, count=count, reusable=True)
+    # Parallel members add: stiffness, energy, load and mass scale by count.
+    assert r["k"] == count * 1.0
+    assert r["Ue"] == count * 2.0
+    assert r["Up"] == count * 3.0
+    assert r["Fmax"] == count * 4.0
+    assert r["mass"] == count * 5.0 + N_SKID * SKID_RAIL_MASS
+    # Members deflect together, so strokes do NOT scale.
+    assert r["dy"] == 0.10 and r["dmax"] == 0.20
+    assert r["reusable"] is True
 
 
 # ---------------------------------------------------------------------------
-# CHANGE 5 - calibrated bent-arm L_EFF yields a feasible plastic-tube section.
+# 4 - size() returns a feasible design honouring the four drop constraints
 # ---------------------------------------------------------------------------
-def test_long_bent_arm_makes_plastic_tube_heavier():
-    m_total = 2500.0
-
-    base = mc._governing_plastic_tube(m_total, RHO_AL, SIGMA_ALLOW_AL)
-    assert base is not None, "no feasible tube with the calibrated bent-arm"
-    assert 0.20 <= base["l_eff"] <= 0.60       # bent-arm, NOT the full track half-span
-    assert base["n"] <= N_LIMIT_LG + 1e-9
-    assert base["delta"] <= GROUND_CLEARANCE + 1e-9
-
-    # An over-long arm (the old, mis-set 1.2 m "half-track") drives a heavier tube: a smaller
-    # collapse force per unit Z_p needs a larger section.
-    saved_min, saved_max = mc.L_EFF_MIN, mc.L_EFF_MAX
-    mc.L_EFF_MIN = mc.L_EFF_MAX = 1.2
-    try:
-        long = mc._governing_plastic_tube(m_total, RHO_AL, SIGMA_ALLOW_AL)
-    finally:
-        mc.L_EFF_MIN, mc.L_EFF_MAX = saved_min, saved_max
-    assert long is None or long["m_gear"] > base["m_gear"]
+def test_size_feasible_designs_honour_constraints():
+    m_eff = mc.effective_mass(MTOW_TEST, H_L, D_EST, LIFT)
+    rows = mc.size_all_architectures(m_eff)
+    feas = [r for r in rows if r["feasible"]]
+    assert feas, "expected at least one feasible architecture at the tuned mass"
+    for r in feas:
+        # g1/g2: elastic at limit and survive the reserve -> non-negative margins.
+        assert r["MSe"] >= -1e-6, r["name"]
+        assert r["MSr"] >= -1e-6, r["name"]
+        # g3: peak deceleration cap.  g4: stroke fits the envelope.
+        assert r["npk"] <= N_LIMIT + 1e-6, r["name"]
+        assert r["dmax"] <= ENVELOPE + 1e-6, r["name"]
 
 
 # ---------------------------------------------------------------------------
-# Architecture trade study: every feasible gear architecture is sized and the
-# selected one honours the objective (default: lightest reusable-at-limit gear).
+# 5 - landing_gear_mass: deterministic weighted-winner selection, sane mass
 # ---------------------------------------------------------------------------
-def test_architecture_trade_study_and_selection():
-    mtow = 2500.0
-    d = mc.landing_gear_mass(mtow, RHO_AL, SIGMA_ALLOW_AL, E_AL, return_details=True)
+def test_landing_gear_mass_selects_weighted_winner():
+    mtow = 2136.0
+    d = mc.landing_gear_mass(mtow)
     assert d is not None
+    assert d["arch"] in ARCH_NAMES
+    assert len(d["all_architectures"]) == len(GEAR_OPT_BOUNDS)
+    assert 0.0 < d["m_gear"] < 0.20 * mtow          # gear is a small fraction of MTOW
 
-    # the selected gear satisfies the drop constraints
-    assert d["n"] <= N_LIMIT_LG + 1e-9
-    assert d["delta"] <= GROUND_CLEARANCE + 1e-9
-
-    archs = {r["arch"]: r for r in d["all_architectures"]}
-    assert set(archs) == {"plastic_tube", "metal_spring", "composite_spring", "two_stage"}
-
-    # the plastic tube is always feasible for ductile metal, with a bent-arm in the sweep
-    # band, and it is NOT reusable (it yields at the limit drop)
-    pt = archs["plastic_tube"]
-    assert pt["feasible"]
-    assert 0.20 <= pt["geom"]["l_eff"] <= 0.60
-    assert not pt["reusable_limit"]
-
-    # the GFRP leaf spring is fully reusable (elastic at BOTH drops)
-    cs = archs["composite_spring"]
-    assert cs["feasible"] and cs["reusable_limit"] and cs["reusable_reserve"]
-
-    # default objective 'prefer_reusable' -> lightest gear that is elastic at the limit drop
-    reusable = [r for r in d["all_architectures"] if r.get("feasible") and r["reusable_limit"]]
-    assert reusable, "expected at least one reusable architecture"
-    assert d["reusable_limit"] is True
-    assert d["m_gear"] == pytest.approx(min(r["m_gear"] for r in reusable), rel=1e-6)
+    # The chosen architecture is the deterministic weighted-score winner.
+    sc = mc.score(d["all_architectures"])
+    assert d["arch"] == max(sc, key=sc.get)
+    assert d["m_gear"] == pytest.approx(
+        next(r["mass"] for r in d["all_architectures"] if r["name"] == d["arch"]))
 
 
-def test_min_mass_objective_picks_lightest_overall(monkeypatch):
-    monkeypatch.setattr(mc, "GEAR_OBJECTIVE", "min_mass")
-    d = mc.landing_gear_mass(2500.0, RHO_AL, SIGMA_ALLOW_AL, E_AL, return_details=True)
-    feasible = [r["m_gear"] for r in d["all_architectures"] if r.get("feasible")]
-    assert d["m_gear"] == pytest.approx(min(feasible), rel=1e-6)
+def test_landing_gear_mass_is_deterministic():
+    a = mc.landing_gear_mass(2136.0)
+    b = mc.landing_gear_mass(2136.0)
+    assert a["arch"] == b["arch"]
+    assert a["m_gear"] == pytest.approx(b["m_gear"])
+
+
+def test_landing_gear_mass_scalar_return():
+    d = mc.landing_gear_mass(2136.0, return_details=True)
+    m = mc.landing_gear_mass(2136.0, return_details=False)
+    assert m == pytest.approx(d["m_gear"])

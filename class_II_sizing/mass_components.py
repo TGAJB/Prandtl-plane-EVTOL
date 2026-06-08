@@ -5,11 +5,14 @@ Each function returns mass in kg.
 Functions that depend on MTOW take it as their first argument.
 """
 
+import math
+import random
 import sys
 import warnings
 from pathlib import Path
 
 import numpy as np
+from scipy.optimize import minimize
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -25,18 +28,16 @@ from parameters import (
     STRUCT_SF, C_N_TAIL_MAX, V_DIVE_FACTOR, V_CRUISE,
     N_PROP, N_MOTOR, N_BLADES, D_PROP, PM,
     WING_SPAN, AREA_SPLIT, WING_LOADING_N,
-    # landing gear
-    L_EFF_MIN, L_EFF_MAX, N_REACT, N_CROSS,
-    V_Z_LIMIT, V_Z_RESERVE,
-    N_LIMIT_LG, KAPPA_LG, GROUND_CLEARANCE, MU_DRAG,
-    T_WALL_SKID, DO_SKID_MIN, DO_SKID_MAX,
-    L_TRACK, L_SKID, K_FITTINGS,
-    # landing-gear architecture trade study
-    SIGMA_YIELD_TI, E_TI, RHO_TI,
-    SIGMA_ALLOW_GFRP, E_GFRP, RHO_GFRP,
-    LEAF_B_MIN, LEAF_B_MAX, LEAF_T_MIN, LEAF_T_MAX, LEAF_L_MIN, LEAF_L_MAX, LEAF_N_SWEEP,
-    ABSORBER_STROKE, ABSORBER_EFFICIENCY, ABSORBER_SEA,
-    GEAR_OBJECTIVE, REUSE_PENALTY,
+    # landing-gear drop trade study
+    H_L, D_EST, LIFT, N_LIMIT, ENVELOPE,
+    N_SKID, SKID_RAIL_MASS, CROSSTUBE_COUNT, HINGES_PER_TUBE,
+    LEAF_COUNT, HINGES_PER_LEAF, COMPOSITE_COUNT,
+    CRUSH_COUNT, ELASTO_COUNT,
+    BC_FACTOR, CROSS_SPAN, TUBE_HINGE_LEN, LEAF_HINGE_LEN, LEAF_DEV_FACTOR,
+    COMP_CRUSH_FRAC, COMP_DELAM_FACTOR,
+    CRUSH_LEAF_B, CRUSH_LEAF_L, HONEYCOMB_STRESS, HONEYCOMB_DENSITY, CRUSH_STROKE_EFF,
+    ELASTO_FIXED_MASS, ELASTO_MASS_PER_N,
+    QUAL, WEIGHTS, GEAR_OPT_BOUNDS, GEAR_OPT_SEED, GEAR_OPT_RESTARTS, GEAR_BOUNDS_REF_MASS,
 )
 
 
@@ -108,435 +109,324 @@ def wing_mass(mtow_kg, geometry=None):
 
 # Landing gear
 #
-# Two CS-27/29 drop conditions, each with its OWN consistent mechanics. The section
-# modulus AND the energy balance switch together as a pair (never independently):
+# Skid landing-gear sizing by a multi-architecture trade study (CS-27.725 limit +
+# 27.727 reserve drops). Five energy-absorber architectures are sized for the two drops
+# with scipy SLSQP (minimise whole-gear mass s.t. the drop, peak-decel and stroke-
+# envelope constraints); the MTOW loop uses the weighted-score winner's mass. The
+# offline study (Monte-Carlo sensitivity, weighted ranking, F-delta plot) lives in
+# class_II_sizing/trade_off_landing_gear.py. All constants live in parameters.py.
 #
-#   RESERVE-ENERGY drop (V_Z_RESERVE) -> rigid-plastic hinge (_size_plastic)
-#       The cross-tube forms a plastic hinge at the fuselage root. Force is the
-#       constant plastic-collapse value, the F-delta curve is a rectangle, and the
-#       absorption efficiency is eta ~ 1 by construction. Plastic modulus Z_p governs.
-#       Ductile metals only (a plastic plateau requires yield).
-#
-#   LIMIT / no-yield drop (V_Z_LIMIT) -> elastic cantilever spring (_size_elastic)
-#       The leg stays elastic; force ramps linearly with stroke, so the F-delta curve
-#       is a triangle and it stores only 1/2 F_max*delta (eta ~ 0.5). Cantilever
-#       stiffness 3EI/l^3 governs the stroke; a sigma = M c / I check governs strength.
-#       Only non-ductile materials (CFRP) are sized on this condition: a ductile metal
-#       skid is too stiff to react these sink speeds elastically (infeasible for every
-#       material tried), so metals use the plastic hinge for BOTH drops instead.
-#
-# Sizing each condition over (Do, Di, l_eff) with the energy balance of the WRONG
-# mechanics over-credits energy by ~2x and overstates strength, so the pairing is
-# enforced in code. The governing (heavier) feasible section is returned.
-
-# Gear-mass convergence seed / book-keeping (CHANGE 4).
-GEAR_FRAC_SEED      = 0.03   # [-]  class-1 seed: gear ~ 3% of MTOW
-INPUT_INCLUDES_GEAR = True   # True if mtow_kg already carries a gear allowance to remove;
-                             # False if mtow_kg is the gear-excluded "rest" mass.
+# Architecture: 2 skid rails joined by 2 transverse cross-members; 2 knees per member
+# -> 4 legs/hinges across the 2 skids. M_EFF is the TOTAL effective drop mass on the
+# WHOLE gear; every concept's capacity and mass are whole-gear totals (per-member
+# values scaled by the *_COUNT constants in parameters.py).
 
 
-def _section_props(Do, Di):
-    """Thin-walled round-tube section properties [SI].
-
-    Z_p = (Do^3 - Di^3) / 6           plastic section modulus  (full-plasticity hinge)
-    S   = pi (Do^4 - Di^4) / (32 Do)  elastic section modulus  (first-yield bending)
-    I   = pi (Do^4 - Di^4) / 64       second moment of area    (3EI/l^3 stiffness, M c / I)
-    A   = pi (Do^2 - Di^2) / 4        cross-sectional area      (mass)
-    Note S < Z_p for any hollow section (elastic stores less than plastic).
-    """
-    if Di <= 0 or Di >= Do or (Do - Di) / 2 < T_WALL_SKID:
-        raise ValueError(f"Invalid Di={Di:.4f} m for Do={Do:.4f} m (min wall {T_WALL_SKID} m)")
-    Z_p = (Do**3 - Di**3) / 6.0
-    S   = np.pi * (Do**4 - Di**4) / (32.0 * Do)
-    I   = np.pi * (Do**4 - Di**4) / 64.0
-    A   = (np.pi / 4.0) * (Do**2 - Di**2)
-    return Z_p, S, I, A
+def effective_mass(mtow_kg, h, d, L, g=G):
+    """CS/FAR-27.725(b) effective drop mass from MTOW.
+       W_e = W (h + (1-L) d) / (h + d),  W = MTOW g for a symmetric flat skid drop.
+       M_eff = W_e/g.  L=0 -> M_eff = MTOW (no lift credit; gear absorbs all)."""
+    W = mtow_kg * g
+    We = W * (h + (1.0 - L) * d) / (h + d)
+    return We / g
 
 
-def _gear_mass(A, rho):
-    """Structural skid mass [kg]: N_CROSS cross-tubes (L_TRACK) + 2 runners (L_SKID),
-    same tube section A, with a fittings/attachment knockup K_FITTINGS."""
-    return (N_CROSS * L_TRACK * A + 2.0 * L_SKID * A) * rho * K_FITTINGS
+# Drop energy targets -------------------------------------------------------
+
+def v_limit():
+    return math.sqrt(2 * G * H_L)
 
 
-def _size_plastic(Do, Di, l_eff, Vz, m_total, rho, sigma_allow, ductile=True):
-    """RESERVE-ENERGY rigid-plastic hinge sizing for one section (CHANGE 1, 3).
+def v_reserve():
+    return math.sqrt(2 * G * 1.5 * H_L)
 
-    Mechanics (rectangular F-delta plateau, eta ~ 1):
-        sigma_eff = sigma_allow / sqrt(1 + MU_DRAG^2)   biaxial (vertical + drag) reduction
-        Mp        = sigma_eff * Z_p                     UNFACTORED plastic moment  [N.m]
-        F_max     = N_REACT * Mp / l_eff                UNFACTORED collapse force  [N]
-        net       = F_max - (W - L),  W = m g,  L = KAPPA_LG * W
-        delta     = 0.5 m Vz^2 / net                    flat-plateau work-energy balance
-        n         = F_max / W                           honest (unfactored) load factor
 
-    CHANGE 3: STRUCT_SF is NOT divided into F_max. The force the occupants and the
-    energy balance see is the real, unfactored plastic-hinge reaction. STRUCT_SF is
-    applied separately as a section fracture/strength margin: it is carried in the
-    ultimate-vs-yield basis of sigma_allow (ductile metals have sigma_ult/sigma_yield
-    > STRUCT_SF), so the plastic hinge forms before fracture. A fiber-stress check of
-    the kind used in the elastic branch is self-referential here (the hinge stress is
-    sigma_eff by definition) and is therefore not applied.
+def E_limit(delta, m_eff):
+    # lift credit is already folded into m_eff, so use the full effective weight
+    return 0.5 * m_eff * v_limit()**2 + m_eff * G * delta
 
-    CHANGE 2: brittle materials (CFRP) have no yield plateau -> no plastic hinge.
-    Calling this with ductile=False raises ValueError.
-    """
-    if not ductile:
-        raise ValueError(
-            "CFRP/brittle material has no plastic hinge (it fractures, no yield "
-            "plateau); size it on the elastic limit condition only (_size_elastic)."
-        )
-    Z_p, S, I, A = _section_props(Do, Di)
-    sigma_eff = sigma_allow / np.sqrt(1.0 + MU_DRAG**2)
-    Mp        = sigma_eff * Z_p              # unfactored plastic moment [N.m]
-    F_max     = N_REACT * Mp / l_eff         # unfactored collapse force  [N]
 
-    W = m_total * G
-    L = KAPPA_LG * W
-    net = F_max - (W - L)
-    if net <= 0:
-        raise ValueError(f"Net restoring force {net:.1f} N <= 0: tube too weak")
-    n     = F_max / W                        # honest load factor (no STRUCT_SF de-rating)
-    delta = 0.5 * m_total * Vz**2 / net      # rectangular plateau, eta ~ 1
+def E_reserve(delta, m_eff):
+    return 0.5 * m_eff * v_reserve()**2 + m_eff * G * delta
 
+
+# Concept models (each returns whole-gear totals in one dict) ----------------
+# keys: k, Ue, Up, mass, dy, dmax, Fmax, reusable
+
+def cross_tube(x, m):
+    """(A) 2 bent metal cross-tubes, 4 sacrificial plastic hinges.  x = D, t, L"""
+    D, t, L = x
+    d  = D - 2 * t
+    A  = math.pi / 4 * (D**2 - d**2)
+    I  = math.pi / 64 * (D**4 - d**4)
+    Z  = I / (D / 2)
+    Zp = (D**3 - d**3) / 6
+    k  = BC_FACTOR * m["E"] * I / L**3                 # per cross-tube
+    My, Mp = m["sy"] * Z, m["sy"] * Zp
+    Fy = My / L
+    dy = Fy / k
+    Ue = 0.5 * k * dy**2                               # per cross-tube
+    theta = (m["eu"] / (D / 2)) * (TUBE_HINGE_LEN * D)  # hinge rotation
+    Up = Mp * theta * HINGES_PER_TUBE                  # per cross-tube (2 knees)
+    Fmax = max(Fy, Mp / L)                             # per cross-tube
+    dmax = dy + theta * L
+    mass1 = m["rho"] * A * (2 * L + CROSS_SPAN)        # one cross-tube
+    return whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, CROSSTUBE_COUNT, reusable=False)
+
+
+def metal_leaf(x, m):
+    """(B) 2 metal leaf / bow springs.  x = b, t, L"""
+    b, t, L = x
+    A  = b * t
+    I  = b * t**3 / 12
+    Z  = b * t**2 / 6
+    Zp = b * t**2 / 4
+    k  = BC_FACTOR * m["E"] * I / L**3
+    My, Mp = m["sy"] * Z, m["sy"] * Zp
+    Fy = My / L
+    dy = Fy / k
+    Ue = 0.5 * k * dy**2
+    theta = (m["eu"] / (t / 2)) * (LEAF_HINGE_LEN * t)
+    Up = Mp * theta * HINGES_PER_LEAF
+    Fmax = max(Fy, Mp / L)
+    dmax = dy + theta * L
+    mass1 = m["rho"] * A * (LEAF_DEV_FACTOR * L)
+    return whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, LEAF_COUNT, reusable=True)
+
+
+def composite_leaf(x, m):
+    """(B') 2 composite leaves: elastic to failure then brittle crush.  x = b, t, L"""
+    b, t, L = x
+    A = b * t
+    I = b * t**3 / 12
+    Z = b * t**2 / 6
+    k = BC_FACTOR * m["E"] * I / L**3
+    Ffail = (m["sy"] * Z) / L
+    dfail = Ffail / k
+    Ue = 0.5 * k * dfail**2
+    Up = m["Gc"] * (b * COMP_DELAM_FACTOR * L)          # fracture energy * delam area
+    Fmax = Ffail
+    dmax = dfail + COMP_CRUSH_FRAC * L
+    mass1 = m["rho"] * A * (LEAF_DEV_FACTOR * L)
+    return whole_gear(k, Ue, Up, Fmax, mass1, dfail, dmax, COMPOSITE_COUNT, reusable=False)
+
+
+def crushable(x, m):
+    """(F) 4 units: stiff leaf (limit) + crushable honeycomb (reserve).  x = tleaf, Ac, sc"""
+    tleaf, Ac, sc = x
+    b, L = CRUSH_LEAF_B, CRUSH_LEAF_L
+    A = b * tleaf
+    I = b * tleaf**3 / 12
+    Z = b * tleaf**2 / 6
+    k = BC_FACTOR * m["E"] * I / L**3
+    Fy = (m["sy"] * Z) / L
+    dy = Fy / k
+    Ue = 0.5 * k * dy**2
+    Fcr = HONEYCOMB_STRESS * Ac
+    Up = Fcr * sc * CRUSH_STROKE_EFF
+    Fmax = max(Fy, Fcr)
+    dmax = dy + sc
+    mass1 = m["rho"] * A * (LEAF_DEV_FACTOR * L) + HONEYCOMB_DENSITY * Ac * sc
+    return whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, CRUSH_COUNT, reusable=False)
+
+
+def elastomeric(x, m):
+    """(E) 4 elastomeric block mounts, hysteretic, reusable.  x = kb, dm, loss"""
+    kb, dm, loss = x
+    Ue = 0.5 * kb * dm**2
+    Up = loss * Ue
+    Fmax = kb * dm
+    mass1 = ELASTO_FIXED_MASS + ELASTO_MASS_PER_N * Fmax
+    return whole_gear(kb, Ue, Up, Fmax, mass1, dm, dm, ELASTO_COUNT, reusable=True)
+
+
+def whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, count, reusable):
+    """Scale one member's properties to the whole gear (count members in parallel) and
+    add the two shared skid rails. Members deflect together, so stiffness, energy, load
+    and mass add up; stroke (dy, dmax) does not."""
+    return dict(
+        k=count * k, Ue=count * Ue, Up=count * Up, Fmax=count * Fmax,
+        mass=count * mass1 + N_SKID * SKID_RAIL_MASS,
+        dy=dy, dmax=dmax, reusable=reusable,
+    )
+
+
+# Sizing with scipy SLSQP: minimise mass s.t. the drop constraints -----------
+#   g1: Ue        - E_L        (elastic at limit)
+#   g2: Ue + Up   - E_R        (survive reserve)
+#   g3: N_LIMIT*W - Fmax       (peak-decel cap)
+#   g4: ENVELOPE  - dmax       (fits stroke)
+
+def constraints(x, fn, mat, m_eff):
+    r = fn(x, mat)
+    return np.array([
+        r["Ue"]             - E_limit(r["dy"], m_eff),
+        r["Ue"] + r["Up"]   - E_reserve(r["dmax"], m_eff),
+        N_LIMIT * m_eff * G - r["Fmax"],
+        ENVELOPE            - r["dmax"],
+    ])
+
+
+def feasible(x, fn, mat, m_eff):
+    return bool(np.all(constraints(x, fn, mat, m_eff) >= -1e-6))
+
+
+def mass_of(x, fn, mat):
+    return fn(x, mat)["mass"]
+
+
+def size(name, fn, mat, x0, bounds, varnames, m_eff):
+    """Minimise whole-gear mass subject to all four drop constraints >= 0, trying x0 plus
+    8 random restarts; keep the lightest feasible design. Returns the result dict with
+    'name', 'feasible', 'params', 'SEA', 'MSe', 'MSr', 'npk' added."""
+    cons = {"type": "ineq", "fun": constraints, "args": (fn, mat, m_eff)}
+
+    starts = [np.array(x0, float)]
+    for _ in range(GEAR_OPT_RESTARTS):
+        starts.append(np.array([random.uniform(lo, hi) for lo, hi in bounds]))
+
+    best_x, best_mass, ok = np.array(x0, float), np.inf, False
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")            # hide benign SLSQP "outside bounds" notices
+        for start in starts:
+            out = minimize(mass_of, start, args=(fn, mat), method="SLSQP",
+                           bounds=bounds, constraints=cons, options={"maxiter": 300})
+            if feasible(out.x, fn, mat, m_eff) and out.fun < best_mass:
+                best_x, best_mass, ok = out.x, out.fun, True
+
+    r = fn(best_x, mat)
+    r["name"]     = name
+    r["feasible"] = ok
+    r["params"]   = dict(zip(varnames, np.round(best_x, 5)))
+    r["SEA"]      = (r["Ue"] + r["Up"]) / r["mass"]
+    r["MSe"]      = r["Ue"] / E_limit(r["dy"], m_eff) - 1
+    r["MSr"]      = (r["Ue"] + r["Up"]) / E_reserve(r["dmax"], m_eff) - 1
+    r["npk"]      = r["Fmax"] / (m_eff * G)
+    return r
+
+
+# Trade-off scoring (weighted sum over feasible architectures) ---------------
+
+def metrics(r):
+    q = QUAL.get(r["name"], {})
     return {
-        "mechanics": "plastic",
-        "n": n,
-        "delta": delta,
-        "F_max": F_max,
-        "A": A,
-        "m_gear": _gear_mass(A, rho),
-        "strength_ok": True,                 # margin carried in sigma_allow ultimate basis
+        "SEA": r["SEA"], "mass": r["mass"], "npk": r["npk"],
+        "reusable": 1.0 if r["reusable"] else 0.0,
+        "tunable": q.get("tunable", 0.5),
+        "cert_risk": q.get("cert_risk", 0.5),
+        "cost": q.get("cost", 0.5),
     }
 
 
-def _size_elastic(Do, Di, l_eff, Vz, m_total, rho, sigma_allow, E):
-    """LIMIT / no-yield elastic cantilever-spring sizing for one section (CHANGE 1).
-
-    Mechanics (triangular F-delta, eta ~ 0.5):
-        I      = pi (Do^4 - Di^4) / 64
-        k_leg  = 3 E I / l_eff^3                cantilever tip stiffness per leg  [N/m]
-        K      = N_REACT * k_leg                total landing-gear stiffness
-        solve  0.5 K delta^2 = 0.5 m Vz^2 + (m g - L) delta   (work-energy, positive root)
-               => delta = [ (mg - L) + sqrt((mg - L)^2 + K m Vz^2) ] / K
-        F_max  = K * delta                      peak elastic reaction  [N]
-        n      = F_max / W
-
-    Strength (separate from the energy balance, since F_max here comes from stiffness
-    and stroke, NOT from the section's strength):
-        sigma = M c / I = (F_max / N_REACT) * l_eff * (Do/2) / I  <=  sigma_eff / STRUCT_SF
-    With sigma_eff = sigma_allow / sqrt(1 + MU_DRAG^2). STRUCT_SF lives on this stress
-    check, not inside F_max.
-    """
-    Z_p, S, I, A = _section_props(Do, Di)
-    k_leg = 3.0 * E * I / l_eff**3
-    K     = N_REACT * k_leg                  # total stiffness [N/m]
-
-    W    = m_total * G
-    L    = KAPPA_LG * W
-    grav = W - L                             # (m g - L), positive work over the stroke
-    # 0.5 K d^2 - grav d - 0.5 m Vz^2 = 0  ->  positive root
-    disc  = grav**2 + K * m_total * Vz**2
-    delta = (grav + np.sqrt(disc)) / K
-    F_max = K * delta
-    n     = F_max / W
-
-    sigma_eff = sigma_allow / np.sqrt(1.0 + MU_DRAG**2)
-    M_leg     = (F_max / N_REACT) * l_eff    # per-leg root bending moment [N.m]
-    sigma     = M_leg * (Do / 2.0) / I       # sigma = M c / I
-    strength_ok = sigma <= sigma_eff / STRUCT_SF
-
-    return {
-        "mechanics": "elastic",
-        "n": n,
-        "delta": delta,
-        "F_max": F_max,
-        "A": A,
-        "m_gear": _gear_mass(A, rho),
-        "sigma": sigma,
-        "strength_ok": strength_ok,
-    }
+def normalise(values, direction):
+    lo, hi = min(values), max(values)
+    if hi - lo < 1e-12:
+        return [1.0 for _ in values]
+    if direction == "max":
+        return [(x - lo) / (hi - lo) for x in values]
+    return [(hi - x) / (hi - lo) for x in values]
 
 
-# ===========================================================================
-# Landing-gear ARCHITECTURE trade study
-#
-# The tube sizers above (_size_plastic / _size_elastic) describe ONE energy-absorber:
-# a bending tube. A tube cannot stay elastic at these sink speeds in any metal (it is
-# too stiff for the min wall), so a gear that springs back at the limit drop must be a
-# different ARCHITECTURE. We size every physically-feasible architecture and trade them
-# off on mass + reusability (see _select_gear).
-#
-#   plastic_tube     - ductile metal tube; plastic hinge at BOTH drops. Lightest, but
-#                      yields in hard landings (cross-tubes are replaceable).
-#   metal_spring     - ductile metal constant-stress leaf; ELASTIC at the limit drop
-#                      (springs back) and a root PLASTIC hinge at the reserve overload.
-#   composite_spring - GFRP constant-stress leaf; ELASTIC at BOTH drops (fully reusable,
-#                      never deforms) thanks to the high resilience sigma^2/2E of glass.
-#   two_stage        - elastomeric absorber (soft, long stroke) takes the limit drop
-#                      elastically; the ductile tube's plastic hinge catches the reserve.
-# ===========================================================================
+def score_table(data, weights):
+    names = list(data)
+    norm = {n: {} for n in names}
+    for crit, (direction, _, _) in WEIGHTS.items():
+        col = [data[n][crit] for n in names]
+        for n, s in zip(names, normalise(col, direction)):
+            norm[n][crit] = s
+    wsum = sum(weights[c] for c in WEIGHTS)
+    return {n: sum(weights[c] / wsum * norm[n][c] for c in WEIGHTS) for n in names}
 
 
-def _governing_plastic_tube(m_total, rho, sigma_allow, ductile=True):
-    """Plastic-hinge tube sized at BOTH drops; returns the governing (heavier) feasible
-    condition dict (with per_condition masses), or None. Ductile metals only."""
-    if not ductile:
-        return None
-    Do_arr   = np.linspace(DO_SKID_MIN, DO_SKID_MAX, 40)
-    Leff_arr = np.linspace(L_EFF_MIN,   L_EFF_MAX,   12)
-    best = {}
-    for Vz, name in [(V_Z_LIMIT, "limit"), (V_Z_RESERVE, "reserve")]:
-        for Do in Do_arr:
-            Di_hi = Do - 2.0 * T_WALL_SKID               # thinnest wall -> largest Di (lightest)
-            if Di_hi <= 0.0:
-                continue
-            Di_lo = max(0.1 * Do, 1e-3)
-            if Di_lo >= Di_hi:
-                continue
-            for Di in np.linspace(Di_lo, Di_hi, 30):
-                for l_eff in Leff_arr:
-                    try:
-                        res = _size_plastic(Do, Di, l_eff, Vz, m_total, rho, sigma_allow, True)
-                    except ValueError:
-                        continue
-                    if (res["delta"] <= GROUND_CLEARANCE
-                            and res["n"] <= N_LIMIT_LG
-                            and res["strength_ok"]):
-                        if name not in best or res["m_gear"] < best[name]["m_gear"]:
-                            res.update(Do=Do, Di=Di, l_eff=l_eff, condition=name)
-                            best[name] = res
-    if not best:
-        return None
-    governing = dict(max(best.values(), key=lambda r: r["m_gear"]))
-    governing["per_condition"] = {k: v["m_gear"] for k, v in best.items()}
-    return governing
+def score(rows):
+    feas = [r for r in rows if r["feasible"]]
+    if not feas:
+        return {}
+    data = {r["name"]: metrics(r) for r in feas}
+    base = {c: WEIGHTS[c][1] for c in WEIGHTS}
+    return score_table(data, base)
 
 
-def _size_leaf_spring(m_total, Vz_size, E, sigma_usable, rho, reserve_plastic=None):
-    """Vectorised sizing of a constant-stress (triangular-plan) leaf-spring gear.
+# Architecture name -> concept function (search config lives in GEAR_OPT_BOUNDS).
+_GEAR_CONCEPTS = {
+    "A cross-tube":       cross_tube,
+    "B metal leaf":       metal_leaf,
+    "B' composite leaf":  composite_leaf,
+    "F crushable hybrid": crushable,
+    "E elastomeric":      elastomeric,
+}
 
-    Per leg the leaf has root width b, thickness t, length L:
-        k_leg = E b t^3 / (6 L^3)          tip stiffness
-        sigma = 6 F_leg L / (b t^2)        UNIFORM bending stress (constant-stress leaf)
-        vol   = 1/2 b L t                  triangular plan x thickness
-    The N_REACT legs act in parallel (total K = N_REACT k_leg). The leaf is sized to stay
-    ELASTIC at the sizing sink rate Vz_size (triangular work-energy balance), i.e.
 
-        delta <= GROUND_CLEARANCE,  n <= N_LIMIT_LG,  sigma <= sigma_usable
+def _scaled_gear_bounds(m_eff):
+    """Grow each architecture's UPPER bounds (and seed x0) with the landing mass so the
+    trade study stays valid at any MTOW (the baseline bounds are tuned at
+    GEAR_BOUNDS_REF_MASS). Per-variable exponents (cfg['scale']) scale only the
+    energy-bearing, stroke-neutral dimensions ~linearly so elastic capacity tracks
+    E_L ~ m_eff, while stroke / thickness / dimensionless variables stay fixed. The
+    optimizer minimises mass, so a wider upper bound only enlarges the feasible search.
 
-    If reserve_plastic=(sigma_yield, Vz_reserve) is given (ductile metal), the SAME leaf
-    must also survive the reserve drop as a root plastic hinge (rectangular plastic modulus
-    Z_p = b t^2 / 4, rectangular F-delta plateau). Returns the min-mass feasible leg dict
-    or None."""
-    b = np.linspace(LEAF_B_MIN, LEAF_B_MAX, LEAF_N_SWEEP)
-    t = np.linspace(LEAF_T_MIN, LEAF_T_MAX, LEAF_N_SWEEP)
-    L = np.linspace(LEAF_L_MIN, LEAF_L_MAX, LEAF_N_SWEEP)
-    B, T, Lg = np.meshgrid(b, t, L, indexing="ij")
-
-    k = E * B * T**3 / (6.0 * Lg**3)
-    K = N_REACT * k
-    W = m_total * G
-    Llift = KAPPA_LG * W
-    grav = W - Llift
-    delta = (grav + np.sqrt(grav**2 + K * m_total * Vz_size**2)) / K   # elastic triangular root
-    F = K * delta
-    n = F / W
-    sigma = 6.0 * (F / N_REACT) * Lg / (B * T**2)
-
-    feas = (delta <= GROUND_CLEARANCE) & (n <= N_LIMIT_LG) & (sigma <= sigma_usable)
-
-    delta_r = n_r = None
-    if reserve_plastic is not None:
-        sy, Vz_r = reserve_plastic
-        Mp = sy * (B * T**2 / 4.0)                  # rectangular plastic modulus Z_p = b t^2 / 4
-        Fmax_p = N_REACT * Mp / Lg
-        net = Fmax_p - grav
-        with np.errstate(divide="ignore", invalid="ignore"):
-            delta_r = 0.5 * m_total * Vz_r**2 / net   # rectangular plateau, eta ~ 1
-            n_r = Fmax_p / W
-        feas = feas & (net > 0) & (delta_r <= GROUND_CLEARANCE) & (n_r <= N_LIMIT_LG)
-
-    mass = N_REACT * 0.5 * B * Lg * T * rho * K_FITTINGS
-    mass_f = np.where(feas, mass, np.inf)
-    if not np.isfinite(mass_f.min()):
-        return None
-    i = np.unravel_index(np.argmin(mass_f), mass_f.shape)
-    out = {
-        "m_gear": float(mass[i]), "b": float(B[i]), "t": float(T[i]), "L": float(Lg[i]),
-        "delta": float(delta[i]), "n": float(n[i]), "sigma": float(sigma[i]),
-    }
-    if reserve_plastic is not None:
-        out["delta_reserve"] = float(delta_r[i])
-        out["n_reserve"] = float(n_r[i])
+    Returns a per-architecture config dict shaped like GEAR_OPT_BOUNDS (scaled x0/bounds,
+    same material/varnames)."""
+    ratio = m_eff / GEAR_BOUNDS_REF_MASS
+    out = {}
+    for name, cfg in GEAR_OPT_BOUNDS.items():
+        scale = cfg.get("scale", [0.0] * len(cfg["varnames"]))
+        x0, bounds = [], []
+        for x0_i, (lo, hi), s in zip(cfg["x0"], cfg["bounds"], scale):
+            f = max(1.0, ratio ** s)                 # never shrink below the calibrated bounds
+            hi_s = hi * f
+            bounds.append((lo, hi_s))
+            x0.append(min(max(x0_i * f, lo), hi_s))  # keep the seed inside the scaled bounds
+        out[name] = dict(x0=x0, bounds=bounds,
+                         varnames=cfg["varnames"], material=cfg["material"])
     return out
 
 
-def _arch_plastic_tube(plastic_gov):
-    if plastic_gov is None:
-        return {"arch": "plastic_tube", "feasible": False}
-    return {
-        "arch": "plastic_tube", "feasible": True, "m_gear": plastic_gov["m_gear"],
-        "reusable_limit": False, "reusable_reserve": False,
-        "n": plastic_gov["n"], "delta": plastic_gov["delta"],
-        "geom": {"Do": plastic_gov["Do"], "Di": plastic_gov["Di"], "l_eff": plastic_gov["l_eff"]},
-        "detail": plastic_gov,
-        "note": "ductile tube, plastic hinge both drops; yields in hard landings (replaceable)",
-    }
+def size_all_architectures(m_eff):
+    """Size every architecture for the effective drop mass m_eff [kg] using bounds that
+    auto-scale with the mass (see _scaled_gear_bounds). Returns the list of result dicts."""
+    rows = []
+    for name, cfg in _scaled_gear_bounds(m_eff).items():
+        rows.append(size(name, _GEAR_CONCEPTS[name], cfg["material"],
+                         cfg["x0"], cfg["bounds"], cfg["varnames"], m_eff))
+    return rows
 
 
-def _arch_metal_spring(m_total):
-    sigma_usable = SIGMA_YIELD_TI / np.sqrt(1.0 + MU_DRAG**2) / STRUCT_SF
-    r = _size_leaf_spring(m_total, V_Z_LIMIT, E_TI, sigma_usable, RHO_TI,
-                          reserve_plastic=(SIGMA_YIELD_TI, V_Z_RESERVE))
-    if r is None:
-        return {"arch": "metal_spring", "feasible": False}
-    return {
-        "arch": "metal_spring", "feasible": True, "m_gear": r["m_gear"],
-        "reusable_limit": True, "reusable_reserve": False,
-        "n": r["n"], "delta": r["delta"], "geom": {}, "detail": r,
-        "note": "Ti leaf: elastic & reusable at limit, plastic hinge at reserve",
-    }
+def landing_gear_mass(mtow_kg, return_details=True):
+    """Skid landing-gear mass [kg] from a 6-architecture drop trade study.
 
-
-def _arch_composite_spring(m_total):
-    sigma_usable = SIGMA_ALLOW_GFRP / np.sqrt(1.0 + MU_DRAG**2) / STRUCT_SF
-    # Size on the RESERVE drop (the heavier elastic case); the limit drop is then gentler.
-    r = _size_leaf_spring(m_total, V_Z_RESERVE, E_GFRP, sigma_usable, RHO_GFRP)
-    if r is None:
-        return {"arch": "composite_spring", "feasible": False}
-    return {
-        "arch": "composite_spring", "feasible": True, "m_gear": r["m_gear"],
-        "reusable_limit": True, "reusable_reserve": True,
-        "n": r["n"], "delta": r["delta"], "geom": {}, "detail": r,
-        "note": "GFRP leaf: elastic at BOTH drops (fully reusable, never deforms)",
-    }
-
-
-def _arch_two_stage(m_total, plastic_gov):
-    if plastic_gov is None:
-        return {"arch": "two_stage", "feasible": False}
-    e_limit = 0.5 * m_total * V_Z_LIMIT**2                 # limit-drop kinetic energy [J]
-    f_abs = e_limit / (ABSORBER_EFFICIENCY * ABSORBER_STROKE)
-    n_limit = f_abs / (m_total * G)
-    if n_limit > N_LIMIT_LG:
-        return {"arch": "two_stage", "feasible": False}
-    m_abs = e_limit / ABSORBER_SEA * K_FITTINGS           # absorber mass from specific energy
-    return {
-        "arch": "two_stage", "feasible": True, "m_gear": plastic_gov["m_gear"] + m_abs,
-        "reusable_limit": True, "reusable_reserve": False,
-        "n": n_limit, "delta": ABSORBER_STROKE,
-        "geom": {"Do": plastic_gov["Do"], "Di": plastic_gov["Di"], "l_eff": plastic_gov["l_eff"]},
-        "detail": {"m_tube": plastic_gov["m_gear"], "m_absorber": m_abs,
-                   "n_limit": n_limit, "n_reserve": plastic_gov["n"]},
-        "note": "elastomer absorber (elastic limit) + plastic tube (reserve)",
-    }
-
-
-def _select_gear(results):
-    """Trade off the feasible architectures. Default objective 'prefer_reusable' takes the
-    lightest gear that stays elastic (reusable) at the limit/normal drop, falling back to
-    the lightest feasible (plastic) gear if none is reusable."""
-    feas = [r for r in results if r.get("feasible")]
-    if not feas:
-        return None
-    if GEAR_OBJECTIVE == "min_mass":
-        return min(feas, key=lambda r: r["m_gear"])
-    if GEAR_OBJECTIVE == "weighted":
-        for r in feas:
-            r["score"] = r["m_gear"] * (1.0 + REUSE_PENALTY * (0.0 if r["reusable_limit"] else 1.0))
-        return min(feas, key=lambda r: r["score"])
-    # default: 'prefer_reusable'
-    reusable = [r for r in feas if r["reusable_limit"]]
-    return min(reusable or feas, key=lambda r: r["m_gear"])
-
-
-def landing_gear_mass(mtow_kg, rho, sigma_allow, E, ductile=True,
-                      return_details=False, gear_seed_kg=None):
-    """
-    Physics-based skid landing-gear mass [kg] by a multi-ARCHITECTURE trade study.
-
-    Each architecture is an energy-absorber sized for the two CS-27/29 drop conditions
-    (limit V_Z_LIMIT, reserve V_Z_RESERVE):
-
-        plastic_tube     ductile tube,  plastic at both drops          (lightest, not reusable)
-        metal_spring     Ti leaf,       elastic limit + plastic reserve (reusable at limit)
-        composite_spring GFRP leaf,     elastic at both                 (fully reusable)
-        two_stage        absorber+tube, elastic limit + plastic reserve (reusable at limit)
-
-    Feasibility for every architecture requires:
-        delta  <= GROUND_CLEARANCE   (stroke from its energy balance)
-        n      <= N_LIMIT_LG         (peak load factor)
-        sigma  <= allowable/STRUCT_SF (elastic) or a plastic-collapse check (plastic)
-
-    The feasible architectures are traded off by _select_gear (GEAR_OBJECTIVE). The gear is
-    sized for the FULL landing mass (it decelerates itself), so its mass is iterated: the
-    non-gear mass is held fixed and the full landing mass re-formed each pass, with the
-    gear allowance removed exactly once (independent of gear_seed_kg).
+    The whole aircraft (gear included) decelerates in the drop, so the effective drop
+    mass M_EFF is formed from the full mtow_kg; the gear self-weight feedback is closed
+    by the OUTER MTOW convergence loop (consistent with wing/tail - no inner gear-mass
+    iteration). Each architecture is sized with scipy SLSQP (seeded for reproducibility)
+    for the CS-27 limit + reserve drops, and the MTOW loop uses the weighted-trade-off
+    winner's whole-gear mass.
 
     Returns
     -------
-    (mass_kg, Do_m, Di_m, l_eff_m)   if return_details is False (geometry None for springs)
-    selected-architecture dict       if return_details is True (incl. 'all_architectures')
-
-    Parameters
-    ----------
-    mtow_kg     : float  Aircraft mass [kg]; gear allowance removed if INPUT_INCLUDES_GEAR.
-    rho         : float  TUBE material density [kg/m^3] (plastic_tube / two_stage archs).
-    sigma_allow : float  TUBE allowable bending stress [Pa].
-    E           : float  TUBE Young's modulus [Pa]. (Spring archs use their own materials.)
-    ductile     : bool   True if the tube metal can form a plastic hinge (Al, Ti).
-    gear_seed_kg: float  Optional initial gear-mass guess; the fixed point is independent of it.
+    details dict   (winning row augmented with 'm_gear', 'arch', 'geom', 'score',
+                   'all_architectures')   if return_details (default)
+    float mass     if return_details is False
+    None           if no architecture is feasible
     """
-    m_rest = (mtow_kg - GEAR_FRAC_SEED * mtow_kg) if INPUT_INCLUDES_GEAR else mtow_kg
-    m_gear = GEAR_FRAC_SEED * mtow_kg if gear_seed_kg is None else gear_seed_kg
-
-    selected = None
-    results = None
-    for _ in range(50):
-        m_total = m_rest + m_gear                  # full landing mass, gear folded in once
-        plastic_gov = _governing_plastic_tube(m_total, rho, sigma_allow, ductile)
-        results = [
-            _arch_plastic_tube(plastic_gov),
-            _arch_two_stage(m_total, plastic_gov),
-            _arch_metal_spring(m_total),
-            _arch_composite_spring(m_total),
-        ]
-        selected = _select_gear(results)
-        if selected is None:
-            warnings.warn(
-                "landing_gear_mass: no feasible architecture (plastic_tube, metal_spring, "
-                "composite_spring, two_stage) - returning class-1 fallback (3% MTOW). "
-                "Check the drop conditions, GROUND_CLEARANCE and the material allowables.",
-                stacklevel=2,
-            )
-            if return_details:
-                return None
-            return GEAR_FRAC_SEED * mtow_kg, None, None, None
-        m_new = selected["m_gear"]
-        if abs(m_new - m_gear) / max(m_new, 1e-9) < 0.005:
-            m_gear = m_new
-            break
-        m_gear = 0.4 * m_gear + 0.6 * m_new        # under-relax lambda = 0.6, converge on MASS
-
-    if return_details:
-        return {**selected, "all_architectures": results}
-    g = selected.get("geom", {})
-    return selected["m_gear"], g.get("Do"), g.get("Di"), g.get("l_eff")
-
-
-# ---------------------------------------------------------------------------
-# STUB - asymmetric one-skid / 6-DOF landing load case.
-# A real CS-27.727 sideload / one-gear-first condition needs a 6-DOF reaction
-# solve (asymmetric vertical + drag + side loads, torsion of the cross-tube,
-# unequal leg reactions). This is NOT modelled here; the symmetric two-skid
-# drop above does not bound it. Do NOT treat the result above as covering it.
-def landing_gear_asymmetric_stub(*args, **kwargs):
-    raise NotImplementedError(
-        "Asymmetric one-skid / 6-DOF landing load case is not implemented. "
-        "Requires a 6-DOF reaction solve (side + drag + vertical, cross-tube "
-        "torsion, unequal leg reactions); the symmetric drop does not bound it."
-    )
+    random.seed(GEAR_OPT_SEED)                       # reproducible SLSQP restarts in the loop
+    m_eff = effective_mass(mtow_kg, H_L, D_EST, LIFT)
+    rows = size_all_architectures(m_eff)
+    sc = score(rows)
+    if not sc:
+        warnings.warn(
+            "landing_gear_mass: no feasible architecture - returning None (the MTOW loop "
+            "falls back to a 3% class-1 gear estimate). Check the drop inputs (H_L, "
+            "N_LIMIT, ENVELOPE) and the search bounds in GEAR_OPT_BOUNDS.",
+            stacklevel=2,
+        )
+        return None
+    win = max(sc, key=sc.get)
+    r = next(row for row in rows if row["name"] == win)
+    if not return_details:
+        return r["mass"]
+    return {**r, "m_gear": r["mass"], "arch": r["name"], "geom": {},
+            "score": sc[win], "all_architectures": rows}
 
 
 # V-tail (physics-based cantilever sizing)

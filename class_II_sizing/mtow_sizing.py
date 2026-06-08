@@ -18,7 +18,6 @@ from parameters import (
     G, RHO_ORIGIN, A_DISK, V_HOVER, T_ELAPSED_VC, V_AVG_TO,
     FM, POWER_SAFETY_FACTOR, N_MOTOR, N_PROP, N_BLADES,
     M_PAYLOAD,
-    RHO_AL, SIGMA_ALLOW_AL, E_AL,
 )
 from class_II_sizing.energy import battery_mass
 from class_II_sizing.mass_components import (
@@ -51,7 +50,7 @@ def compute_mtow(mtow_kg, verbose=True):
     wing_geom = wing_geometry(mtow_kg)
     m_fuselage = fuselage_mass(mtow_kg)
     m_wing = wing_mass(mtow_kg, wing_geom)
-    lg = landing_gear_mass(mtow_kg, RHO_AL, SIGMA_ALLOW_AL, E_AL, return_details=True)
+    lg = landing_gear_mass(mtow_kg)
     m_lg = lg["m_gear"] if lg is not None else 0.03 * mtow_kg
     m_tail = tail_mass(mtow_kg)
     m_motors = motor_mass(max_power_kw)
@@ -86,9 +85,7 @@ def compute_mtow(mtow_kg, verbose=True):
         print(f"    Root / tip c  : {wing_geom['root_chord_m']:.2f} / {wing_geom['tip_chord_m']:.2f} m")
         if lg is not None:
             print(f"  Landing gear    : {m_lg:.2f} kg  [{lg['arch']}]")
-            _g = lg.get("geom", {})
-            if _g.get("Do") is not None:
-                print(f"                     Do={_g['Do']*1e3:.1f} mm  Di={_g['Di']*1e3:.1f} mm  t={(_g['Do']-_g['Di'])/2*1e3:.1f} mm  L_eff={_g['l_eff']*1e3:.0f} mm")
+            print(f"                     params={lg['params']}  (score {lg['score']:.3f})")
         else:
             print(f"  Landing gear    : {m_lg:.2f} kg  (fallback 3% MTOW – no feasible architecture)")
         print(f"  Tail            : {m_tail:.2f} kg")

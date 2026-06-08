@@ -3,33 +3,37 @@ landing_gear_sensitivity.py
 Sensitivity / robustness study of the landing-gear architecture trade study in
 class_II_sizing.mass_components.
 
-The gear sizer compares four energy-absorber architectures (plastic_tube, metal_spring,
-composite_spring, two_stage) and selects one per GEAR_OBJECTIVE. The nominal point picks
-`two_stage`. This module asks the harder question:
+The gear sizer compares five energy-absorber architectures (cross-tube, metal leaf,
+composite leaf, crushable hybrid, elastomeric) and selects one by the weighted
+trade-off score. This module asks the harder question:
 
-    Is `two_stage` the right choice ONLY at the nominal inputs, or across the whole
-    plausible range of the ~13 uncertain assumptions?
+    Is the weighted winner the right choice ONLY at the nominal inputs, or across the
+    whole plausible range of the uncertain drop / absorber assumptions?
 
 Three complementary, well-established methods are used (most robust last):
 
   1. TORNADO (local one-at-a-time) - quick, readable ranking of which assumption moves the
      selected gear mass most when swept low->high with all others held nominal.
 
-  2. SOBOL indices (variance-based GLOBAL sensitivity, Saltelli/Jansen estimators) - the
-     robust method: decomposes the variance of the chosen design's mass into the first-order
-     and total-order contribution of each input, capturing interactions. Sampling uses a
-     scrambled Sobol' low-discrepancy sequence (scipy.stats.qmc).
+  2. SOBOL indices (variance-based GLOBAL sensitivity, Saltelli/Jansen estimators) -
+     decomposes the variance of the chosen design's mass into the first-order and
+     total-order contribution of each input. Sampling uses a scrambled Sobol' sequence.
 
-  3. MONTE CARLO selection robustness (Latin Hypercube) - samples the full joint uncertainty
-     space and records, for every sample, each architecture's mass and which one the sizer
-     selects. This directly shows HOW OFTEN `two_stage` is chosen and whether it remains the
-     lightest *reusable* gear - i.e. whether the choice is robust.
+  3. MONTE CARLO selection robustness (Latin Hypercube) - samples the full joint
+     uncertainty space and records, for every sample, each architecture's mass and which
+     one the sizer selects, showing HOW OFTEN the nominal winner is chosen.
+
+The sizing random restarts are seeded per evaluation, so a given input vector maps to a
+deterministic mass (parameter effects are isolated from restart noise). Because each
+sample now runs the full scipy-SLSQP sizer (not a closed form), the sample counts are
+kept modest.
 
 Run:  python class_II_sizing/landing_gear_sensitivity.py
 Output: PNG figures + a CSV summary in  class_II_sizing/sensitivity_plots/
 """
 
 import os
+import random
 import sys
 import warnings
 from pathlib import Path
@@ -45,7 +49,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 import class_II_sizing.mass_components as mc
-from parameters import RHO_AL, SIGMA_ALLOW_AL, E_AL
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -58,36 +61,37 @@ OUT_DIR = Path(__file__).resolve().parent / "sensitivity_plots"
 # converged MTOW from mtow_sizing.
 M_LANDING_KG = 2136.0
 
-N_SOBOL = 128   # Sobol base sample size (total evals = N_SOBOL*(D+2)); power of 2 for balance
-N_MC    = 400   # Latin-Hypercube Monte Carlo samples
+N_SOBOL = 32    # Sobol base sample size (total evals = N_SOBOL*(D+2)); power of 2 for balance
+N_MC    = 150   # Latin-Hypercube Monte Carlo samples
 SEED    = 12345
 
-ARCHS = ["plastic_tube", "metal_spring", "composite_spring", "two_stage"]
+# Architecture names (match mass_components GEAR_OPT_BOUNDS / QUAL) and their reusability.
+ARCHS = ["A cross-tube", "B metal leaf", "B' composite leaf",
+         "F crushable hybrid", "E elastomeric"]
 ARCH_COLOR = {
-    "plastic_tube":     "#9e9e9e",
-    "metal_spring":     "#8d6e63",
-    "composite_spring": "#1e88e5",
-    "two_stage":        "#43a047",
+    "A cross-tube":       "#9e9e9e",
+    "B metal leaf":       "#8d6e63",
+    "B' composite leaf":  "#1e88e5",
+    "F crushable hybrid": "#fb8c00",
+    "E elastomeric":      "#8e24aa",
 }
-REUSABLE_AT_LIMIT = {"plastic_tube": False, "metal_spring": True,
-                     "composite_spring": True, "two_stage": True}
+REUSABLE_AT_LIMIT = {"A cross-tube": False, "B metal leaf": True, "B' composite leaf": False,
+                     "F crushable hybrid": False, "E elastomeric": True}
 
 # Uncertain inputs: (mass_components attribute, low, high, nominal, label, unit).
-# Ranges are plausible engineering / certification bounds around the nominal values.
+# Scalar module globals of the new drop model; ranges are plausible engineering bounds.
 PARAMS = [
-    ("V_Z_LIMIT",           2.00,   2.70,   2.44,   "limit sink rate",        "m/s"),
-    ("V_Z_RESERVE",         3.00,   4.00,   3.70,   "reserve sink rate",      "m/s"),
-    ("N_LIMIT_LG",          4.00,   8.00,   7.00,   "load-factor cap",        "g"),
-    ("KAPPA_LG",            0.00,   0.60,   0.00,   "rotor-lift credit",      "-"),
-    ("GROUND_CLEARANCE",    0.25,   0.40,   0.30,   "max stroke",             "m"),
-    ("MU_DRAG",             0.30,   0.60,   0.50,   "drag friction",          "-"),
-    ("STRUCT_SF",           1.40,   1.60,   1.50,   "ultimate SF",            "-"),
-    ("ABSORBER_SEA",        800.0,  3000.0, 1500.0, "absorber spec. energy",  "J/kg"),
-    ("ABSORBER_EFFICIENCY", 0.50,   0.75,   0.60,   "absorber efficiency",    "-"),
-    ("ABSORBER_STROKE",     0.12,   0.28,   0.20,   "absorber stroke",        "m"),
-    ("SIGMA_ALLOW_GFRP",    700e6,  1100e6, 900e6,  "GFRP allowable",         "Pa"),
-    ("SIGMA_YIELD_TI",      800e6,  950e6,  880e6,  "Ti yield",               "Pa"),
-    ("K_FITTINGS",          1.20,   1.50,   1.30,   "fittings knock-up",      "-"),
+    ("H_L",               0.20,    0.35,    0.25,    "limit drop height",     "m"),
+    ("D_EST",             0.08,    0.25,    0.15,    "impact deflection",     "m"),
+    ("LIFT",              0.00,    0.50,    0.00,    "rotor-lift credit",     "-"),
+    ("N_LIMIT",           12.0,    25.0,    20.0,    "peak-decel cap",        "g"),
+    ("ENVELOPE",          0.30,    0.50,    0.40,    "stroke envelope",       "m"),
+    ("HONEYCOMB_STRESS",  1.5e6,   4.0e6,   2.5e6,   "honeycomb crush stress","Pa"),
+    ("HONEYCOMB_DENSITY", 50.0,    120.0,   80.0,    "honeycomb density",     "kg/m^3"),
+    ("CRUSH_STROKE_EFF",  0.60,    0.85,    0.75,    "crush usable fraction", "-"),
+    ("ELASTO_FIXED_MASS", 0.8,     1.8,     1.2,     "elastomer fixed mass",  "kg"),
+    ("ELASTO_MASS_PER_N", 6.0e-5,  1.5e-4,  1.0e-4,  "elastomer mass/load",   "kg/N"),
+    ("SKID_RAIL_MASS",    10.0,    22.0,    15.0,    "skid rail mass",        "kg"),
 ]
 PNAMES  = [p[0] for p in PARAMS]
 PLABEL  = {p[0]: p[4] for p in PARAMS}
@@ -118,42 +122,32 @@ def evaluate(overrides):
     """Size all architectures at M_LANDING_KG with the given parameter overrides.
 
     Returns (masses, selected_arch, selected_mass) where masses maps arch -> mass [kg]
-    (np.nan if that architecture is infeasible)."""
+    (np.nan if that architecture is infeasible). The selected architecture is the
+    deterministic weighted-score winner. Restarts are seeded so the output is repeatable."""
     saved = _apply(overrides)
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            gov = mc._governing_plastic_tube(M_LANDING_KG, RHO_AL, SIGMA_ALLOW_AL, True)
-            results = [
-                mc._arch_plastic_tube(gov),
-                mc._arch_two_stage(M_LANDING_KG, gov),
-                mc._arch_metal_spring(M_LANDING_KG),
-                mc._arch_composite_spring(M_LANDING_KG),
-            ]
-            sel = mc._select_gear(results)
-        masses = {r["arch"]: (r["m_gear"] if r.get("feasible") else np.nan) for r in results}
-        return masses, (sel["arch"] if sel else None), (sel["m_gear"] if sel else np.nan)
+            random.seed(SEED)                          # isolate parameter effect from restart noise
+            m_eff = mc.effective_mass(M_LANDING_KG, mc.H_L, mc.D_EST, mc.LIFT)
+            rows = mc.size_all_architectures(m_eff)
+            sc = mc.score(rows)
+        masses = {r["name"]: (r["mass"] if r["feasible"] else np.nan) for r in rows}
+        if sc:
+            sel = max(sc, key=sc.get)
+            sel_mass = next(r["mass"] for r in rows if r["name"] == sel)
+        else:
+            sel, sel_mass = None, np.nan
+        return masses, sel, sel_mass
     finally:
         _restore(saved)
 
 
-def two_stage_mass(overrides):
-    """Continuous mass [kg] of the CHOSEN (two_stage) design for variance-based SA.
-
-    Computed from the formula (plastic tube + elastomer absorber) regardless of the
-    load-factor feasibility gate, so the output is smooth in the inputs (a small fallback
-    keeps it finite on the rare infeasible tube)."""
-    saved = _apply(overrides)
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            gov = mc._governing_plastic_tube(M_LANDING_KG, RHO_AL, SIGMA_ALLOW_AL, True)
-        m_tube = gov["m_gear"] if gov is not None else 0.03 * M_LANDING_KG
-        e_limit = 0.5 * M_LANDING_KG * mc.V_Z_LIMIT ** 2
-        m_abs = e_limit / mc.ABSORBER_SEA * mc.K_FITTINGS
-        return m_tube + m_abs
-    finally:
-        _restore(saved)
+def selected_mass(overrides):
+    """Mass [kg] of the CHOSEN design for variance-based SA. A finite fallback keeps the
+    output defined on the rare sample where no architecture is feasible."""
+    _, _, sel_mass = evaluate(overrides)
+    return sel_mass if np.isfinite(sel_mass) else 0.05 * M_LANDING_KG
 
 
 def _overrides_from_row(row):
@@ -205,7 +199,7 @@ def sobol():
     B = B01 * (HI - LO) + LO
 
     def evalmat(M):
-        return np.array([two_stage_mass(_overrides_from_row(M[i])) for i in range(M.shape[0])])
+        return np.array([selected_mass(_overrides_from_row(M[i])) for i in range(M.shape[0])])
 
     fA, fB = evalmat(A), evalmat(B)
     var = np.var(np.concatenate([fA, fB]), ddof=1)
@@ -229,7 +223,7 @@ def plot_sobol(S, ST, var, path):
     ax.barh(y - 0.2, Si,  height=0.4, color="#26a69a", label="first-order $S_i$")
     ax.set_yticks(y); ax.set_yticklabels(labels)
     ax.set_xlabel("Sobol sensitivity index [-]")
-    ax.set_title("Global (variance-based) sensitivity of the chosen two_stage gear mass\n"
+    ax.set_title("Global (variance-based) sensitivity of the chosen gear mass\n"
                  f"(output std = {np.sqrt(var):.1f} kg; Sobol' sampling, N={N_SOBOL})")
     ax.legend(loc="lower right", fontsize=8)
     ax.grid(axis="x", alpha=0.3)
@@ -261,12 +255,12 @@ def plot_mc_distributions(mass, path):
         if m.size:
             data.append(m); labels.append(f"{a}\n({'reusable' if REUSABLE_AT_LIMIT[a] else 'yields@limit'})")
             colors.append(ARCH_COLOR[a])
-    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+    fig, ax = plt.subplots(figsize=(9.5, 5.5))
     bp = ax.boxplot(data, vert=True, patch_artist=True, showfliers=False,
                     medianprops=dict(color="k"))
     for patch, c in zip(bp["boxes"], colors):
         patch.set_facecolor(c); patch.set_alpha(0.65)
-    ax.set_xticklabels(labels, fontsize=8)
+    ax.set_xticklabels(labels, fontsize=7)
     ax.set_ylabel("gear mass [kg]")
     ax.set_title(f"Architecture mass distributions under joint uncertainty (LHS, N={N_MC})\n"
                  "feasible samples only; lower = lighter")
@@ -278,7 +272,7 @@ def plot_selection_frequency(mass, selected, path):
     feas_pct = {a: 100.0 * np.mean(np.isfinite(mass[a])) for a in ARCHS}
     sel_pct = {a: 100.0 * np.mean(selected == a) for a in ARCHS}
     y = np.arange(len(ARCHS))
-    fig, ax = plt.subplots(figsize=(8.5, 4.8))
+    fig, ax = plt.subplots(figsize=(9.0, 5.2))
     ax.barh(y + 0.2, [feas_pct[a] for a in ARCHS], height=0.4,
             color="#bdbdbd", label="feasible")
     ax.barh(y - 0.2, [sel_pct[a] for a in ARCHS], height=0.4,
@@ -289,27 +283,29 @@ def plot_selection_frequency(mass, selected, path):
     ax.set_xlabel("% of Monte-Carlo samples")
     ax.set_xlim(0, 105)
     ax.set_title("How often each architecture is feasible vs SELECTED\n"
-                 f"(objective = '{mc.GEAR_OBJECTIVE}', N={N_MC})")
+                 f"(weighted trade-off score, N={N_MC})")
     ax.legend(loc="lower right", fontsize=8)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout(); fig.savefig(path, dpi=140); plt.close(fig)
 
 
 def plot_reusable_headtohead(mass, path):
-    """two_stage vs composite_spring: among the reusable options, is two_stage lighter?"""
-    a, b = mass["two_stage"], mass["composite_spring"]
+    """Head-to-head of the two reusable absorbers: is the metal leaf lighter than the
+    elastomer? (Empty if the metal leaf never reaches feasibility at this landing mass.)"""
+    a, b = mass["B metal leaf"], mass["E elastomeric"]
     ok = np.isfinite(a) & np.isfinite(b)
     a, b = a[ok], b[ok]
     win = 100.0 * np.mean(a < b) if a.size else float("nan")
     fig, ax = plt.subplots(figsize=(6.2, 6))
-    ax.scatter(a, b, s=14, alpha=0.5, color="#43a047")
-    lim = [min(a.min(), b.min()) * 0.95, max(a.max(), b.max()) * 1.05]
-    ax.plot(lim, lim, "k--", lw=1, label="equal mass")
-    ax.set_xlim(lim); ax.set_ylim(lim)
-    ax.set_xlabel("two_stage gear mass [kg]")
-    ax.set_ylabel("composite_spring gear mass [kg]")
-    ax.set_title("Reusable head-to-head: two_stage vs composite_spring\n"
-                 f"two_stage is lighter in {win:.0f}% of samples (points above the line)")
+    ax.scatter(a, b, s=14, alpha=0.5, color="#8d6e63")
+    if a.size:
+        lim = [min(a.min(), b.min()) * 0.95, max(a.max(), b.max()) * 1.05]
+        ax.plot(lim, lim, "k--", lw=1, label="equal mass")
+        ax.set_xlim(lim); ax.set_ylim(lim)
+    ax.set_xlabel("B metal leaf gear mass [kg]")
+    ax.set_ylabel("E elastomeric gear mass [kg]")
+    ax.set_title("Reusable head-to-head: metal leaf vs elastomeric\n"
+                 f"metal leaf is lighter in {win:.0f}% of samples (points above the line)")
     ax.legend(loc="upper left", fontsize=8)
     ax.grid(alpha=0.3)
     fig.tight_layout(); fig.savefig(path, dpi=140); plt.close(fig)
@@ -322,7 +318,7 @@ def plot_reusable_headtohead(mass, path):
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     print(f"Landing-gear sensitivity study  (landing mass = {M_LANDING_KG:.0f} kg, "
-          f"objective = '{mc.GEAR_OBJECTIVE}')")
+          f"weighted trade-off score)")
     print(f"  inputs varied : {D}   |  Sobol N={N_SOBOL} (~{N_SOBOL*(D+2)} evals)  |  MC N={N_MC}")
 
     # 1) Tornado
@@ -351,18 +347,17 @@ def main():
 
     sel_pct = {a: 100.0 * np.mean(selected == a) for a in ARCHS}
     feas_pct = {a: 100.0 * np.mean(np.isfinite(mass[a])) for a in ARCHS}
-    print("\n  Architecture     feasible%   selected%   median mass [kg]")
+    print("\n  Architecture          feasible%   selected%   median mass [kg]")
     for a in ARCHS:
         m = mass[a][np.isfinite(mass[a])]
         med = np.median(m) if m.size else float("nan")
-        print(f"    {a:<16s} {feas_pct[a]:7.0f}   {sel_pct[a]:8.0f}   {med:10.1f}")
+        print(f"    {a:<19s} {feas_pct[a]:7.0f}   {sel_pct[a]:8.0f}   {med:10.1f}")
 
+    nominal_winner = max(sel_pct, key=sel_pct.get)
     print(f"\n  ROBUSTNESS OF THE CHOICE:")
-    print(f"    - two_stage SELECTED in {sel_pct['two_stage']:.0f}% of samples.")
-    print(f"    - Among the reusable options, two_stage is lighter than the composite "
-          f"spring in {win:.0f}% of samples.")
-    print(f"    - plastic_tube is lighter but NOT reusable (yields at the limit drop), so "
-          f"the 'prefer_reusable' objective excludes it.")
+    print(f"    - '{nominal_winner}' SELECTED in {sel_pct[nominal_winner]:.0f}% of samples.")
+    print(f"    - Among the reusable options, the metal leaf is lighter than the elastomer "
+          f"in {win:.0f}% of samples.")
 
     # CSV summary
     import pandas as pd
