@@ -75,6 +75,29 @@ class WingGeometry:
     airfoil_fw:           str   = None  # [-]
     airfoil_aw:           str   = None  # [-]
 
+    # ===== ADDED FOR DATCOM ==================================================
+    # Reference quantities for non-dimensionalisation. EVERY aircraft-level derivative is referenced to these; they must match the EOM reference.
+    S_ref:                float = None  # [m^2]
+    b_ref:                float = None  # [m]
+    MAC_ref:              float = None  # [m]
+
+    # Exposed planform areas (fuselage carry-through removed) - interference terms
+    S_exposed_fw:         float = None  # [m^2]
+    S_exposed_aw:         float = None  # [m^2]
+
+    # Airfoil thickness and trailing-edge angle.
+    # NOTE: the front/aft WING lift-curve slopes now use the aero department's
+    # section slope (cl_alpha_fw / cl_alpha_aw) directly, so these are no longer
+    # consumed by the lift methods. Retained as geometric descriptors only.
+    t_c_fw:               float = None  # [-]
+    t_c_aw:               float = None  # [-]
+    te_angle_fw:          float = None  # [deg.]
+    te_angle_aw:          float = None  # [deg.]
+
+    # Wing vertical position relative to body centreline (+ is down)
+    z_w_fw:               float = None  # [m]
+    z_w_aw:               float = None  # [m]
+
 
 
 @dataclass
@@ -90,6 +113,12 @@ class TailGeometry:
     LE_sweep_vert_tail:         float = None  # [rad]
     airfoil_vert_tail:          str   = None  # [-]
 
+    taper_vert_tail:            float = None  # [-]
+    MAC_vert_tail:              float = None  # [m]
+    t_c_vert_tail:              float = None  # [-]
+    te_angle_vert_tail:         float = None  # [deg.]
+    z_vert_tail:                float = None  # [m] vertical a.c. height (datum)
+
 
 @dataclass
 class FuselageGeometry:
@@ -101,6 +130,28 @@ class FuselageGeometry:
     d_fw:              float = None  # [m] - Fuselage is modelled as a tube for now
     d_aw:              float = 0     # [m]
     x_ac_fuselage:     float = None  # [m]
+
+    side_area:           float = None  # [m^2] projected side area S_Bs (Cn_beta)
+    base_area:           float = None  # [m^2] reference/base area S_B0 (CY_beta body)
+    body_depth_at_wing:  float = None  # [m]   d at the wing (sidewash); ~ diameter
+
+
+@dataclass
+class ControlSurfaceGeometry:
+    """
+    Control-surface geometry needed for the deflection (control) derivatives.
+    Chord ratios feed the section-effectiveness charts (Sec 6.1.1.1); the span
+    factors feed K_b / strip integration.
+    """
+    elevator_cf_c:       float = None   # [-] flap-chord / wing-chord ratio
+    elevator_Kb:         float = None   # [-] flap-span factor (Fig 6.1.4.1)
+    elevator_on_surface: str   = "aw"   # which wing carries the elevator ('fw' or 'aw')
+
+    aileron_cf_c:        float = None   # [-]
+    aileron_eta_inner:   float = None   # [-] inboard span station
+    aileron_eta_outer:   float = None   # [-] outboard span station
+
+    rudder_cf_c:         float = None   # [-]
 
 
 @dataclass
@@ -116,6 +167,7 @@ class MassProperties:
     x_cg_min:     float = None  # [m]
     x_cg_max:     float = None  # [m]
     x_cg_opt:     float = None  # [m] - Optimal CG location during cruise
+    z_cg:         float = None  # [m] - vertical CG (datum), used by moment arms
 
     I_xx:         float = None  # [kg m^2]
     I_yy:         float = None  # [kg m^2]
@@ -128,6 +180,10 @@ class AerodynamicCoefficients:
     """
     Aerodynamic characteristics required by the Vehicle Dynamics model.
     """
+    # Airfoil curve
+    cl_alpha_fw:                        float = None  # [1/deg.]
+    cl_alpha_aw:                        float = None  # [1/deg.]
+    cl_alpha_vert_tail:                 float = None  # [1/deg.]
 
     # Lift curve
     CL_alpha_fw:                        float = None  # [1/rad.]
@@ -197,17 +253,42 @@ class StabilityDerivatives:
     C_L_alpha: float = None  # [1/rad]
     C_M_alpha: float = None  # [1/rad]
 
+    # AoA-rate (lag of downwash)
+    C_L_alpha_dot: float = None  # [1/rad]
+    C_M_alpha_dot: float = None  # [1/rad]
+
+    # Pitch rate
+    C_L_q:     float = None  # [1/rad]
+    C_M_q:     float = None  # [1/rad]
+
     # Sideslip
     C_Y_beta:  float = None  # [1/rad]
     C_L_beta:  float = None  # [1/rad]
     C_N_beta:  float = None  # [1/rad]
 
-    # Roll and yaw
+    # Sideslip rate
+    C_Y_beta_dot: float = None  # [1/rad]
+    C_N_beta_dot: float = None  # [1/rad]
+
+    # Roll rate
+    C_Y_p:     float = None  # [1/rad]
     C_L_p:     float = None  # [1/rad]
-    C_L_r:     float = None  # [1/rad]
-    C_M_q:     float = None  # [1/rad]
     C_N_p:     float = None  # [1/rad]
+
+    # Yaw rate
+    C_Y_r:     float = None  # [1/rad]
+    C_L_r:     float = None  # [1/rad]
     C_N_r:     float = None  # [1/rad]
+
+    # X/Z force bridge (symmetric EOM)
+    C_X_0:        float = None  # [-]
+    C_Z_0:        float = None  # [-]
+    C_X_u:        float = None  # [-]
+    C_Z_u:        float = None  # [-]
+    C_X_alpha:    float = None  # [1/rad]
+    C_Z_alpha:    float = None  # [1/rad]
+    C_Z_alpha_dot: float = None  # [1/rad]
+    C_Z_q:        float = None  # [1/rad]
 
 
 @dataclass
@@ -221,6 +302,8 @@ class ControlDerivatives:
 
     C_L_delta_e: float = None  # [1/rad]
     C_M_delta_e: float = None  # [1/rad]
+    C_Z_delta_e: float = None  # [1/rad]
+    C_X_delta_e: float = None  # [1/rad]
 
     C_Y_delta_r: float = None  # [1/rad]
     C_N_delta_r: float = None  # [1/rad]
@@ -317,6 +400,7 @@ class AircraftParameters:
     wing_geometry:     WingGeometry              = field(default_factory=WingGeometry)
     tail_geometry:     TailGeometry              = field(default_factory=TailGeometry)
     fuselage_geometry: FuselageGeometry          = field(default_factory=FuselageGeometry)
+    control_surfaces:  ControlSurfaceGeometry    = field(default_factory=ControlSurfaceGeometry)
     mass:              MassProperties            = field(default_factory=MassProperties)
     aerodynamics:      AerodynamicCoefficients   = field(default_factory=AerodynamicCoefficients)
     stability:         StabilityDerivatives      = field(default_factory=StabilityDerivatives)
