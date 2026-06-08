@@ -31,12 +31,20 @@ class WingGeometry:
     the position, size, and orientation of the front and aft horizontal wings.
     """
 
+    design_point:         int   = 760   # [N/m^2]
+
     S_fw:                 float = None  # [m^2]
     S_aw:                 float = None  # [m^2]
+    S_e_fw:               float = None  # [m^2]
+    S_e_aw:               float = None  # [m^2]
     S_tot:                float = None  # [m^2]
+
     
     b_fw:                 float = None  # [m]
     b_aw:                 float = None  # [m]
+
+    A_fw:                 float = None  # [-]
+    A_aw:                 float = None  # [-]
 
     gap:                  float = None  # [m]
     stagger:              float = None  # [m]
@@ -90,7 +98,8 @@ class FuselageGeometry:
     """
 
     fuselage_length:   float = None  # [m]
-    fuselage_diameter: float = None  # [m]
+    d_fw:              float = None  # [m] - Fuselage is modelled as a tube for now
+    d_aw:              float = 0     # [m]
     x_ac_fuselage:     float = None  # [m]
 
 
@@ -121,9 +130,9 @@ class AerodynamicCoefficients:
     """
 
     # Lift curve
-    CL_alpha_fw:                        float = None  # [1/deg.]
-    CL_alpha_aw:                        float = None  # [1/deg.]
-    CL_alpha_vert_tail:                 float = None  # [1/deg.]
+    CL_alpha_fw:                        float = None  # [1/rad.]
+    CL_alpha_aw:                        float = None  # [1/rad.]
+    CL_alpha_vert_tail:                 float = None  # [1/rad.]
 
     # Maximum lift coefficients
     CL_max_clean:                       float = None  # [-]
@@ -154,9 +163,16 @@ class AerodynamicCoefficients:
     downwash_gradient_fw_to_aw:         float = None  # [-]
     sidewash_gradient_fuselage_to_tail: float = None  # [-]
 
-    # Velocity ratios
+    # Dynamic pressure ratios
+    dyn_pres_ratio_fw_to_aw:            float = 0.9  # [-]
+    dyn_pres_ratio_fuselage_to_tail:    float = None  # [-]
+
+    # Flow speed ratios
     flow_speed_ratio_fw_to_aw:          float = None  # [-]
     flow_speed_ratio_fuselage_to_tail:  float = None  # [-]
+
+    # Interference coefficients
+    I_v:                                float = None #  [-] - Vortex interference factor
 
     # Long. positions of aerodynamic centres
     x_ac_fw_cruise:                     float = None  # [m]

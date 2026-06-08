@@ -122,25 +122,41 @@ class Aircraft:
         """
         Aircraft lift curve slope (per radian).
         """
+        # VARIABLE DEFINITIONS
         wg = self.params.wing_geometry
         fg = self.params.fuselage_geometry
         ac = self.params.aerodynamics
 
-        S_fw = self._require(wg.S_fw, "wing_geometry.S_fw")
-        S_aft = self._require(wg.S_aw, "wing_geometry.S_aft")
-        b_fw = self._require(wg.b_fw, "wing_geometry.b_fw")
-        d_fus = self._require(fg.fuselage_diameter, "fuselage_geometry.fuselage_diameter")
-        eta = self._require(ac.flow_speed_ratio_fw_to_aw, "aerodynamics.flow_speed_ratio_fw_to_aw")
+        S_1 = self._require(wg.S_fw, "wing_geometry.S_fw")
+        S_2 = self._require(wg.S_aw, "wing_geometry.S_aw")
+        S_e_1 = self._require(wg.S_e_fw, "wing_geometry.S_e_fw")
+        S_e_2 = self._require(wg.S_e_aw, "wing_geometry.S_e_aw")
+        b_1 = self._require(wg.b_fw, "wing_geometry.b_fw")
+        d_1 = self._require(fg.d_fw, "fuselage_geometry.d_fw")
+        A_2 = self._require(wg.A_aw, "wing_geometry.A_aw")
 
-        CL_alpha_fw = self.CL_alpha_front_wing()
-        CL_alpha_aft = self.CL_alpha_aft_wing()
+        CL_alpha_1 = self._require(ac.CL_alpha_fw, "aerodynamics.CL_alpha_fw")
+        CL_alpha_2 = self._require(ac.CL_alpha_aw, "aerodynamics.CL_alpha_aw")
         downwash = self.downwash_gradient()
+        q_2_inf_ratio = self._require(ac.dyn_pres_ratio_fw_to_aw, "aerodynamics.dyn_pres_ratio_fw_to_aw")
+        I_v = self._require(ac.I_v, "aerodynamics.I_v")
 
-        K_WB = ((d_fus/b_fw) + 1)**2
-        K_N_fw = (2*np.pi*((d_fus/2)**2))/(CL_alpha_fw*S_e_fw)
-        K_N_aft = (2*np.pi*((d_fus/2)**2))/(CL_alpha_aft*S_e_aft)
+        # COMPUTATIONS
+        K_N = (np.pi*d_1**2)/(2*CL_alpha_1*S_e_1)
+        wing_body_sum_1 = ((d_1/b_1) + 1)**2
+        wing_body_sum_2 = 1
+        K_WB_1 = 0.8*(d_1/b_1) + 1
 
-        return CL_alpha_fw*(K_N_fw + K_WB)*(S_e_fw/S_fw) + CL_alpha_aft*K_N_aft*(1 - downwash)*eta*(S_aft/S_fw)*(S_e_aft/S_aft)
+        numer = CL_alpha_1 * (S_e_1/S_1) * CL_alpha_2 * q_2_inf_ratio * K_WB_1 * I_v * (0.5*b_2 - 0.5*d_2)
+        denum = 2 * np.pi * A_2 * (0.5*b_1 - 0.5*d_1)
+        CL_alpha_W2 = numer / denum
+
+        left_term = (S_1/(S_1+S_2)) * CL_alpha_1 * (K_N + wing_body_sum_1) * (S_e_1/S_1)
+        right_term = (S_2/(S_1+S_2)) * CL_alpha_2 * wing_body_sum_2 * q_2_inf_ratio * (S_e_2/S_1) + CL_alpha_W2
+        a = left_term + right_term
+
+        return a
+    
     
     def CM_alpha_front_wing(self, n): # n is the selected location along the wing chord
         """
