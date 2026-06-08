@@ -291,3 +291,25 @@ if __name__ == "__main__":
     ax.legend()
 
     plt.show()
+
+    """"
+     c = len(arr[0])
+        i = 1
+        while i <= c:
+            if arr[1][i] == arr[1][i - 1]:
+                arr[0][i] += arr[0][i - 1]
+                arr = np.delete(arr, i - 1, axis=1)
+                c -= 1
+            i += 1
+
+
+        print(arr)
+
+        arr = np.round(arr, decimals=5)
+        x_ax = np.round(np.arange(arr[1][0], arr[1, -1] + self.disc_res, self.disc_res), decimals=5).tolist()
+        y_ax = np.zeros_like(x_ax)
+
+        for i in range(len(arr[0])):
+            y_ax[x_ax.index(arr[1][i])] += arr[0][i]
+
+        print(y_ax)"""

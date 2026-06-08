@@ -2,6 +2,7 @@ from parameters import *
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from scipy.integrate import cumulative_trapezoid
 import csv
 
 class Wing():
@@ -11,12 +12,17 @@ class Wing():
         self.ax = self.fig.add_subplot(111, projection='3d')
         self.geometry = geometry
         self.point_loads = []
-        self.nonangled_point_loads = [PointLoad((0, 200, 0), (0, 0, 5), color="orange")]
+        self.nonangled_point_loads = []
+        self.nonangled_distributed_loads = []
         self.moments = []
         self.distributed_loads = []
         self._angle = 0
         self.hinge_axes = transform_axes(theta_deg, phi_deg)
         self.hinge_vector = self.hinge_axes[0]
+        self.disc_res = 0.01
+
+        self.shear_diagrams = {} #(x, y) means forces pointing towards x analyzed in the y direction
+        self.moment_diagrams = {}
     @property
     def angle(self):
         return self._angle
@@ -26,19 +32,31 @@ class Wing():
         for point_load in self.nonangled_point_loads:
             point_load.dir = rotate_vectors_around_axis(self.hinge_vector, self._angle, point_load.dir)
 
+        for dist_load in self.nonangled_distributed_loads:
+            dist_load.dir = rotate_vectors_around_axis(self.hinge_vector, self._angle, dist_load.dir)
+
         self._angle = value
 
         for point_load in self.nonangled_point_loads:
             point_load.dir = rotate_vectors_around_axis(self.hinge_vector, -self._angle, point_load.dir)
-    def add_point_load(self, load):
+        for dist_load in self.nonangled_distributed_loads:
+            dist_load.dir = rotate_vectors_around_axis(self.hinge_vector, -self._angle, dist_load.dir)
+
+    def add_point_load(self, load, nonangled = False):
         if isinstance(load, PointLoad):
-            self.point_loads.append(load)
+            if nonangled:
+                self.nonangled_point_loads.append(load)
+            else:
+                self.point_loads.append(load)
         else: raise TypeError
-    def add_distributed_load(self, distributed_load):
+    def add_distributed_load(self, distributed_load, nonangled=False):
         if isinstance(distributed_load, DistributedLoad):
-            self.distributed_loads.append(distributed_load)
+            if nonangled:
+                self.nonangled_distributed_loads.append(distributed_load)
+            else:
+                self.distributed_loads.append(distributed_load)
         else: raise TypeError
-    def plot_wing(self):
+    def plot_wing(self, axes=True, point_forces=True, distributed_loads=True):
 
         plot_quadrilateral(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, self.geometry), alpha=0)
 
@@ -53,42 +71,48 @@ class Wing():
             if load.magn > maxload:
                 maxload = load.magn
 
-        maxload /= 1
+        maxload /= 3
 
-        for point_load in self.point_loads:
-            point_dir_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.dir)
-            point_loc_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.loc)
-            plot_single_vector(self.ax, point_dir_rotated*point_load.magn/maxload, point_loc_rotated, point_load.color)
+        if point_forces:
 
-        for point_load in self.nonangled_point_loads:
-            point_dir_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.dir)
-            point_loc_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.loc)
-            plot_single_vector(self.ax, point_dir_rotated*point_load.magn/maxload, point_loc_rotated, point_load.color)
+            for point_load in self.point_loads:
+                point_dir_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.dir)
+                point_loc_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.loc)
+                plot_single_vector(self.ax, point_dir_rotated*point_load.magn/maxload, point_loc_rotated, point_load.color)
 
-
-        number_of_points = 10 #points for plotting distributed loads
-
-        for load in self.distributed_loads:
-
-            geo = []
-            geo.append(load.loc)
-            for i in range(number_of_points + 1):
-                x = np.sqrt(np.dot(load.load_dir, load.load_dir))/number_of_points*i
-                y = load.func(x)
-                load_dir_normalized = load.load_dir/np.sqrt(np.dot(load.load_dir, load.load_dir))
-                geo.append(load.loc + load.dir*y + load_dir_normalized*x)
+            for point_load in self.nonangled_point_loads:
+                point_dir_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.dir)
+                point_loc_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.loc)
+                plot_single_vector(self.ax, point_dir_rotated*point_load.magn/maxload, point_loc_rotated, point_load.color)
 
 
-            geo.append(load.loc + load.load_dir)
+        if distributed_loads:
+            number_of_points = 10 #points for plotting distributed loads
 
-            plot_polygon_3d(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, geo), face_color=load.color)
+            for load in self.distributed_loads:
+                geo = []
+                geo.append(load.loc)
+                for i in range(number_of_points + 1):
+                    x = np.sqrt(np.dot(load.load_dir, load.load_dir))/number_of_points*i
+                    y = load.func(x)
+                    load_dir_normalized = load.load_dir/np.sqrt(np.dot(load.load_dir, load.load_dir))
+                    geo.append(load.loc + load.dir*y + load_dir_normalized*x)
+                geo.append(load.loc + load.load_dir)
+                plot_polygon_3d(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, geo), face_color=load.color)
 
-            #geo = (load.loc, load.loc + load.dir*load.magn/maxload, load.loc + load.dir*load.magn/maxload + load.load_dir, load.loc + load.load_dir)
+            for load in self.nonangled_distributed_loads:
+                geo = []
+                geo.append(load.loc)
+                for i in range(number_of_points + 1):
+                    x = np.sqrt(np.dot(load.load_dir, load.load_dir)) / number_of_points * i
+                    y = load.func(x)
+                    load_dir_normalized = load.load_dir / np.sqrt(np.dot(load.load_dir, load.load_dir))
+                    geo.append(load.loc + load.dir * y + load_dir_normalized * x)
+                geo.append(load.loc + load.load_dir)
+                plot_polygon_3d(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, geo), face_color=load.color)
 
-            #plot_quadrilateral(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, geo), face_color=load.color)
-
-
-        plot_axes(self.ax)
+        if axes:
+            plot_axes(self.ax)
 
         #plot_axes(self.ax, self.hinge_axes)
 
@@ -131,10 +155,9 @@ class Wing():
         except AttributeError:
             # Fallback for older matplotlib versions
             self.ax.set_aspect('equal')
-
-    def discretize(self, res, distributed_mesh_size=11):
+    def discretize(self, distributed_mesh_size=100):
         ###Numpy array with discretized force positions
-
+        res = self.disc_res
         discretized_forces = []
         discretized_positions = []
 
@@ -147,24 +170,137 @@ class Wing():
             discretized_forces.append(load.dir*load.magn)
 
         for load in self.distributed_loads:
-
             load_dir_magn = np.sqrt(np.dot(load.load_dir,load.load_dir))
             load_dir_norm = load.load_dir/load_dir_magn
             for i in range(distributed_mesh_size):
                 x = load_dir_magn/(distributed_mesh_size - 1)*i
                 y = load.func(x)
-                discretized_forces.append(load.dir * y)
-                discretized_positions.append(load.loc + load_dir_norm*x)
+                discretized_forces.append(load.dir * y *load_dir_magn/distributed_mesh_size)
+                discretized_positions.append(np.round((load.loc + load_dir_norm*x) / res) * res)
+            discretized_pos = np.round(load.loc / res) * res
+
+        for load in self.nonangled_distributed_loads:
+            load_dir_magn = np.sqrt(np.dot(load.load_dir,load.load_dir))
+            load_dir_norm = load.load_dir/load_dir_magn
+            for i in range(distributed_mesh_size):
+                x = load_dir_magn/(distributed_mesh_size - 1)*i
+                y = load.func(x)
+                discretized_forces.append(load.dir * y *load_dir_magn/distributed_mesh_size)
+                discretized_positions.append(np.round((load.loc + load_dir_norm*x) / res) * res)
             discretized_pos = np.round(load.loc / res) * res
 
 
-        print("forces")
-        print(discretized_forces)
-        print("positions")
-        print(discretized_positions)
+        self.discretized_forces = np.array(discretized_forces).T
+        self.discretized_positions = np.array(discretized_positions).T
+    def create_loading_diagram(self, force_direction="y", path_direction="x"):
 
-        return np.array(discretized_forces), np.array(discretized_positions)
 
+        force_index = ["x", "y", "z"].index(force_direction)
+        path_index = ["x", "y", "z"].index(path_direction)
+
+
+
+        arr = np.vstack((self.discretized_forces[force_index], self.discretized_positions[path_index]))
+
+
+        # Introduce reaction force
+
+        #rforce = np.array([-np.sum(arr[0, :]), 0])
+        #arr = np.column_stack((arr, rforce))
+
+
+        #sort and combine forces in the array
+        sort_indices = np.argsort(arr[1, :])
+        arr = np.round(arr[:, sort_indices], decimals=5)
+
+        c = len(arr[0])
+        i = 1
+        while i < c:
+            if arr[1][i] == arr[1][i - 1]:
+                arr[0][i] += arr[0][i - 1]
+                arr = np.delete(arr, i - 1, axis=1)
+                c -= 1
+            i += 1
+
+        #combine stuff (i dont think its needed in the end)
+
+        x_ax = np.round(np.arange(arr[1][0], arr[1, -1] + self.disc_res, self.disc_res), decimals=5).tolist()
+        y_ax = np.zeros_like(x_ax)
+
+        for i in range(len(arr[0])):
+            start_idx = x_ax.index(arr[1][i])
+            y_ax[start_idx : start_idx + len(x_ax)] += arr[0, i]
+
+        reaction_force = -y_ax[x_ax.index(0)]
+        y_ax += reaction_force
+
+        """
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+        ax1.plot(x_ax, y_ax, color='b')
+        """
+
+        self.shear_diagrams[(force_direction, path_direction)] = (x_ax, y_ax)
+
+        return reaction_force
+    def create_moment_diagram(self, axis="y", plot=True):
+        #get info from the shear diagrams and if it doesn't exist, create it
+        #eg for y axis we need force in x dir towards z and vice versa
+        lst = ["x", "y", "z"]
+        lst.remove(axis)
+
+        self.create_loading_diagram(force_direction=lst[0], path_direction=lst[1])
+        shear_1 = self.shear_diagrams[(lst[0], lst[1])]
+
+        self.create_loading_diagram(force_direction=lst[1], path_direction=lst[0])
+        shear_2 = self.shear_diagrams[(lst[1], lst[0])]
+
+        moment_1 = cumulative_trapezoid(shear_1[1], shear_1[0], initial=0)
+        moment_2 = cumulative_trapezoid(shear_2[1], shear_2[0], initial=0)
+
+        #One of the two moments must be flipped
+        flipslst = {"x": "y", "y": "z", "z": "x"}
+        if lst[0] == flipslst[axis]:
+            moment_1 *= -1
+        elif lst[1] == flipslst[axis]:
+            moment_2 *= -1
+
+        #the lengths of each list may be different, so one of them may need to be padded out
+
+        if moment_1.shape[0] >= moment_2.shape[0]:
+            moment_2 = np.pad(moment_2, (0, len(moment_1) - len(moment_2)), mode='constant', constant_values=0)
+            total_moment_x_ax = shear_1[0]
+        else:
+            moment_1 = np.pad(moment_1, (0, len(moment_2) - len(moment_1)), mode='constant', constant_values=0)
+            total_moment_x_ax = shear_2[0]
+
+        # reaction_moment_1 = shear_1[1].index(0)
+        r_moment_1 = -moment_1[shear_2[0].index(0)]
+        moment_1 += r_moment_1
+        r_moment_2 = -moment_2[shear_2[0].index(0)]
+        moment_2 += r_moment_2
+
+        total_moment = moment_1 + moment_2
+
+
+        if plot:
+            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 6), sharex=True)
+            ax1.plot(shear_1[0], shear_1[1], color='b', label=f"shear of force {lst[0]} in direction {lst[1]}", alpha=0.4)
+            ax1.plot(shear_2[0], shear_2[1], color="r", label=f"shear of force {lst[1]} in direction {lst[0]}", alpha=0.4)
+            m = max(np.abs(shear_1[1]).max(), np.abs(shear_2[1]).max())
+            ax1.set_ylim(-1.25*m, 1.25*m)
+            ax1.legend()
+            ax1.axhline(0, color='black', linestyle=':', linewidth=1.5)
+
+            ax2.plot(total_moment_x_ax, moment_1, color='b', label=f"moment of force {lst[0]} in direction {lst[1]}", alpha=0.4)
+            ax2.plot(total_moment_x_ax, moment_2, color="r", label=f"moment of force {lst[1]} in direction {lst[0]}", alpha=0.4)
+            m = max(np.abs(moment_1).max(), np.abs(moment_2).max())
+            ax2.set_ylim(-1.25 * m, 1.25 * m)
+            ax2.legend()
+            ax2.axhline(0, color='black', linestyle=':', linewidth=1.5)
+
+            ax3.plot(total_moment_x_ax, total_moment, self.disc_res, color="r")
+
+        return r_moment_1, r_moment_2
 
 class Load():
     def __init__(self, force, loc, label="", color="purple"):
@@ -421,37 +557,44 @@ if __name__ == "__main__":
                 theta_input,
                 phi_input)
 
-    wing_planform.add_point_load(PointLoad((200, 0, 0), (1, 0, 3.001)))
-    wing_planform.add_point_load(PointLoad((200, 0, 0), (0.5, 0, 6.001)))
+    def weight(x):
+        return 10
+
+    #wing_planform.add_point_load(PointLoad((100, 0, 0), (0, 0, 6)))
+    #wing_planform.add_point_load(PointLoad((100, 0, 0), (1, 0, 3)))
 
     def wing_loading(x):
         return -(x/5)**2 + 4
-        #return x
+
     wing_planform.add_distributed_load(DistributedLoad((0, -1, 0), (0.5, 0, 0), (-1, 0, 10), wing_loading))
+    
+    wing_planform.add_distributed_load(DistributedLoad((0, 1, 0), (0.5, 0, 0), (-1, 0, 10), weight, color="blue"), nonangled=True)
 
-    wing_planform.discretize(0.01)
+    wing_planform.add_point_load(PointLoad((200, 0, 0), (1, 0, 3), color="orange"))
+    wing_planform.add_point_load(PointLoad((200, 0, 0), (0.5, 0, 6), color="orange"))
 
-    wing_planform.angle = 60
+
+
+    #wing_planform.add_distributed_load(DistributedLoad((0, -1, 0), (0, 0, 0), (0, 0, 10), weight))
+    #wing_planform.add_point_load(PointLoad((10, 0, 0), (10, 0, 0)))
+    #wing_planform.add_point_load(PointLoad((0, -10, 0), (1, 0, 5)))
+    #wing_planform.add_distributed_load(DistributedLoad((0, -1, 0), (1, 0, 7), (-2, 0, 0), weight))
+
+    wing_planform.angle = 0
+    """
+    for i in range(6):
+        wing_planform.angle += 20
+        wing_planform.discretize()
+        rforce_x = wing_planform.create_loading_diagram(force_direction = "x", path_direction = "z")
+        rforce_y = wing_planform.create_loading_diagram(force_direction = "y", path_direction = "z")
+        plot_single_vector(wing_planform.ax, np.array([rforce_x, rforce_y, 0]), color="pink")
+    wing_planform.plot_wing(point_forces=False, distributed_loads=False)
+    """
+
     wing_planform.plot_wing()
 
+    wing_planform.discretize()
 
-
+    wing_planform.create_moment_diagram("x")
 
     plt.show()
-
-    """
-    steps = 50
-    for i in range(steps + 1):
-        wing_planform.plot_wing(0.4/(steps + 1)*i, plotwing=False, plotaxes=False)
-        wing_planform.rotate_around_axis(hinge_vector, 120/steps)
-
-    wing_axes = rotate_vectors_around_axis(hinge_vector, 0)
-
-    #plot_single_vector(ax, np.array([0.3, 0, 0]), origin=(0, 0, 0.7), color="purple")
-    #plot_single_vector(ax, np.array([0.3, 0, 0]), origin=(0, 0, 0.3), color="purple")
-
-
-    plot_axes(np.eye(3))
-    plot_axes(wing_axes)
-    plot_single_vector(ax, hinge_vector, color='y', label='Vector 3')
-    """
