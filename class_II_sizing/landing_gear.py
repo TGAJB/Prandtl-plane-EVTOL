@@ -72,7 +72,7 @@ CFRP  = {"E": 70e9,   "sy": 600e6,  "rho": 1600, "eu": 0.015, "Gc": 1500}
 #      2 skids, 2 legs per skid -> 4 legs, 4 hinges.
 # =====================================================================
 N_SKID          = 2      # longitudinal ground rails
-SKID_RAIL_MASS  = 4.0    # kg per rail (ground contact tube)              [SOURCE: S5]
+SKID_RAIL_MASS  = 15    # kg per rail (ground contact tube)              [SOURCE: S5]
 
 CROSSTUBE_COUNT = 2      # transverse cross-tubes (front + rear)
 HINGES_PER_TUBE = 2      # knees per cross-tube  -> 2*2 = 4 hinges total
@@ -101,12 +101,12 @@ OLEO_MASS_PER_M   = 6.0    # kg/m  strut mass vs stroke                   [SOURC
 
 CRUSH_LEAF_B      = 0.08   # m   width of the elastic leaf in the hybrid
 CRUSH_LEAF_L      = 0.45   # m   length of that leaf
-HONEYCOMB_STRESS  = 8.0e6  # Pa  honeycomb crush plateau stress           [SOURCE: S4]
+HONEYCOMB_STRESS  = 2.5e6  # Pa  honeycomb crush plateau stress           [SOURCE: S4]
 HONEYCOMB_DENSITY = 80.0   # kg/m3  honeycomb core density                [SOURCE: S4]
 CRUSH_STROKE_EFF  = 0.75   # usable crush fraction before densification   [SOURCE: S6]
 
 ELASTO_FIXED_MASS = 1.2    # kg   mount housing/bracket fixed mass        [SOURCE: S7]
-ELASTO_MASS_PER_N = 4.0e-4 # kg/N mount mass vs peak load                 [SOURCE: S7]
+ELASTO_MASS_PER_N = 1.0e-4 # kg/N mount mass vs peak load                 [SOURCE: S7]
 
 
 # =====================================================================
