@@ -45,8 +45,6 @@ class DatcomChartInputs:
     vtail_Aeff_A:             float = None
     cyb_v_over_cyb_v_eff:     float = None
     cyb_v_eff:                float = None
-    # Body-interference factor k  (Fig 5.3.1.1-7, f(b_v/2 r1))
-    vtail_k:                  float = None
  
     # CY_beta body interference K_i (Fig 5.2.1.1-7)
     cyb_Ki:                   float = None
@@ -1071,3 +1069,8 @@ class Aircraft:
         c.C_L_delta_a = self.Cl_delta_a(); c.C_N_delta_a = self.Cn_delta_a()
         return self.params
     
+
+if __name__ == "__main__":
+
+    c2_sweep = Aircraft._le_to_c2(0, A= 5.63, taper=0.4)
+    print(np.degrees(c2_sweep))
