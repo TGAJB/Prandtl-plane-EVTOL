@@ -283,6 +283,7 @@ class Aircraft:
         fg = self.params.fuselage_geometry
         ac = self.params.aerodynamics
 
+<<<<<<< Updated upstream
         S_1 = self._require(wg.S_fw, "wing_geometry.S_fw")
         S_2 = self._require(wg.S_aw, "wing_geometry.S_aw")
         S_e_1 = self._require(wg.S_e_fw, "wing_geometry.S_e_fw")
