@@ -19,7 +19,7 @@ class Physical:
 # ---------------------------------------------------------------------------
 @dataclass
 class FlightCondition:
-    mach:               float = None
+    mach:               float = (200/3.6)/(np.sqrt(Physical.gamma*Physical.R*263.385))
     rho:                float = None
     tas:                float = None       # true airspeed [m/s]
     alpha:              float = 0.0        # [rad]
@@ -37,45 +37,52 @@ class DatcomChartInputs:
     # fw/aw are no longer used: the wing section slopes come straight from the
     # aero department (cl_alpha_fw / cl_alpha_aw). Only _vt is still consumed,
     # for the vertical tail whose airfoil is not yet selected.
-    section_slope_ratio_fw:   float = 1.0   # (unused; retained for reference)
-    section_slope_ratio_aw:   float = 1.0   # (unused; retained for reference)
-    section_slope_ratio_vt:   float = 1.0
+    section_slope_ratio_vt:   float = 0.107
+    section_slope_ratio_winglet: float = 0.107
+
+    # Winglet / Prandtl-plane vertical-joiner corrections.
+    # These are kept separate from the vertical-tail DATCOM sidewash method because
+    # the joiners sit in the coupled tip-flow field of the front and aft wings.
+    winglet_Aeff_A:           float = 1.0   # A_eff/A for ONE winglet/joiner
+    winglet_sidewash_factor:  float = 1.0   # local beta factor: (1 + d_sigma/d_beta)*(q_wl/q_inf)
+    winglet_cyb_ratio:        float = 1.0   # empirical correction on side-force slope
+    winglet_sigma_beta:       float = 0.0   # optional beta-dot sidewash-lag factor; 0 disables contribution
  
     # Vertical-tail effective aspect ratio and other ratios (Figs 5.3.1.1-22a/b)
-    vtail_Aeff_A:             float = None
-    cyb_v_over_cyb_v_eff:     float = None
-    cyb_v_eff:                float = None
+    vtail_Aeff_A:             float = 1.5
+    cyb_v_over_cyb_v_eff:     float = 0.9
+    cyb_v_eff:                float = 4.0
  
     # CY_beta body interference K_i (Fig 5.2.1.1-7)
-    cyb_Ki:                   float = None
+    cyb_Ki:                   float = 1.4
  
     # Cl_beta wing-body chart terms (per wing) — Figs 5.1.2.1-27/28a/28b/29/30a/30b, 5.2.2.1-26
-    clb_over_CL_sweep_fw:     float = None  # (Clb/CL)_Lambda_c/2   27
-    clb_over_CL_sweep_aw:     float = None
-    clb_KM_Lambda_fw:         float = None  # K_M_Lambda            28a
-    clb_KM_Lambda_aw:         float = None
-    clb_Kf_fw:                float = None  # K_f                   5.2.2.1-26
-    clb_Kf_aw:                float = None
-    clb_over_CL_AR_fw:        float = None  # (Clb/CL)_A            28b
-    clb_over_CL_AR_aw:        float = None
-    clb_over_dihedral_fw:     float = None  # Clb/Gamma             29
-    clb_over_dihedral_aw:     float = None
-    clb_KM_Gamma_fw:          float = None  # K_M_Gamma             30a
-    clb_KM_Gamma_aw:          float = None
-    clb_twist_fw:             float = None  # dClb/(theta tanLc/4)  30b
-    clb_twist_aw:             float = None
+    clb_over_CL_sweep_fw:     float = 0.0006  # (Clb/CL)_Lambda_c/2   27
+    clb_over_CL_sweep_aw:     float = 0.0006
+    clb_KM_Lambda_fw:         float = 1.0  # K_M_Lambda            28a
+    clb_KM_Lambda_aw:         float = 1.0
+    clb_Kf_fw:                float = 1.0  # K_f                   5.2.2.1-26
+    clb_Kf_aw:                float = 1.0
+    clb_over_CL_AR_fw:        float = -0.001    # (Clb/CL)_A            28b
+    clb_over_CL_AR_aw:        float = -0.001
+    clb_over_dihedral_fw:     float = -0.0002  # Clb/Gamma             29
+    clb_over_dihedral_aw:     float = -0.0002
+    clb_KM_Gamma_fw:          float = 1.0  # K_M_Gamma             30a
+    clb_KM_Gamma_aw:          float = 1.0
+    clb_twist_fw:             float = -0.000033  # dClb/(theta tanLc/4)  30b
+    clb_twist_aw:             float = -0.000033
  
     # Cn_beta wing-body (Eq 5.2.3.1-a)
-    cnb_KN:                   float = None  # Fig 5.2.3.1-8
-    cnb_KRl:                  float = None  # Fig 5.2.3.1-9
+    cnb_KN:                   float = 0.0012  # Fig 5.2.3.1-8
+    cnb_KRl:                  float = 1.6  # Fig 5.2.3.1-9
  
     # Roll damping (Eq 7.1.2.2-a, Fig 7.1.2.2-20)  (beta Clp/kappa)_CL0 per wing
-    clp_param_fw:             float = None
-    clp_param_aw:             float = None
+    clp_param_fw:             float = -0.38
+    clp_param_aw:             float = -0.38
  
     # Side-force-due-to-roll (Fig 7.1.2.1-9)  (CYp/CL)_CL0,M0  per wing
-    cyp_over_CL_fw:           float = None
-    cyp_over_CL_aw:           float = None
+    cyp_over_CL_fw:           float = -0.015
+    cyp_over_CL_aw:           float = -0.015
     K_CYp:                    float = 1.0   # clean-wing factor K
  
     # Rolling-moment-due-to-yaw (Fig 7.1.3.2-10) (Clr/CL)_CL0,M0 per wing
@@ -643,6 +650,84 @@ class Aircraft:
         S_w = (self._require(wg.S_e_fw, "wing_geometry.S_e_fw") + self._require(wg.S_e_aw, "wing_geometry.S_e_aw"))
 
         return -ch.cyb_v_over_cyb_v_eff*ch.cyb_v_eff*((2*S_v)/S_w)
+
+    # =======================================================================
+    # LATERAL — Prandtl-plane winglet / vertical-joiner prerequisites
+    # =======================================================================
+    def _winglets_enabled(self):
+        """Return True only when the optional Prandtl-plane winglet model is active."""
+        wglt = getattr(self.params, "winglet_geometry", None)
+        return bool(wglt is not None and getattr(wglt, "enabled", False))
+
+    def winglet_effective_AR(self):
+        """Effective aspect ratio for ONE winglet / vertical joiner."""
+        wglt, ch = self.params.winglet_geometry, self.charts
+        A_wl = self._require(wglt.AR_winglet, "winglet_geometry.AR_winglet")
+        return self._require(ch.winglet_Aeff_A, "charts.winglet_Aeff_A") * A_wl
+
+    def CL_alpha_winglet(self):
+        """
+        Winglet side-force-panel lift slope at A_eff, using the same finite-wing
+        subsonic DATCOM kernel as the vertical tail, but with separate winglet inputs.
+        """
+        wglt, ac, ch = self.params.winglet_geometry, self.params.aerodynamics, self.charts
+
+        if ac.CL_alpha_winglet is not None:
+            return ac.CL_alpha_winglet
+
+        A = self.winglet_effective_AR()
+        taper = self._require(wglt.taper_winglet, "winglet_geometry.taper_winglet")
+        sweep_c4 = self._le_to_c4(self._require(wglt.LE_sweep_winglet, "winglet_geometry.LE_sweep_winglet"), A, taper)
+        sweep_c2 = self._c4_to_c2(sweep_c4, A, taper)
+
+        if ac.cl_alpha_winglet is not None:
+            kappa = self._kappa_from_section_slope(ac.cl_alpha_winglet)
+        else:
+            kappa = self._kappa(self._require(wglt.t_c_winglet, "winglet_geometry.t_c_winglet"),
+                                self._require(wglt.te_angle_winglet, "winglet_geometry.te_angle_winglet"),
+                                self._require(ch.section_slope_ratio_winglet, "charts.section_slope_ratio_winglet"))
+        return self._surface_lift_slope(A, sweep_c2, kappa)
+
+    def dCY_beta_winglets(self):
+        """
+        Total side-force slope of the Prandtl-plane winglets / vertical joiners.
+
+        This is intentionally NOT the conventional DATCOM vertical-tail sidewash
+        method. The joiners are tip-mounted panels in the front/aft-wing tip-flow
+        field, so their local-flow factor is supplied separately as
+        charts.winglet_sidewash_factor and should later be calibrated with VLM/CFD/DUST.
+        """
+        if not self._winglets_enabled():
+            return 0.0
+
+        wglt, ch = self.params.winglet_geometry, self.charts
+        S_ref, _, _ = self._ref()
+        n = self._require(wglt.n_winglets, "winglet_geometry.n_winglets")
+        S_wl = self._require(wglt.S_winglet, "winglet_geometry.S_winglet")
+        sidewash = self._require(ch.winglet_sidewash_factor, "charts.winglet_sidewash_factor")
+        ratio = self._require(ch.winglet_cyb_ratio, "charts.winglet_cyb_ratio")
+
+        return -n * ratio * self.CL_alpha_winglet() * sidewash * (S_wl/S_ref)
+
+    def _winglet_arms(self):
+        """Return (l_p, z_p) for the winglet aerodynamic centre relative to the CG."""
+        wglt, m = self.params.winglet_geometry, self.params.mass
+        l_p = self._require(wglt.x_ac_winglet, "winglet_geometry.x_ac_winglet") - self.x_cg()
+        z_cg = m.z_cg if m.z_cg is not None else 0.0
+        z_p = self._require(wglt.z_ac_winglet, "winglet_geometry.z_ac_winglet") - z_cg
+        return l_p, z_p
+
+    def _panel_Cl_from_sideforce(self, dCY_beta, l_p, z_p):
+        """Rolling moment generated by a side-force derivative at a vertical panel."""
+        _, b_ref, _ = self._ref()
+        a = self.fc.alpha
+        return dCY_beta * (z_p*np.cos(a) - l_p*np.sin(a))/b_ref
+
+    def _panel_Cn_from_sideforce(self, dCY_beta, l_p, z_p):
+        """Yawing moment generated by a side-force derivative at a vertical panel."""
+        _, b_ref, _ = self._ref()
+        a = self.fc.alpha
+        return -dCY_beta * (l_p*np.cos(a) + z_p*np.sin(a))/b_ref
  
     # ----- vertical-tail moment arms about the CG --------------------------
     def _vtail_arms(self):
@@ -674,7 +759,7 @@ class Aircraft:
         Ki = self._require(ch.cyb_Ki, "charts.cyb_Ki")
         SB0 = self._require(fg.base_area, "fuselage_geometry.base_area")
         cyb_b = -2.0 * Ki * (SB0/S_ref)
-        return (cyb_w + cyb_b) + self.dCY_beta_vtail()
+        return (cyb_w + cyb_b) + self.dCY_beta_vtail() + self.dCY_beta_winglets()
  
     # =======================================================================
     # LATERAL — rolling moment due to sideslip
@@ -718,12 +803,15 @@ class Aircraft:
         """
         clb_wb_deg = self._cl_beta_wing("fw") + self._cl_beta_wing("aw")
         clb_wb = clb_wb_deg * self.physical.deg_per_rad    
-        _, b_ref, _ = self._ref()
         l_p, z_p = self._vtail_arms()
-        a = self.fc.alpha
-        vt = self.dCY_beta_vtail() * (z_p*np.cos(a) - l_p*np.sin(a))/b_ref
+        vt = self._panel_Cl_from_sideforce(self.dCY_beta_vtail(), l_p, z_p)
 
-        return clb_wb + vt
+        wl = 0.0
+        if self._winglets_enabled():
+            l_wl, z_wl = self._winglet_arms()
+            wl = self._panel_Cl_from_sideforce(self.dCY_beta_winglets(), l_wl, z_wl)
+
+        return clb_wb + vt + wl
  
     # =======================================================================
     # LATERAL — yawing moment due to sideslip
@@ -741,9 +829,14 @@ class Aircraft:
         cnb_wb_deg = -KN * KRl * (SBs/S_ref) * (lB/b_ref)
         cnb_wb = cnb_wb_deg * self.physical.deg_per_rad
         l_p, z_p = self._vtail_arms()
-        a = self.fc.alpha
-        vt = -self.dCY_beta_vtail() * (l_p*np.cos(a) + z_p*np.sin(a))/b_ref
-        return cnb_wb + vt
+        vt = self._panel_Cn_from_sideforce(self.dCY_beta_vtail(), l_p, z_p)
+
+        wl = 0.0
+        if self._winglets_enabled():
+            l_wl, z_wl = self._winglet_arms()
+            wl = self._panel_Cn_from_sideforce(self.dCY_beta_winglets(), l_wl, z_wl)
+
+        return cnb_wb + vt + wl
  
     # =======================================================================
     # LATERAL — roll-rate derivatives
@@ -847,7 +940,13 @@ class Aircraft:
 
         l_p, z_p = self._vtail_arms()
         cnp_vt = -(2/b_ref)*(l_p*np.cos(a) + z_p*np.sin(a))*((z_p*np.cos(a) - l_p*np.sin(a))/b_ref)*self.dCY_beta_vtail()
-        return cnp_wing + cnp_vt
+
+        cnp_wl = 0.0
+        if self._winglets_enabled():
+            l_wl, z_wl = self._winglet_arms()
+            cnp_wl = -(2/b_ref)*(l_wl*np.cos(a) + z_wl*np.sin(a))*((z_wl*np.cos(a) - l_wl*np.sin(a))/b_ref)*self.dCY_beta_winglets()
+
+        return cnp_wing + cnp_vt + cnp_wl
  
     # =======================================================================
     # LATERAL — yaw-rate derivatives
@@ -858,7 +957,13 @@ class Aircraft:
         """
         _, b_ref, _ = self._ref()
         l_p, _ = self._vtail_arms()
-        return -(2/b_ref) * l_p * self.dCY_beta_vtail()
+        cyr = -(2/b_ref) * l_p * self.dCY_beta_vtail()
+
+        if self._winglets_enabled():
+            l_wl, _ = self._winglet_arms()
+            cyr += -(2/b_ref) * l_wl * self.dCY_beta_winglets()
+
+        return cyr
  
     def _clr_over_cl_M(self, A, sweep_c4, base):
         """
@@ -901,7 +1006,13 @@ class Aircraft:
         l_p, z_p = self._vtail_arms()
         a = self.fc.alpha
         cnr_vt = (2/b_ref**2)*(l_p*np.cos(a) + z_p*np.sin(a))**2*self.dCY_beta_vtail()
-        return cnr_wing + cnr_vt
+
+        cnr_wl = 0.0
+        if self._winglets_enabled():
+            l_wl, z_wl = self._winglet_arms()
+            cnr_wl = (2/b_ref**2)*(l_wl*np.cos(a) + z_wl*np.sin(a))**2*self.dCY_beta_winglets()
+
+        return cnr_wing + cnr_vt + cnr_wl
  
     # =======================================================================
     # LATERAL — sideslip-acceleration derivatives
@@ -921,7 +1032,17 @@ class Aircraft:
                       - self._require(ch.sigma_beta_theta, "charts.sigma_beta_theta")*np.radians(th)
                       + self._require(ch.sigma_beta_WB, "charts.sigma_beta_WB"))
         l_p, z_p = self._vtail_arms()
-        return 2*self.CL_alpha_vtail()*sigma_beta*(Sv/S_ref)*(l_p*np.cos(aF) + z_p*np.sin(aF))/b_ref
+        cybd = 2*self.CL_alpha_vtail()*sigma_beta*(Sv/S_ref)*(l_p*np.cos(aF) + z_p*np.sin(aF))/b_ref
+
+        if self._winglets_enabled():
+            wglt = self.params.winglet_geometry
+            n = self._require(wglt.n_winglets, "winglet_geometry.n_winglets")
+            S_wl = self._require(wglt.S_winglet, "winglet_geometry.S_winglet")
+            l_wl, z_wl = self._winglet_arms()
+            sigma_wl = self._require(ch.winglet_sigma_beta, "charts.winglet_sigma_beta")
+            cybd += 2*self.CL_alpha_winglet()*sigma_wl*(n*S_wl/S_ref)*(l_wl*np.cos(aF) + z_wl*np.sin(aF))/b_ref
+
+        return cybd
  
     def Cn_beta_dot(self):
         """
@@ -951,7 +1072,7 @@ class Aircraft:
  
     def Cn_delta_a(self):
         """
-        Adverse yaw from aileron — small; left as an input/aero estimate (returns None-safe 0).
+        Adverse yaw from aileron — small; left as an input/aero estimate (returns 0).
         """
         return 0.0
  
@@ -1073,4 +1194,24 @@ class Aircraft:
 if __name__ == "__main__":
 
     c2_sweep = Aircraft._le_to_c2(0, A= 5.63, taper=0.4)
-    print(np.degrees(c2_sweep))
+    c4_sweep = Aircraft._le_to_c4(0, A= 5.63, taper=0.4)
+    print("C2 Sweep:", np.degrees(c2_sweep))
+    print("C4 Sweep:", np.degrees(c4_sweep))
+
+    params = AircraftParameters()
+    charts = DatcomChartInputs()
+    physical = Physical()
+    fc = FlightCondition()
+
+    aircraft = Aircraft(params, physical, fc, charts)
+    print("C_n_beta:", aircraft.Cn_beta())
+    print("C_L_alpha_fw:", aircraft.CL_alpha_front_wing())
+
+    M = FlightCondition.mach
+    beta = np.sqrt(1 - M**2)
+    lambda_beta = np.degrees(np.arctan(np.tan(c4_sweep)/beta))
+    print("Beta_sweep:", lambda_beta)
+
+    k = aircraft._kappa_from_section_slope(cl_alpha_per_deg=0.107)
+    factor = beta*5.63/k
+    print(factor)

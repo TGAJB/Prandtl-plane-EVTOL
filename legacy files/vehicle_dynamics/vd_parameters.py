@@ -14,10 +14,13 @@ class Mission:
     wind_gust_speed:     float = None  # [m/s]
     
     transition_altitude: float = None  # [m]
-    cruise_altitude:     float = None  # [m]
+    cruise_altitude:     float = 3810.0  # [m]
 
-    rho_cr:              float = None  # [kg/(m^3)]
+    rho_cr:              float = 0.835679  # [kg/(m^3)]
     rho_SL:              float = 1.225  # [kg/(m^3)]
+
+    T_cr:                float = 263.385 # [K]
+    T_SL:                float = 288.15  # [K]
 
     minimum_range:       float = None  # [m]
 
@@ -33,18 +36,18 @@ class WingGeometry:
 
     design_point:         int   = 760   # [N/m^2]
 
-    S_fw:                 float = None  # [m^2]
-    S_aw:                 float = None  # [m^2]
-    S_e_fw:               float = None  # [m^2]
-    S_e_aw:               float = None  # [m^2]
-    S_tot:                float = None  # [m^2]
+    S_fw:                 float = 12.91  # [m^2]
+    S_aw:                 float = 12.91  # [m^2]
+    S_e_fw:               float = 9.685  # [m^2]
+    S_e_aw:               float = 9.685  # [m^2]
+    S_tot:                float = 25.82  # [m^2]
 
     
-    b_fw:                 float = None  # [m]
-    b_aw:                 float = None  # [m]
+    b_fw:                 float = 13.0  # [m]
+    b_aw:                 float = 13.0  # [m]
 
-    A_fw:                 float = None  # [-]
-    A_aw:                 float = None  # [-]
+    A_fw:                 float = b_fw**2/S_fw  # [-]
+    A_aw:                 float = b_aw**2/S_aw  # [-]
 
     gap:                  float = None  # [m]
     stagger:              float = None  # [m]
@@ -52,19 +55,19 @@ class WingGeometry:
     MAC_fw:               float = None  # [m]
     MAC_aw:               float = None  # [m]
 
-    taper_fw:             float = None  # [-]
-    taper_aw:             float = None  # [-]
+    taper_fw:             float = 0.4  # [-]
+    taper_aw:             float = 0.4  # [-]
 
     chord_fw_root:        float = None  # [m]
     chord_fw_tip:         float = None  # [m]
     chord_aw_root:        float = None  # [m]
     chord_aw_tip:         float = None  # [m]
 
-    LE_sweep_fw:          float = None  # [deg.]
-    LE_sweep_aw:          float = None  # [deg.]
+    LE_sweep_fw:          float = 0  # [deg.]
+    LE_sweep_aw:          float = 0  # [deg.]
 
-    dihedral_front_wing:  float = None  # [deg.]
-    dihedral_aft_wing:    float = None  # [deg.]
+    dihedral_front_wing:  float = 1.0  # [deg.]
+    dihedral_aft_wing:    float = 1.0  # [deg.]
 
     twist_fw:             float = None  # [deg.]
     twist_aw:             float = None  # [deg.]
@@ -78,8 +81,8 @@ class WingGeometry:
     # ===== ADDED FOR DATCOM ==================================================
     # Reference quantities for non-dimensionalisation. EVERY aircraft-level derivative is referenced to these; they must match the EOM reference.
     S_ref:                float = None  # [m^2]
-    b_ref:                float = None  # [m]
-    MAC_ref:              float = None  # [m]
+    b_ref:                float = 13.0  # [m]
+    MAC_ref:              float = 1.262  # [m]
 
     # Airfoil thickness and trailing-edge angle.
     # NOTE: the front/aft WING lift-curve slopes now use the aero department's
@@ -102,9 +105,9 @@ class TailGeometry:
     Geometry and position of the vertical tail.
     """
 
-    x_vert_tail:                float = None  # [m]
-    S_vert_tail:                float = None  # [m^2]
-    b_vert_tail:                float = None  # [m]
+    x_vert_tail:                float = 8.5  # [m]
+    S_vert_tail:                float = 2.0  # [m^2]
+    b_vert_tail:                float = 2.5  # [m]
     AR_vert_tail:               float = None  # [-]
     LE_sweep_vert_tail:         float = None  # [rad]
     airfoil_vert_tail:          str   = None  # [-]
@@ -113,7 +116,36 @@ class TailGeometry:
     MAC_vert_tail:              float = None  # [m]
     t_c_vert_tail:              float = None  # [-]
     te_angle_vert_tail:         float = None  # [deg.]
-    z_vert_tail:                float = None  # [m] vertical a.c. height (datum)
+    z_vert_tail:                float = 1.0  # [m] vertical a.c. height (datum)
+
+
+@dataclass
+class WingletGeometry:
+    """
+    Geometry of the Prandtl-plane vertical joiners / winglets.
+
+    These are not treated as conventional aft vertical tails. They are modelled
+    as vertical side-force-producing panels at the wing tips, with their own
+    effective aspect-ratio and local-flow corrections. Set enabled=True only
+    after the geometry and chart/correction inputs have been supplied.
+    """
+
+    enabled:                    bool  = True  # keep existing model backward-compatible
+    n_winglets:                 int   = 2      # usually left and right tip joiners
+
+    S_winglet:                  float = 3.125  # [m^2] planform area of ONE winglet/joiner
+    b_winglet:                  float = 2.5  # [m] vertical span/height of ONE winglet
+    AR_winglet:                 float = b_winglet**2/S_winglet  # [-] aspect ratio of ONE winglet
+    taper_winglet:              float = 1.0 # [-]
+    MAC_winglet:                float = None  # [m]
+    LE_sweep_winglet:           float = 0.5  # [rad]
+
+    x_ac_winglet:               float = 3.6  # [m] longitudinal aerodynamic-centre location
+    z_ac_winglet:               float = 0.0  # [m] vertical aerodynamic-centre location
+
+    airfoil_winglet:            str   = None  # [-]
+    t_c_winglet:                float = 0.12  # [-]
+    te_angle_winglet:           float = 10  # [deg.]
 
 
 @dataclass
@@ -122,12 +154,12 @@ class FuselageGeometry:
     Fuselage geometry relevant to aerodynamics and vehicle dynamics.
     """
 
-    fuselage_length:   float = None  # [m]
+    fuselage_length:   float = 10.0  # [m]
     d_fw:              float = None  # [m] - Fuselage is modelled as a tube for now
     d_aw:              float = 0     # [m]
     x_ac_fuselage:     float = None  # [m]
 
-    side_area:           float = None  # [m^2] projected side area S_Bs (Cn_beta)
+    side_area:           float = 15.0  # [m^2] projected side area S_Bs (Cn_beta)
     base_area:           float = None  # [m^2] reference/base area S_B0 (CY_beta body)
     body_depth_at_wing:  float = None  # [m]   d at the wing (sidewash); ~ diameter
 
@@ -162,7 +194,7 @@ class MassProperties:
 
     x_cg_min:     float = None  # [m]
     x_cg_max:     float = None  # [m]
-    x_cg_opt:     float = None  # [m] - Optimal CG location during cruise
+    x_cg_opt:     float = 2.8  # [m] - Optimal CG location during cruise
     z_cg:         float = None  # [m] - vertical CG (datum), used by moment arms
 
     I_xx:         float = None  # [kg m^2]
@@ -177,14 +209,16 @@ class AerodynamicCoefficients:
     Aerodynamic characteristics required by the Vehicle Dynamics model.
     """
     # Airfoil curve
-    cl_alpha_fw:                        float = None  # [1/deg.]
-    cl_alpha_aw:                        float = None  # [1/deg.]
+    cl_alpha_fw:                        float = 0.1  # [1/deg.]
+    cl_alpha_aw:                        float = 0.1  # [1/deg.]
     cl_alpha_vert_tail:                 float = None  # [1/deg.]
+    cl_alpha_winglet:                   float = None  # [1/deg.]
 
     # Lift curve
     CL_alpha_fw:                        float = None  # [1/rad.]
     CL_alpha_aw:                        float = None  # [1/rad.]
     CL_alpha_vert_tail:                 float = None  # [1/rad.]
+    CL_alpha_winglet:                   float = None  # [1/rad.]
 
     # Maximum lift coefficients
     CL_max_clean:                       float = None  # [-]
@@ -395,6 +429,7 @@ class AircraftParameters:
     mission:           Mission                   = field(default_factory=Mission)
     wing_geometry:     WingGeometry              = field(default_factory=WingGeometry)
     tail_geometry:     TailGeometry              = field(default_factory=TailGeometry)
+    winglet_geometry:  WingletGeometry           = field(default_factory=WingletGeometry)
     fuselage_geometry: FuselageGeometry          = field(default_factory=FuselageGeometry)
     control_surfaces:  ControlSurfaceGeometry    = field(default_factory=ControlSurfaceGeometry)
     mass:              MassProperties            = field(default_factory=MassProperties)
