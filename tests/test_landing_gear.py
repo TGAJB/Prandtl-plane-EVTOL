@@ -26,7 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import class_II_sizing.mass_components as mc
 from parameters import (
-    G, H_L, D_EST, LIFT, N_LIMIT, ENVELOPE,
+    G, H_L, D_EST, LIFT, N_LIMIT, ENVELOPE, FOOTPRINT_MAX_SPAN,
     N_SKID, D_SKID_RAIL, T_SKID_RAIL, L_SKID_RAIL, RHO_AL, GEAR_OPT_BOUNDS,
     D_FRAME_TUBE, T_FRAME_TUBE, L_ARM, CROSSTUBE_COUNT, CROSS_SPAN, ELASTO_COUNT,
 )
@@ -63,25 +63,28 @@ def test_drop_velocities():
 def test_concepts_return_sane_dicts():
     for name, cfg in GEAR_OPT_BOUNDS.items():
         r = mc._GEAR_CONCEPTS[name](cfg["x0"], cfg["material"])
-        for key in ("k", "Ue", "Up", "Fmax", "mass", "dy", "dmax", "reusable"):
+        for key in ("k", "Ue", "Up", "Fmax", "mass", "dy", "dmax", "reusable", "track_m"):
             assert key in r, f"{name} missing {key}"
         assert r["mass"] > 0 and r["k"] > 0 and r["Fmax"] > 0, name
         assert r["Ue"] >= 0 and r["Up"] >= 0, name
         assert r["dmax"] >= r["dy"] >= 0, name
+        assert r["track_m"] > 0, name
 
 
 def test_whole_gear_scaling():
     count = 3
     r = mc.whole_gear(k=1.0, Ue=2.0, Up=3.0, Fmax=4.0, mass1=5.0,
-                      dy=0.10, dmax=0.20, count=count, reusable=True)
+                      dy=0.10, dmax=0.20, count=count, reusable=True, track_m=2.5)
     # Parallel members add: stiffness, energy, load and mass scale by count.
     assert r["k"] == count * 1.0
     assert r["Ue"] == count * 2.0
     assert r["Up"] == count * 3.0
     assert r["Fmax"] == count * 4.0
-    assert r["mass"] == count * 5.0 + N_SKID * mc.skid_rail_mass()
-    # Members deflect together, so strokes do NOT scale.
+    # Whole-gear mass = members + 2 skid rails + the shared skeleton (2 cross-tubes + 4 legs).
+    assert r["mass"] == count * 5.0 + N_SKID * mc.skid_rail_mass() + mc.mount_frame_mass()
+    # Members deflect together, so strokes do NOT scale; track is passed through.
     assert r["dy"] == 0.10 and r["dmax"] == 0.20
+    assert r["track_m"] == 2.5
     assert r["reusable"] is True
 
 
@@ -104,7 +107,8 @@ def test_mount_frame_mass():
 
 def test_elastomeric_includes_frame_and_rails():
     # The elastomeric whole-gear mass must include the 4 mounts, the 2 skid rails AND the
-    # load-path frame (2 cross-tubes + 4 arms) -- not just mounts + rails.
+    # load-path skeleton (2 cross-tubes + 4 legs) -- not just mounts + rails. The skeleton now
+    # comes from whole_gear (shared by every architecture), not from elastomeric itself.
     cfg = GEAR_OPT_BOUNDS["E elastomeric"]
     r = mc.elastomeric(cfg["x0"], cfg["material"])
     kb, dm, _ = cfg["x0"]
@@ -112,6 +116,26 @@ def test_elastomeric_includes_frame_and_rails():
     mounts = ELASTO_COUNT * (mc.ELASTO_FIXED_MASS + mc.ELASTO_MASS_PER_N * fmax)
     rails = N_SKID * mc.skid_rail_mass()
     assert r["mass"] == pytest.approx(mounts + rails + mc.mount_frame_mass())
+
+
+def test_skeleton_on_all_architectures():
+    # Every architecture sits on the same 2-cross-tube + 4-leg skeleton + 2 skid rails, so each
+    # whole-gear mass must exceed (members + rails + skeleton) lower bound, i.e. include the
+    # skeleton. Check the skeleton is present by reconstructing the non-member floor.
+    floor = N_SKID * mc.skid_rail_mass() + mc.mount_frame_mass()
+    for name, cfg in GEAR_OPT_BOUNDS.items():
+        r = mc._GEAR_CONCEPTS[name](cfg["x0"], cfg["material"])
+        assert r["mass"] > floor, f"{name} mass should include rails + skeleton"
+
+
+def test_track_within_footprint():
+    # Every feasible sized architecture must fit the spanwise footprint cap.
+    m_eff = mc.effective_mass(MTOW_TEST, H_L, D_EST, LIFT)
+    rows = mc.size_all_architectures(m_eff)
+    for r in rows:
+        assert r["track_m"] > 0, r["name"]
+        if r["feasible"]:
+            assert r["track_m"] <= FOOTPRINT_MAX_SPAN + 1e-6, r["name"]
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +153,8 @@ def test_size_feasible_designs_honour_constraints():
         # g3: peak deceleration cap.  g4: stroke fits the envelope.
         assert r["npk"] <= N_LIMIT + 1e-6, r["name"]
         assert r["dmax"] <= ENVELOPE + 1e-6, r["name"]
+        # g5: lateral track fits the spanwise footprint cap.
+        assert r["track_m"] <= FOOTPRINT_MAX_SPAN + 1e-6, r["name"]
 
 
 # ---------------------------------------------------------------------------

@@ -95,6 +95,7 @@ CONTINGENCY  = 1.05    # [-]     energy contingency factor
 # Airframe geometry
 
 L_FUS       = 7.0    # [m]   fuselage length
+FUSE_WIDTH  = 2.0    # [m]   fuselage width (front view; placeholder)
 PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
 
@@ -139,6 +140,7 @@ ELASTO_COUNT    = 4      # [-]   one elastomeric mount per leg
 # -- Structural-model constants --
 BC_FACTOR         = 3.0    # [-]   k = BC*EI/L^3 (3 = tip-loaded cantilever)
 CROSS_SPAN        = 0.60   # [m]   skid track width under fuselage             PLACEHOLDER
+FOOTPRINT_MAX_SPAN = 6.0   # [m]   max lateral gear track (spanwise footprint cap)
 TUBE_HINGE_LEN    = 1.0    # [xD]  plastic-hinge length, tube knee
 LEAF_HINGE_LEN    = 1.5    # [xt]  plastic-hinge length, leaf
 LEAF_DEV_FACTOR   = 2.0    # [-]   developed leaf length = factor * L
@@ -166,14 +168,17 @@ QUAL = {
     "E elastomeric":      dict(tunable=0.4, cert_risk=0.4, cost=0.2),
 }
 # criterion -> (direction, base weight, relative uncertainty for sensitivity)
+#   direction "min_ratio" (mass only) is magnitude-aware: score = lightest/value, so a 6x
+#   heavier design scores ~0.16 (not just "worst in the feasible set" as plain min-max would).
+#   Mass is the dominant weight so a much heavier gear cannot win on the soft criteria.
 WEIGHTS = {
-    "SEA":       ("max", 0.25, 0.10),
-    "mass":      ("min", 0.25, 0.05),
-    "npk":       ("min", 0.15, 0.10),
-    "reusable":  ("max", 0.10, 0.00),
-    "tunable":   ("max", 0.08, 0.20),
-    "cert_risk": ("min", 0.12, 0.20),
-    "cost":      ("min", 0.05, 0.20),
+    "SEA":       ("max",       0.18, 0.10),
+    "mass":      ("min_ratio", 0.45, 0.05),
+    "npk":       ("min",       0.11, 0.10),
+    "reusable":  ("max",       0.07, 0.00),
+    "tunable":   ("max",       0.06, 0.20),
+    "cert_risk": ("min",       0.09, 0.20),
+    "cost":      ("min",       0.04, 0.20),
 }
 
 # -- Per-architecture SLSQP search config (x0 / bounds / varnames / material / scale) --

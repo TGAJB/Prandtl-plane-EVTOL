@@ -24,15 +24,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
+import class_II_sizing.mtow_sizing as mtow
 from class_II_sizing.mass_components import (
     effective_mass, v_limit, v_reserve, E_limit, E_reserve,
     size_all_architectures, metrics, score, score_table,
 )
 from parameters import G, H_L, D_EST, LIFT, WEIGHTS, GEAR_OPT_SEED
 
-# Representative FULL landing mass [kg] at which the trade study sizes the gear. Set to the
-# converged MTOW from mtow_sizing; the gear self-weight is only ~2% of MTOW.
-MTOW_STUDY = 2198.58
+# Representative FULL landing mass [kg] at which the trade study sizes the gear: the converged
+# MTOW from mtow_sizing (the gear self-weight is only ~2% of MTOW, closed by the outer loop).
+mtow.load_final_design_state()
+MTOW_STUDY = mtow.MTOW_FINAL
 
 
 # =====================================================================

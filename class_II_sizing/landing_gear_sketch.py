@@ -6,12 +6,13 @@ Configuration (per the design intent):
   * a structural cross-body TUBE bridges the fuselage, with a PLASTIC HINGE at each
     fuselage attachment;
   * the ELASTOMERIC SHOCK ABSORBERS sit at those hinges;
-  * the SKIDS come off the ends of the cross-tube at an angle and run the fuselage length.
+  * the SKIDS come off the ends of the cross-tube at an angle and run along the fuselage.
 
-L_eff is the moment arm from the plastic hinge to the skid reaction; it is the sized
-cantilever length of the metal cross-member spring (architecture B), pulled live from the
-model. Vertical dimensions are to scale (ground clearance, stroke); the skid length is the
-fuselage length L_FUS.
+This sketch FOLLOWS THE SIZING: it reads the converged MTOW from mtow_sizing and draws the
+architecture the trade study actually selects (normally "E elastomeric"). All geometry comes
+from mass_components.geom_for_sketch(): the spanwise track (capped at FOOTPRINT_MAX_SPAN), the
+skid rail length L_SKID_RAIL, and L_eff (moment arm from hinge to skid reaction = the winner's
+sized cantilever length, or the arm length L_ARM for the discrete-mount elastomeric design).
 
 Run:  python3 class_II_sizing/landing_gear_sketch.py   ->  landing_gear_sketch.png
 """
@@ -30,26 +31,31 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 import class_II_sizing.mass_components as mc
-from parameters import L_FUS
+import class_II_sizing.mtow_sizing as mtow
+from parameters import FOOTPRINT_MAX_SPAN, L_FUS
 
-# --- design point -----------------------------------------------------------
-MTOW = 2198.58
-FUSE_WIDTH = 2.0               # [m] fuselage width (front view)
-SKID_LEN = L_FUS               # [m] skid length = fuselage length
-GROUND_CLEARANCE = 0.30        # [m] static fuselage belly-to-ground
+# --- design point: follow the converged MTOW from the sizing loop ------------
+mtow.load_final_design_state()   # solve once (cached) so MTOW_FINAL is populated
+MTOW = mtow.MTOW_FINAL           # converged MTOW [kg]
 
-# Structural cross-member spring (architecture B) gives the plastic hinge + moment arm.
+# Size the gear at the converged MTOW and draw the ACTUAL weighted winner.
 gear = mc.landing_gear_mass(MTOW)
-beam = next(r for r in gear["all_architectures"] if r["name"] == "B metal leaf")
-L_eff = beam["params"]["L"]    # moment arm: plastic hinge -> skid reaction [m]
-b_beam = beam["params"]["b"]   # cross-member width [m]
-t_beam = beam["params"]["t"]   # cross-member thickness [m]
-m_struct = beam["mass"]        # structural cross-member mass [kg]
-stroke = gear["dmax"]          # elastomeric absorber stroke [m]
+arch = gear["arch"]              # winning architecture, e.g. "E elastomeric"
+params = gear["params"]          # winner's sized design variables
+
+# Geometry comes from the model + the winning architecture (geom_for_sketch).
+g = mc.geom_for_sketch(gear)
+track = g["track_m"]            # spanwise footprint (lateral skid track) [m]
+L_eff = g["L_eff"]             # moment arm: hinge -> skid reaction [m]
+SKID_LEN = g["skid_len"]       # skid length = sized rail length L_SKID_RAIL [m]
+GROUND_CLEARANCE = g["clearance"]   # static fuselage belly-to-ground [m]
+FUSE_WIDTH = g["fuse_width"]   # fuselage width (front view) [m]
+m_struct = gear["m_gear"]      # whole-gear mass of the selected design [kg]
+stroke = gear["dmax"]          # absorber stroke [m]
 n_pk = gear["npk"]             # peak load factor [g]
 
+x_skid = track / 2.0           # skid sits at half the track outboard of centreline
 x_hinge = FUSE_WIDTH / 2.0     # hinge at the fuselage side
-x_skid = x_hinge + L_eff       # skid reaction, one moment arm outboard
 RUNNER_TOP = 0.04              # [m] skid-runner thickness
 FUSE_H = 0.55                  # [m] drawn fuselage height (representative)
 
@@ -138,8 +144,9 @@ ax.text(-x_skid - 0.27, belly / 2, f"clearance\n{GROUND_CLEARANCE*100:.0f} cm",
 # track (top)
 ax.annotate("", xy=(-x_skid, belly + FUSE_H + 0.12), xytext=(x_skid, belly + FUSE_H + 0.12),
             arrowprops=dict(arrowstyle="<->", color="0.3"))
-ax.text(0, belly + FUSE_H + 0.16, f"track = {2*x_skid:.2f} m", ha="center", fontsize=8,
-        color="0.3")
+ax.text(0, belly + FUSE_H + 0.16,
+        f"track = {track:.2f} m  (footprint cap {FOOTPRINT_MAX_SPAN:.1f} m)",
+        ha="center", fontsize=8, color="0.3")
 
 ax.set_xlim(-x_skid - 1.0, x_skid + 1.0)
 ax.set_ylim(-0.55, belly + FUSE_H + 0.35)
@@ -147,56 +154,77 @@ ax.set_aspect("equal")
 ax.axis("off")
 
 # ============================ SIDE VIEW =====================================
+# Drawn to scale along the fuselage length L_FUS: the skid rail (SKID_LEN) is SHORTER than the
+# fuselage and sits centred under the belly.
 ax = axs
-ax.set_title(f"Side view  (skid length = fuselage length = {SKID_LEN:.0f} m)",
+ax.set_title(f"Side view  (fuselage {L_FUS:.1f} m, skid rail {SKID_LEN:.2f} m)",
              fontsize=12, fontweight="bold")
-ground(ax, -0.3, SKID_LEN + 0.6)
+ground(ax, -0.3, L_FUS + 0.6)
 
-# skid runner (length = fuselage length) with upturned nose
-xr = np.linspace(0.0, SKID_LEN, 80)
-yr = np.full_like(xr, RUNNER_TOP)
-nose = xr > SKID_LEN - 0.7
-yr[nose] = RUNNER_TOP + (xr[nose] - (SKID_LEN - 0.7)) ** 2 * 0.7
-ax.plot(xr, yr, color=SKID, lw=5, solid_capstyle="round")
-
-# fuselage
-fx0, fx1 = 0.7, SKID_LEN - 0.7
-ax.add_patch(FancyBboxPatch((fx0, belly), fx1 - fx0, FUSE_H,
+# fuselage spans the full length L_FUS
+ax.add_patch(FancyBboxPatch((0.0, belly), L_FUS, FUSE_H,
                             boxstyle="round,pad=0.01,rounding_size=0.08",
                             fc=FUSE, ec=STEEL, lw=1.8))
-ax.text((fx0 + fx1) / 2, belly + FUSE_H / 2, "fuselage", ha="center", va="center", fontsize=9)
+ax.text(L_FUS / 2, belly + FUSE_H / 2, f"fuselage ({L_FUS:.1f} m)",
+        ha="center", va="center", fontsize=9)
+
+# skid runner: SKID_LEN long, centred under the fuselage, upturned nose at the front. The nose
+# rise is capped well below the belly (GROUND_CLEARANCE) so it never pokes into the fuselage.
+skid_x0 = (L_FUS - SKID_LEN) / 2.0
+skid_x1 = skid_x0 + SKID_LEN
+NOSE_LEN = 0.6                                   # [m] length of the upturned section
+NOSE_RISE = 0.6 * (GROUND_CLEARANCE - RUNNER_TOP)  # tip stays at 60% of the clearance gap
+xr = np.linspace(skid_x0, skid_x1, 80)
+yr = np.full_like(xr, RUNNER_TOP)
+nose = xr > skid_x1 - NOSE_LEN
+yr[nose] = RUNNER_TOP + ((xr[nose] - (skid_x1 - NOSE_LEN)) / NOSE_LEN) ** 2 * NOSE_RISE
+ax.plot(xr, yr, color=SKID, lw=5, solid_capstyle="round")
 
 # fore + aft cross-tubes: rigid drop from the runner, elastomeric absorber at the hinge (top)
 y_abs = belly - 0.14
-for xc in (SKID_LEN * 0.30, SKID_LEN * 0.70):
+for xc in (skid_x0 + SKID_LEN * 0.22, skid_x0 + SKID_LEN * 0.78):
     ax.plot([xc, xc], [RUNNER_TOP, y_abs], color=STEEL, lw=5, solid_capstyle="round")
     spring(ax, xc, y_abs, xc, belly, coils=4, width=0.04, color=SPRING_C, lw=2.2)
     ax.plot([xc], [belly], marker="o", ms=8, mfc="white", mec=STEEL, mew=2, zorder=5)
 
-ax.annotate("", xy=(0.35, 0.0), xytext=(0.35, belly),
+# skid-rail length dimension (under the runner)
+ax.annotate("", xy=(skid_x0, -0.18), xytext=(skid_x1, -0.18),
+            arrowprops=dict(arrowstyle="<->", color="0.3"))
+ax.text((skid_x0 + skid_x1) / 2, -0.24, f"skid rail = {SKID_LEN:.2f} m",
+        ha="center", va="top", fontsize=8, color="0.3")
+
+ax.annotate("", xy=(skid_x0 - 0.25, 0.0), xytext=(skid_x0 - 0.25, belly),
             arrowprops=dict(arrowstyle="<->", color="0.25"))
-ax.text(0.28, belly / 2, f"{GROUND_CLEARANCE*100:.0f} cm", ha="right", va="center",
+ax.text(skid_x0 - 0.32, belly / 2, f"{GROUND_CLEARANCE*100:.0f} cm", ha="right", va="center",
         fontsize=8, color="0.25")
-ax.text(SKID_LEN * 0.5, -0.20, "elastomeric shock absorbers at the hinges (fore + aft)",
+ax.text(L_FUS / 2, -0.44, "elastomeric shock absorbers at the hinges (fore + aft)",
         ha="center", va="top", fontsize=8, color=SPRING_C)
-ax.annotate("skid runner", xy=(SKID_LEN - 0.6, RUNNER_TOP),
-            xytext=(SKID_LEN - 0.1, RUNNER_TOP + 0.34), ha="right", va="bottom",
+ax.annotate("skid runner", xy=(skid_x1 - 0.5, RUNNER_TOP),
+            xytext=(skid_x1 + 0.2, RUNNER_TOP + 0.34), ha="left", va="bottom",
             fontsize=8, color=SKID, arrowprops=dict(arrowstyle="->", color=SKID))
 
-ax.set_xlim(-0.6, SKID_LEN + 0.8)
-ax.set_ylim(-0.55, belly + FUSE_H + 0.35)
+ax.set_xlim(-0.6, L_FUS + 0.8)
+ax.set_ylim(-0.6, belly + FUSE_H + 0.35)
 ax.set_aspect("equal")
 ax.axis("off")
 
 # ============================ TITLE + DATA BOX ==============================
 fig.suptitle("Skid Landing Gear — structural cross-tube + elastomeric absorbers",
              fontsize=14, fontweight="bold")
-info = (f"Config: structural cross-body tube (plastic hinge at fuselage) + elastomeric "
+# Cross-member detail only for the bending architectures that have a leaf (b, t).
+if "b" in params and "t" in params:
+    member_line = (f"Cross-member: b={params['b']*1000:.0f} mm, "
+                   f"t={params['t']*1000:.1f} mm     ")
+else:
+    member_line = ""
+info = (f"Selected: {arch}   (from converged MTOW = {MTOW:.0f} kg)\n"
+        f"Config: structural cross-body tube (plastic hinge at fuselage) + elastomeric "
         f"shock absorbers at the hinges; skids angled off the tube ends\n"
-        f"Moment arm  L_eff : {L_eff:.2f} m     Cross-member: b={b_beam*1000:.0f} mm, "
-        f"t={t_beam*1000:.1f} mm     Structural mass: {m_struct:.0f} kg (+ absorbers)\n"
-        f"Fuselage width: {FUSE_WIDTH:.1f} m     Skid length: {SKID_LEN:.1f} m     "
-        f"Track: {2*x_skid:.2f} m     Ground clearance: {GROUND_CLEARANCE*100:.0f} cm     "
+        f"Moment arm  L_eff : {L_eff:.2f} m     {member_line}"
+        f"Gear mass: {m_struct:.0f} kg (skeleton + absorbers + rails)\n"
+        f"Fuselage width: {FUSE_WIDTH:.1f} m     Skid length: {SKID_LEN:.2f} m     "
+        f"Track: {track:.2f} m (cap {FOOTPRINT_MAX_SPAN:.1f} m)     "
+        f"Ground clearance: {GROUND_CLEARANCE*100:.0f} cm     "
         f"Stroke δ: {stroke*100:.0f} cm     Peak: {n_pk:.1f} g")
 fig.text(0.5, 0.02, info, ha="center", va="bottom", fontsize=8.5, family="monospace",
          bbox=dict(boxstyle="round,pad=0.5", fc="#fffde7", ec="0.6"))
@@ -205,5 +233,6 @@ fig.tight_layout(rect=[0, 0.12, 1, 0.95])
 out = PROJECT_ROOT / "class_II_sizing" / "landing_gear_sketch.png"
 fig.savefig(out, dpi=150)
 print("written ->", out)
-print(f"  L_eff={L_eff:.2f} m, track={2*x_skid:.2f} m, skid={SKID_LEN:.1f} m, "
-      f"struct mass={m_struct:.0f} kg, stroke={stroke*100:.0f} cm, n_pk={n_pk:.1f} g")
+print(f"  MTOW={MTOW:.0f} kg, arch={arch}, L_eff={L_eff:.2f} m, track={track:.2f} m "
+      f"(cap {FOOTPRINT_MAX_SPAN:.1f} m), skid={SKID_LEN:.2f} m, "
+      f"gear mass={m_struct:.0f} kg, stroke={stroke*100:.0f} cm, n_pk={n_pk:.1f} g")

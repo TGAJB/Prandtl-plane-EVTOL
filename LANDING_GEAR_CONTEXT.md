@@ -63,14 +63,15 @@ repo. Read this top to bottom; it explains what exists, why, and the non-obvious
 ## 4. How the landing-gear sizing works (in `mass_components.py`)
 
 Skid gear = 2 longitudinal rails joined by 2 transverse cross-members, 2 knees each → 4
-"legs". Every architecture is an **energy absorber** sized for the two CS-27 drops. All
-quantities are whole-gear totals (per-member × count, see `whole_gear`).
+"legs". Every architecture is an **energy absorber** sized for the two CS-27 drops, sitting on
+the shared 2-cross-tube + 4-leg skeleton (`mount_frame_mass`, added for ALL archs by
+`whole_gear`). All quantities are whole-gear totals (per-member × count, see `whole_gear`).
 
 **Data flow:** `landing_gear_mass(mtow_kg)` →
 `effective_mass` (drop mass `m_eff`, = MTOW since `LIFT=0`) →
 `size_all_architectures(m_eff)` →
-for each arch: `_scaled_gear_bounds` then `size(...)` (scipy SLSQP, min mass s.t. 4
-constraints, 48 restarts, seeded) →
+for each arch: `_scaled_gear_bounds` then `size(...)` (scipy SLSQP, min mass s.t. 5
+constraints incl. the g5 footprint cap, 48 restarts, seeded) →
 `score(rows)` (weighted trade-off over feasible archs) →
 return the **weighted-winner's** dict.
 
@@ -84,9 +85,14 @@ return the **weighted-winner's** dict.
   - `composite_leaf` (B′, CFRP, brittle, not reusable)
   - `crushable`   (F, stiff leaf + honeycomb crush, not reusable)
   - `elastomeric` (E, block spring, hysteretic, reusable)
-- `whole_gear(...)` — scales one member to the full gear (× count, + skid rails).
-- `constraints / feasible / mass_of` — the 4 drop constraints (g1 elastic@limit, g2 survive
-  reserve, g3 peak-decel ≤ `N_LIMIT`·W, g4 stroke ≤ `ENVELOPE`).
+- `whole_gear(...)` — scales one member to the full gear (× count, + 2 skid rails, + the shared
+  2-cross-tube + 4-leg skeleton `mount_frame_mass()` that EVERY architecture now carries);
+  also threads `track_m` (the spanwise footprint) through.
+- `constraints / feasible / mass_of` — the 5 drop/geometry constraints (g1 elastic@limit, g2
+  survive reserve, g3 peak-decel ≤ `N_LIMIT`·W, g4 stroke ≤ `ENVELOPE`, g5 track ≤
+  `FOOTPRINT_MAX_SPAN`). g5 is currently slack (tracks ~2.9–3.1 m << 6 m).
+- `geom_for_sketch(details)` — maps a sized winner to drawable geometry (track, L_eff, skid
+  length, clearance, fuselage width) for `landing_gear_sketch.py`.
 - `size(name, fn, mat, x0, bounds, varnames, m_eff)` — SLSQP min-mass with restarts; adds
   `feasible, params, SEA, MSe, MSr, npk`.
 - `metrics / normalise / score_table / score` — the weighted trade-off (min-max normalise
@@ -117,9 +123,14 @@ B′=composite_leaf, F=crushable, E=elastomeric. (D=oleo was removed.)
   `LEAF_HINGE_LEN=1.5`, `LEAF_DEV_FACTOR=2.0`, `COMP_CRUSH_FRAC=0.5`, `COMP_DELAM_FACTOR=2.0`,
   `CRUSH_LEAF_B=0.08`, `CRUSH_LEAF_L=0.45`, `HONEYCOMB_STRESS=2.5e6`, `HONEYCOMB_DENSITY=80`,
   `CRUSH_STROKE_EFF=0.75`, `ELASTO_FIXED_MASS=1.2`, `ELASTO_MASS_PER_N=1.0e-4`.
+- Footprint: `FUSE_WIDTH=2.0 m` (front-view fuselage width), `FOOTPRINT_MAX_SPAN=6.0 m` (max
+  lateral gear track). Track = `FUSE_WIDTH + 2*L_splay` (L_splay = bending `L`, or `L_ARM` for
+  the elastomeric).
 - Scoring: `QUAL` (per-arch tunable/cert_risk/cost) and `WEIGHTS` (criterion →
-  `(direction, base_weight, uncertainty)`): SEA(max,0.25), mass(min,0.25), npk(min,0.15),
-  reusable(max,0.10), tunable(max,0.08), cert_risk(min,0.12), cost(min,0.05).
+  `(direction, base_weight, uncertainty)`): SEA(max,0.18), **mass(min_ratio,0.45)**,
+  npk(min,0.11), reusable(max,0.07), tunable(max,0.06), cert_risk(min,0.09), cost(min,0.04).
+  Mass is the **dominant** weight and uses the magnitude-aware `"min_ratio"` direction
+  (score = lightest/value), so a much heavier gear can't win on the soft criteria.
 - Optimizer: `GEAR_OPT_SEED=0`, `GEAR_OPT_RESTARTS=48`, `GEAR_BOUNDS_REF_MASS=700.0`,
   `GEAR_OPT_BOUNDS` (per-arch `x0`/`bounds`/`varnames`/`material`/`scale`).
 
@@ -143,11 +154,14 @@ B′=composite_leaf, F=crushable, E=elastomeric. (D=oleo was removed.)
 
 ## 7. Gotchas / known behavior (important)
 
-- **~123-iteration MTOW convergence is BY DESIGN, not a bug.** With real competition the
-  weighted score near-ties the heavy steel metal leaf (~285 kg) against the elastomer
-  (~45 kg), so the in-loop winner flips as MTOW nudges until the mass settles. It converges
-  (elastomer, ~2199 kg). The user accepted this; **do not** "fix" it by switching the loop to
-  lightest-feasible or adding hysteresis unless asked.
+- **MTOW convergence is now fast (~23 iterations) and stable** — the elastomer wins at every
+  mass. This was deliberately changed (mid-2026): the old ~123-iteration flip-flop came from the
+  weighted score near-tying the heavy steel metal leaf (~277 kg) against the elastomer (~42 kg).
+  The user asked to make WEIGHT dominant, so mass is now the top weight (0.45) AND uses the
+  magnitude-aware `"min_ratio"` normalization (score = lightest/value). The 277 kg leaf now
+  scores ~0.33 vs the elastomer's ~0.85 (robust winner 98% of MC trials), so the winner no
+  longer flips. Converges to ~2188 kg. The earlier "do not fix the 123-iter convergence" note no
+  longer applies.
 - **Cross-tube is essentially always elastic-infeasible (g1)** — a bending tube cannot stay
   elastic at these sink speeds. That is correct physics, not a bounds problem.
 - **Composite leaf is stroke-limited** at high mass (CFRP's low modulus → deflects past the
@@ -179,7 +193,7 @@ Sanity check the sizer directly:
 import class_II_sizing.mass_components as mc
 d = mc.landing_gear_mass(2198.58)
 print(d["arch"], round(d["m_gear"], 1), round(d["score"], 3))
-# -> "E elastomeric" ~44.5 kg, score ~0.80
+# -> "E elastomeric" ~42.3 kg, score ~0.85   (mass now dominant; winner stable)
 ```
 
 ---
@@ -187,8 +201,9 @@ print(d["arch"], round(d["m_gear"], 1), round(d["score"], 3))
 ## 9. Persistent memory notes (in this Claude project)
 
 - `landing-gear-elastic-infeasible` — a bending tube can't be an elastic spring.
-- `landing-gear-bounds-autoscale` — bounds auto-scale with MTOW; the ~123-iter convergence
-  from the near-tied weighted score is by-design; don't "fix" it.
+- `landing-gear-bounds-autoscale` — bounds auto-scale with MTOW. (The old ~123-iter convergence
+  is no longer a thing: weight is now the dominant scoring criterion, the winner is stable, and
+  the loop converges in ~23 iterations — see §7.)
 
 ---
 

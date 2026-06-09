@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from parameters import (
     G, RHO_ORIGIN,
-    L_FUS, PER_FUS_MAX, N_PAX,
+    L_FUS, FUSE_WIDTH, PER_FUS_MAX, N_PAX,
     N_W, TAPER_W, TIP_TO_CHORD_W,
     SIGMA_ALLOW_CFRP, RHO_CFRP, T_SKIN_MIN_CFRP,
     S_TAIL, AR_T, TAPER_TAIL, TIP_TO_CHORD, V_ANGLE,
@@ -34,7 +34,8 @@ from parameters import (
     CROSSTUBE_COUNT, HINGES_PER_TUBE,
     LEAF_COUNT, HINGES_PER_LEAF, COMPOSITE_COUNT,
     CRUSH_COUNT, ELASTO_COUNT,
-    BC_FACTOR, CROSS_SPAN, TUBE_HINGE_LEN, LEAF_HINGE_LEN, LEAF_DEV_FACTOR,
+    BC_FACTOR, CROSS_SPAN, FOOTPRINT_MAX_SPAN,
+    TUBE_HINGE_LEN, LEAF_HINGE_LEN, LEAF_DEV_FACTOR,
     COMP_CRUSH_FRAC, COMP_DELAM_FACTOR,
     CRUSH_LEAF_B, CRUSH_LEAF_L, HONEYCOMB_STRESS, HONEYCOMB_DENSITY, CRUSH_STROKE_EFF,
     ELASTO_FIXED_MASS, ELASTO_MASS_PER_N,
@@ -173,7 +174,8 @@ def cross_tube(x, m):
     Fmax = max(Fy, Mp / L)                             # per cross-tube
     dmax = dy + theta * L
     mass1 = m["rho"] * A * (2 * L + CROSS_SPAN)        # one cross-tube
-    return whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, CROSSTUBE_COUNT, reusable=False)
+    return whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, CROSSTUBE_COUNT, reusable=False,
+                      track_m=FUSE_WIDTH + 2 * L)
 
 
 def metal_leaf(x, m):
@@ -193,7 +195,8 @@ def metal_leaf(x, m):
     Fmax = max(Fy, Mp / L)
     dmax = dy + theta * L
     mass1 = m["rho"] * A * (LEAF_DEV_FACTOR * L)
-    return whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, LEAF_COUNT, reusable=True)
+    return whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, LEAF_COUNT, reusable=True,
+                      track_m=FUSE_WIDTH + 2 * L)
 
 
 def composite_leaf(x, m):
@@ -210,7 +213,8 @@ def composite_leaf(x, m):
     Fmax = Ffail
     dmax = dfail + COMP_CRUSH_FRAC * L
     mass1 = m["rho"] * A * (LEAF_DEV_FACTOR * L)
-    return whole_gear(k, Ue, Up, Fmax, mass1, dfail, dmax, COMPOSITE_COUNT, reusable=False)
+    return whole_gear(k, Ue, Up, Fmax, mass1, dfail, dmax, COMPOSITE_COUNT, reusable=False,
+                      track_m=FUSE_WIDTH + 2 * L)
 
 
 def crushable(x, m):
@@ -229,7 +233,8 @@ def crushable(x, m):
     Fmax = max(Fy, Fcr)
     dmax = dy + sc
     mass1 = m["rho"] * A * (LEAF_DEV_FACTOR * L) + HONEYCOMB_DENSITY * Ac * sc
-    return whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, CRUSH_COUNT, reusable=False)
+    return whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, CRUSH_COUNT, reusable=False,
+                      track_m=FUSE_WIDTH + 2 * L)
 
 
 def elastomeric(x, m):
@@ -239,9 +244,10 @@ def elastomeric(x, m):
     Up = loss * Ue
     Fmax = kb * dm
     mass1 = ELASTO_FIXED_MASS + ELASTO_MASS_PER_N * Fmax
-    r = whole_gear(kb, Ue, Up, Fmax, mass1, dm, dm, ELASTO_COUNT, reusable=True)
-    r["mass"] += mount_frame_mass()    # 2 cross-tubes + 4 arms (elastomer has no structural member)
-    return r
+    # The 2-cross-tube + 4-leg skeleton is added for every architecture by whole_gear; the
+    # elastomer's track is set by the arm length L_ARM (the lateral splay to the skids).
+    return whole_gear(kb, Ue, Up, Fmax, mass1, dm, dm, ELASTO_COUNT, reusable=True,
+                      track_m=FUSE_WIDTH + 2 * L_ARM)
 
 
 def skid_rail_mass():
@@ -253,27 +259,30 @@ def skid_rail_mass():
 
 
 def mount_frame_mass():
-    """Mass [kg] of the discrete-mount gear's load-path frame: CROSSTUBE_COUNT transverse
-    cross-tubes (each spanning CROSS_SPAN) + ELASTO_COUNT arms (each L_ARM long) carrying the
-    mounts down to the skids. Hollow aluminium tubes, geometric estimate m = rho * A * L.
+    """Mass [kg] of the gear's load-path skeleton, shared by every architecture: CROSSTUBE_COUNT
+    transverse cross-tubes (each spanning CROSS_SPAN) + ELASTO_COUNT legs/arms (each L_ARM long)
+    carrying the energy absorbers down to the skids. Hollow aluminium tubes, geometric estimate
+    m = rho * A * L.
 
-    Only the discrete-mount concepts (elastomeric) need this: the bending concepts already
-    size their own cross-member, whereas the elastomer replaces it with a lumped spring and
-    would otherwise have NO structure between the fuselage and the skids."""
+    Every concept sits on this same skeleton (2 cross-tubes + 4 legs), so whole_gear adds it
+    for all architectures. The bending members additionally span transversely in their own mass1,
+    so that adds a small, deliberately conservative overlap with the cross-tubes (a few kg, far
+    below the gear-selection margin)."""
     d = D_FRAME_TUBE - 2 * T_FRAME_TUBE
     A = math.pi / 4 * (D_FRAME_TUBE**2 - d**2)
     length_total = CROSSTUBE_COUNT * CROSS_SPAN + ELASTO_COUNT * L_ARM
     return RHO_AL * A * length_total
 
 
-def whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, count, reusable):
-    """Scale one member's properties to the whole gear (count members in parallel) and
-    add the two shared skid rails. Members deflect together, so stiffness, energy, load
-    and mass add up; stroke (dy, dmax) does not."""
+def whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, count, reusable, track_m=0.0):
+    """Scale one member's properties to the whole gear (count members in parallel) and add the
+    two shared skid rails plus the shared 2-cross-tube + 4-leg skeleton (mount_frame_mass), which
+    every architecture carries. Members deflect together, so stiffness, energy, load and mass add
+    up; stroke (dy, dmax) does not. track_m is the spanwise footprint (lateral skid track)."""
     return dict(
         k=count * k, Ue=count * Ue, Up=count * Up, Fmax=count * Fmax,
-        mass=count * mass1 + N_SKID * skid_rail_mass(),
-        dy=dy, dmax=dmax, reusable=reusable,
+        mass=count * mass1 + N_SKID * skid_rail_mass() + mount_frame_mass(),
+        dy=dy, dmax=dmax, reusable=reusable, track_m=track_m,
     )
 
 
@@ -282,6 +291,7 @@ def whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, count, reusable):
 #   g2: Ue + Up   - E_R        (survive reserve)
 #   g3: N_LIMIT*W - Fmax       (peak-decel cap)
 #   g4: ENVELOPE  - dmax       (fits stroke)
+#   g5: FOOTPRINT_MAX_SPAN - track_m   (lateral track fits the spanwise footprint)
 
 def constraints(x, fn, mat, m_eff):
     r = fn(x, mat)
@@ -290,6 +300,7 @@ def constraints(x, fn, mat, m_eff):
         r["Ue"] + r["Up"]   - E_reserve(r["dmax"], m_eff),
         N_LIMIT * m_eff * G - r["Fmax"],
         ENVELOPE            - r["dmax"],
+        FOOTPRINT_MAX_SPAN  - r["track_m"],
     ])
 
 
@@ -366,11 +377,25 @@ def metrics(arch):
 
 
 def normalise(values, direction):
-    """Min-max rescale one criterion's values to [0, 1] across the architectures.
+    """Rescale one criterion's values to [0, 1] across the architectures.
 
-    direction == "max": larger raw value is better, so the largest maps to 1.0.
-    direction == "min": smaller raw value is better, so the smallest maps to 1.0.
+    direction == "max": larger raw value is better, so the largest maps to 1.0 (min-max).
+    direction == "min": smaller raw value is better, so the smallest maps to 1.0 (min-max).
+    direction == "min_ratio": smaller is better AND magnitude matters: score = best/value, so
+        the lightest maps to 1.0 and a design k times heavier scores 1/k (independent of the
+        rest of the set). Used for mass so a much heavier gear is penalised by its true ratio,
+        not merely ranked last.
     If all values are equal the criterion cannot discriminate, so everything scores 1.0."""
+    if direction == "min_ratio":
+        best = min(values)
+        normalised_values = []
+        for value in values:
+            if value > 0:
+                normalised_values.append(best / value)
+            else:
+                normalised_values.append(1.0)
+        return normalised_values
+
     lowest = min(values)
     highest = max(values)
     spread = highest - lowest
@@ -573,6 +598,22 @@ def landing_gear_mass(mtow_kg, return_details=True):
     details["score"] = winner_score
     details["all_architectures"] = rows
     return details
+
+
+def geom_for_sketch(details):
+    """Drawable landing-gear geometry derived from the sized winner (a landing_gear_mass dict).
+
+    Architecture-agnostic: the spanwise track and skid length come from the model. L_eff is the
+    moment arm from the hinge to the skid reaction (the bending archs expose 'L'; the
+    discrete-mount/elastomeric frame uses the arm length L_ARM). All lengths in metres."""
+    p = details.get("params", {})
+    return dict(
+        track_m=details["track_m"],
+        L_eff=p.get("L", L_ARM),
+        skid_len=L_SKID_RAIL,
+        clearance=0.30,                              # [m] static belly-to-ground clearance
+        fuse_width=FUSE_WIDTH,
+    )
 
 
 # V-tail (physics-based cantilever sizing)
