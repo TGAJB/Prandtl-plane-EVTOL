@@ -106,8 +106,10 @@ class TailGeometry:
     """
 
     x_vert_tail:                float = 8.5  # [m]
-    S_vert_tail:                float = 2.0  # [m^2]
+    c_r_vert_tail:              float = 1.4  # [m]
+    c_t_vert_tail:              float = 0.5  # [m]
     b_vert_tail:                float = 2.5  # [m]
+    S_vert_tail:                float = ((c_r_vert_tail + c_t_vert_tail)*b_vert_tail)/2  # [m^2]
     AR_vert_tail:               float = b_vert_tail**2/S_vert_tail  # [-]
     LE_sweep_vert_tail:         float = 0.31  # [rad]
     airfoil_vert_tail:          str   = "NACA 0012"  # [-]
@@ -187,7 +189,7 @@ class MassProperties:
     Aircraft mass and inertia properties.
     """
 
-    mtow:         float = None  # [kg]
+    mtow:         float = 2000.0  # [kg]
     oew:          float = None  # [kg]
     payload_mass: int   = 400  # [kg]
 
@@ -214,8 +216,8 @@ class AerodynamicCoefficients:
     cl_alpha_winglet:                   float = None  # [1/deg.]
 
     # Lift curve
-    CL_alpha_fw:                        float = None  # [1/rad.]
-    CL_alpha_aw:                        float = None  # [1/rad.]
+    CL_alpha_fw:                        float = 5.02484  # [1/rad.]
+    CL_alpha_aw:                        float = 5.02484  # [1/rad.]
     CL_alpha_vert_tail:                 float = None  # [1/rad.]
     CL_alpha_winglet:                   float = None  # [1/rad.]
 
@@ -235,7 +237,7 @@ class AerodynamicCoefficients:
     CD0_fuselage:                       float = None  # [-]
 
     # Oswald efficiency factors
-    e_hor_wings:                         float = None  # [-] - Oswald efficiency factor (DOES THE VALIDITY CHANGE WHEN HLDs ARE DEPLOYED?)
+    e_hor_wings:                         float = 1.34  # [-] - Oswald efficiency factor (DOES THE VALIDITY CHANGE WHEN HLDs ARE DEPLOYED?)
     e_vert_tail:                         float = None  # [-]
     e_winglet:                           float = None  # [-]
 
@@ -250,20 +252,20 @@ class AerodynamicCoefficients:
 
     # Dynamic pressure ratios
     dyn_pres_ratio_fw_to_aw:            float = 0.9  # [-]
-    dyn_pres_ratio_fuselage_to_tail:    float = None  # [-]
+    dyn_pres_ratio_fuselage_to_tail:    float = 0.95  # [-]
 
     # Flow speed ratios
     flow_speed_ratio_fw_to_aw:          float = None  # [-]
     flow_speed_ratio_fuselage_to_tail:  float = None  # [-]
 
     # Interference coefficients
-    I_v:                                float = None #  [-] - Vortex interference factor
+    I_v:                                float = 1.0 #  [-] - Vortex interference factor
 
     # Long. positions of aerodynamic centres
-    x_ac_fw_cruise:                     float = None  # [m]
-    x_ac_aw_cruise:                     float = None  # [m]
-    x_ac_fw_approach:                   float = None  # [m]
-    x_ac_aw_approach:                   float = None  # [m]
+    x_ac_fw_cruise:                     float = 1.6  # [m]
+    x_ac_aw_cruise:                     float = 6.02  # [m]
+    x_ac_fw_approach:                   float = 1.6  # [m]
+    x_ac_aw_approach:                   float = 6.02  # [m]
 
     # Vert. positions of aerodynamic centres
     z_ac_fw_cruise:                     float = None  # [m]

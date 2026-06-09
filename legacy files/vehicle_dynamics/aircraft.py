@@ -20,8 +20,8 @@ class Physical:
 @dataclass
 class FlightCondition:
     mach:               float = (200/3.6)/(np.sqrt(Physical.gamma*Physical.R*263.385))
-    rho:                float = None
-    tas:                float = None       # true airspeed [m/s]
+    rho:                float = 0.835679
+    tas:                float = 200/3.6       # true airspeed [m/s]
     alpha:              float = 0.0        # [rad]
     gamma0:             float = 0.0        # [rad]
     config:             str = "cruise"     # selects x_ac_*_cruise vs *_approach
@@ -361,14 +361,14 @@ class Aircraft:
         x_ac_fw = self.x_ac_fw()
         x_ac_aw = self.x_ac_aw()
         x_cg = self.x_cg()
-        eta = self._require(ac.flow_speed_ratio_fw_to_aw, "aerodynamics.flow_speed_ratio_fw_to_aw")
+        eta = self._require(ac.dyn_pres_ratio_fw_to_aw, "aerodynamics.dyn_pres_ratio_fw_to_aw")
 
         downwash = self.downwash_gradient()
         CL_alpha_fw = self.CL_alpha_front_wing()
         CL_alpha_aft = self.CL_alpha_aft_wing()
 
         front_term = -CL_alpha_fw * ((x_cg - x_ac_fw)/c_ref) * (S_fw/S_ref)
-        aft_term = -CL_alpha_aft * ((x_cg - x_ac_aw)/c_ref) * (1 - downwash)*eta*(S_aw/S_ref)
+        aft_term = +CL_alpha_aft * ((x_cg - x_ac_aw)/c_ref) * (1 - downwash)*eta*(S_aw/S_ref)
 
         return front_term + aft_term
     
@@ -399,7 +399,7 @@ class Aircraft:
         x_cg  = self.x_cg()
         x_ac  = self.x_ac_aw()
         S_aw  = self._require(wg.S_aw, "wing_geometry.S_aw")
-        eta   = self._require(ac.flow_speed_ratio_fw_to_aw, "aerodynamics.flow_speed_ratio_fw_to_aw")
+        eta   = self._require(ac.dyn_pres_ratio_fw_to_aw, "aerodynamics.dyn_pres_ratio_fw_to_aw")
         x_bar = (x_ac - x_cg) / c_ref             
         return (0.5 + 2.0*x_bar) * self.CL_alpha_aft_wing() * (S_aw/S_ref) * eta
 
@@ -455,7 +455,7 @@ class Aircraft:
         x_ac_aw = self.x_ac_aw()
         x_cg = self.x_cg()
         l_h = x_ac_aw - x_cg
-        eta   = self._require(ac.flow_speed_ratio_fw_to_aw, "aerodynamics.flow_speed_ratio_fw_to_aw")
+        eta   = self._require(ac.dyn_pres_ratio_fw_to_aw, "aerodynamics.dyn_pres_ratio_fw_to_aw")
 
         delta = -2*self.CL_alpha_aft_wing()*eta*(S_aw/S_ref)*((l_h/c_ref)**2)
         return self.CM_q_front_wing() + delta
@@ -470,8 +470,8 @@ class Aircraft:
 
         S_ref, _, c_ref = self._ref()
         Se_aw = self._require(wg.S_e_aw, "wing_geometry.S_e_aw")
-        d = self._require(fg.fuselage_diameter, "fuselage_geometry.fuselage_diameter")
-        eta = self._require(ac.flow_speed_ratio_fw_to_aw, "aerodynamics.flow_speed_ratio_fw_to_aw")
+        d = self._require(fg.d_fw, "fuselage_geometry.d_fw")
+        eta = self._require(ac.dyn_pres_ratio_fw_to_aw, "aerodynamics.dyn_pres_ratio_fw_to_aw")
         K_WB = self.wing_interference_factors(d, self._require(wg.b_aw, "wing_geometry.b_aw"))
         eps = self.downwash_gradient()
         arm = (self.x_ac_aw() - self.x_cg()) / c_ref
@@ -488,8 +488,8 @@ class Aircraft:
         
         S_ref, _, c_ref = self._ref()
         Se_aw = self._require(wg.S_e_aw, "wing_geometry.S_e_aw")
-        d = self._require(fg.fuselage_diameter, "fuselage_geometry.fuselage_diameter")
-        eta = self._require(ac.flow_speed_ratio_fw_to_aw, "aerodynamics.flow_speed_ratio_fw_to_aw")
+        d = self._require(fg.d_fw, "fuselage_geometry.d_fw")
+        eta = self._require(ac.dyn_pres_ratio_fw_to_aw, "aerodynamics.dyn_pres_ratio_fw_to_aw")
         K_WB = self.wing_interference_factors(d, self._require(wg.b_aw, "wing_geometry.b_aw"))
         eps = self.downwash_gradient()
         arm = (self.x_ac_aw() - self.x_cg()) / c_ref
@@ -571,7 +571,7 @@ class Aircraft:
         S_ref, _, _ = self._ref()
         on = cs.elevator_on_surface
         if on == "aw":
-            CLa, S, eta = self.CL_alpha_aft_wing(), wg.S_aw, ac.flow_speed_ratio_fw_to_aw
+            CLa, S, eta = self.CL_alpha_aft_wing(), wg.S_aw, ac.dyn_pres_ratio_fw_to_aw
         else:
             CLa, S, eta = self.CL_alpha_front_wing(), wg.S_fw, 1.0
         eta = self._require(eta, "elevator surface eta")
@@ -785,7 +785,7 @@ class Aircraft:
             clCL_A, clG, KMG = ch.clb_over_CL_AR_aw, ch.clb_over_dihedral_aw, ch.clb_KM_Gamma_aw
             tw_term = ch.clb_twist_aw
         A = b**2/S
-        d = self._require(self.params.fuselage_geometry.fuselage_diameter, "fuselage_geometry.fuselage_diameter")
+        d = self._require(self.params.fuselage_geometry.d_fw, "fuselage_geometry.d_fw")
         sweep_c4 = self._le_to_c4(np.radians(le), A, taper)
         CL = self.CL_trim()
         Gam = self._require(dih, "dihedral")           
@@ -1089,7 +1089,7 @@ class Aircraft:
         tg, ac = self.params.tail_geometry, self.params.aerodynamics
         S_ref, _, _ = self._ref()
         Sv = self._require(tg.S_vert_tail, "tail_geometry.S_vert_tail")
-        eta_v = self._require(ac.flow_speed_ratio_fuselage_to_tail, "aerodynamics.flow_speed_ratio_fuselage_to_tail")
+        eta_v = self._require(ac.dyn_pres_ratio_fuselage_to_tail, "aerodynamics.dyn_pres_ratio_fuselage_to_tail")
         return self.CL_alpha_vtail() * eta_v * (Sv/S_ref) * self._rudder_effectiveness()
  
     def Cn_delta_r(self):
@@ -1191,7 +1191,100 @@ class Aircraft:
         c.C_Y_delta_r = self.CY_delta_r(); c.C_N_delta_r = self.Cn_delta_r(); c.C_L_delta_r = self.Cl_delta_r()
         c.C_L_delta_a = self.Cl_delta_a(); c.C_N_delta_a = self.Cn_delta_a()
         return self.params
-    
+# ===========================================================================
+# RESULTS PRINTOUT — grouped table of every derivative produced by solve()
+# ===========================================================================
+#   row = (display symbol, source key, dataclass field, units, description)
+#   source key: "s" -> params.stability, "c" -> params.controls
+_RESULT_GROUPS = [
+    ("LONGITUDINAL — Static stability", [
+        ("C_L_alpha",     "s", "C_L_alpha",     "1/rad", "Lift-curve slope"),
+        ("C_M_alpha",     "s", "C_M_alpha",     "1/rad", "Pitching-moment slope (static margin)"),
+    ]),
+    ("LONGITUDINAL — Dynamic (rate) derivatives", [
+        ("C_L_q",         "s", "C_L_q",         "1/rad", "Lift due to pitch rate"),
+        ("C_M_q",         "s", "C_M_q",         "1/rad", "Pitch damping"),
+        ("C_L_alpha_dot", "s", "C_L_alpha_dot", "1/rad", "Lift due to AoA rate (downwash lag)"),
+        ("C_M_alpha_dot", "s", "C_M_alpha_dot", "1/rad", "Pitch moment due to AoA rate"),
+    ]),
+    ("LONGITUDINAL — Symmetric force bridge (X/Z)", [
+        ("C_X_0",         "s", "C_X_0",         "-",     "Steady X-force (trim)"),
+        ("C_Z_0",         "s", "C_Z_0",         "-",     "Steady Z-force (trim)"),
+        ("C_X_u",         "s", "C_X_u",         "-",     "X-force due to speed"),
+        ("C_Z_u",         "s", "C_Z_u",         "-",     "Z-force due to speed"),
+        ("C_X_alpha",     "s", "C_X_alpha",     "1/rad", "X-force due to AoA"),
+        ("C_Z_alpha",     "s", "C_Z_alpha",     "1/rad", "Z-force due to AoA"),
+        ("C_Z_alpha_dot", "s", "C_Z_alpha_dot", "1/rad", "Z-force due to AoA rate"),
+        ("C_Z_q",         "s", "C_Z_q",         "1/rad", "Z-force due to pitch rate"),
+    ]),
+    ("LATERAL/DIRECTIONAL — Static stability (sideslip)", [
+        ("C_Y_beta",      "s", "C_Y_beta",      "1/rad", "Side-force due to sideslip"),
+        ("C_l_beta",      "s", "C_L_beta",      "1/rad", "Rolling moment due to sideslip (dihedral effect)"),
+        ("C_n_beta",      "s", "C_N_beta",      "1/rad", "Yawing moment due to sideslip (weathercock)"),
+    ]),
+    ("LATERAL/DIRECTIONAL — Dynamic (rate) derivatives", [
+        ("C_Y_p",         "s", "C_Y_p",         "1/rad", "Side-force due to roll rate"),
+        ("C_l_p",         "s", "C_L_p",         "1/rad", "Roll damping"),
+        ("C_n_p",         "s", "C_N_p",         "1/rad", "Yawing moment due to roll rate"),
+        ("C_Y_r",         "s", "C_Y_r",         "1/rad", "Side-force due to yaw rate"),
+        ("C_l_r",         "s", "C_L_r",         "1/rad", "Rolling moment due to yaw rate"),
+        ("C_n_r",         "s", "C_N_r",         "1/rad", "Yaw damping"),
+        ("C_Y_beta_dot",  "s", "C_Y_beta_dot",  "1/rad", "Side-force due to sideslip rate"),
+        ("C_n_beta_dot",  "s", "C_N_beta_dot",  "1/rad", "Yawing moment due to sideslip rate"),
+    ]),
+    ("CONTROL — Longitudinal (elevator)", [
+        ("C_L_delta_e",   "c", "C_L_delta_e",   "1/rad", "Lift due to elevator"),
+        ("C_M_delta_e",   "c", "C_M_delta_e",   "1/rad", "Pitch moment due to elevator"),
+        ("C_Z_delta_e",   "c", "C_Z_delta_e",   "1/rad", "Z-force due to elevator"),
+        ("C_X_delta_e",   "c", "C_X_delta_e",   "1/rad", "X-force due to elevator"),
+    ]),
+    ("CONTROL — Lateral/directional (aileron & rudder)", [
+        ("C_l_delta_a",   "c", "C_L_delta_a",   "1/rad", "Rolling moment due to aileron"),
+        ("C_n_delta_a",   "c", "C_N_delta_a",   "1/rad", "Yawing moment due to aileron (adverse yaw)"),
+        ("C_Y_delta_r",   "c", "C_Y_delta_r",   "1/rad", "Side-force due to rudder"),
+        ("C_n_delta_r",   "c", "C_N_delta_r",   "1/rad", "Yawing moment due to rudder"),
+        ("C_l_delta_r",   "c", "C_L_delta_r",   "1/rad", "Rolling moment due to rudder"),
+    ]),
+]
+
+
+def print_results(obj):
+    """
+    Print a grouped table of all derivatives.
+    `obj` may be an Aircraft (has .params) or an AircraftParameters.
+    Run aircraft.solve() first so the values are populated.
+    """
+    params = getattr(obj, "params", obj)
+    sources = {"s": params.stability, "c": params.controls}
+    W_SYM, W_VAL, W_UNIT, W_DESC = 16, 16, 8, 46
+    total = W_SYM + W_VAL + W_UNIT + W_DESC + 9
+
+    def fmt(v):
+        if v is None:
+            return "—  (not set)"
+        try:
+            return f"{float(v):+#.3g}"
+        except (TypeError, ValueError):
+            return str(v)
+
+    line = "=" * total
+    print("\n" + line)
+    print("  VEHICLE DYNAMICS — STABILITY & CONTROL DERIVATIVE SUMMARY".ljust(total))
+    print(line)
+    for title, rows in _RESULT_GROUPS:
+        print(f"\n  {title}")
+        print("  " + "-" * (total - 2))
+        print("  " + "Symbol".ljust(W_SYM) + "Value".rjust(W_VAL) + "   "
+              + "Units".ljust(W_UNIT) + "Description".ljust(W_DESC))
+        for symbol, key, attr, units, desc in rows:
+            val = getattr(sources[key], attr, None)
+            print("  " + symbol.ljust(W_SYM) + fmt(val).rjust(W_VAL) + "   "
+                  + units.ljust(W_UNIT) + desc.ljust(W_DESC))
+    print("\n" + line)
+    print("  Sign conventions: stable -> C_M_alpha<0, C_M_q<0, C_n_beta>0,".ljust(total))
+    print("  C_l_beta<0, C_l_p<0, C_n_r<0. All derivatives per radian.".ljust(total))
+    print(line + "\n")
+
 
 if __name__ == "__main__":
 
@@ -1223,3 +1316,7 @@ if __name__ == "__main__":
     z_p = 1.2
     z_v = np.cos(aoa_cruise)*z_p - np.sin(aoa_cruise)*l_p
     print(2*z_v/13)
+
+    # ---- full derivative summary ----
+    aircraft.solve()
+    print_results(aircraft)
