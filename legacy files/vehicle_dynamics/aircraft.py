@@ -294,6 +294,8 @@ class Aircraft:
         S_e_2 = self._require(wg.S_e_aw, "wing_geometry.S_e_aw")
         b_1 = self._require(wg.b_fw, "wing_geometry.b_fw")
         d_1 = self._require(fg.d_fw, "fuselage_geometry.d_fw")
+        b_2 = self._require(wg.b_aw, "wing_geometry.b_aw")
+        d_2 = self._require(fg.d_aw, "fuselage_geometry.d_aw")
         A_2 = self._require(wg.A_aw, "wing_geometry.A_aw")
 
         CL_alpha_1 = self._require(ac.CL_alpha_fw, "aerodynamics.CL_alpha_fw")
