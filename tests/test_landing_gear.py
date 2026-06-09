@@ -28,6 +28,7 @@ import class_II_sizing.mass_components as mc
 from parameters import (
     G, H_L, D_EST, LIFT, N_LIMIT, ENVELOPE,
     N_SKID, D_SKID_RAIL, T_SKID_RAIL, L_SKID_RAIL, RHO_AL, GEAR_OPT_BOUNDS,
+    D_FRAME_TUBE, T_FRAME_TUBE, L_ARM, CROSSTUBE_COUNT, CROSS_SPAN, ELASTO_COUNT,
 )
 
 ARCH_NAMES = set(GEAR_OPT_BOUNDS)            # the five architecture names
@@ -90,6 +91,27 @@ def test_skid_rail_mass():
     expected = RHO_AL * np.pi / 4 * (D_SKID_RAIL**2 - d**2) * L_SKID_RAIL
     assert mc.skid_rail_mass() > 0
     assert mc.skid_rail_mass() == pytest.approx(expected)
+
+
+def test_mount_frame_mass():
+    # Closed form: 2 cross-tubes (CROSS_SPAN each) + 4 arms (L_ARM each), hollow Al tubes.
+    d = D_FRAME_TUBE - 2 * T_FRAME_TUBE
+    length_total = CROSSTUBE_COUNT * CROSS_SPAN + ELASTO_COUNT * L_ARM
+    expected = RHO_AL * np.pi / 4 * (D_FRAME_TUBE**2 - d**2) * length_total
+    assert mc.mount_frame_mass() > 0
+    assert mc.mount_frame_mass() == pytest.approx(expected)
+
+
+def test_elastomeric_includes_frame_and_rails():
+    # The elastomeric whole-gear mass must include the 4 mounts, the 2 skid rails AND the
+    # load-path frame (2 cross-tubes + 4 arms) -- not just mounts + rails.
+    cfg = GEAR_OPT_BOUNDS["E elastomeric"]
+    r = mc.elastomeric(cfg["x0"], cfg["material"])
+    kb, dm, _ = cfg["x0"]
+    fmax = kb * dm
+    mounts = ELASTO_COUNT * (mc.ELASTO_FIXED_MASS + mc.ELASTO_MASS_PER_N * fmax)
+    rails = N_SKID * mc.skid_rail_mass()
+    assert r["mass"] == pytest.approx(mounts + rails + mc.mount_frame_mass())
 
 
 # ---------------------------------------------------------------------------

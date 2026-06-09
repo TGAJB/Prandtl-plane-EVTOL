@@ -38,6 +38,7 @@ from parameters import (
     COMP_CRUSH_FRAC, COMP_DELAM_FACTOR,
     CRUSH_LEAF_B, CRUSH_LEAF_L, HONEYCOMB_STRESS, HONEYCOMB_DENSITY, CRUSH_STROKE_EFF,
     ELASTO_FIXED_MASS, ELASTO_MASS_PER_N,
+    D_FRAME_TUBE, T_FRAME_TUBE, L_ARM,
     QUAL, WEIGHTS, GEAR_OPT_BOUNDS, GEAR_OPT_SEED, GEAR_OPT_RESTARTS, GEAR_BOUNDS_REF_MASS,
 )
 
@@ -238,7 +239,9 @@ def elastomeric(x, m):
     Up = loss * Ue
     Fmax = kb * dm
     mass1 = ELASTO_FIXED_MASS + ELASTO_MASS_PER_N * Fmax
-    return whole_gear(kb, Ue, Up, Fmax, mass1, dm, dm, ELASTO_COUNT, reusable=True)
+    r = whole_gear(kb, Ue, Up, Fmax, mass1, dm, dm, ELASTO_COUNT, reusable=True)
+    r["mass"] += mount_frame_mass()    # 2 cross-tubes + 4 arms (elastomer has no structural member)
+    return r
 
 
 def skid_rail_mass():
@@ -247,6 +250,20 @@ def skid_rail_mass():
     d = D_SKID_RAIL - 2 * T_SKID_RAIL
     A = math.pi / 4 * (D_SKID_RAIL**2 - d**2)
     return RHO_AL * A * L_SKID_RAIL
+
+
+def mount_frame_mass():
+    """Mass [kg] of the discrete-mount gear's load-path frame: CROSSTUBE_COUNT transverse
+    cross-tubes (each spanning CROSS_SPAN) + ELASTO_COUNT arms (each L_ARM long) carrying the
+    mounts down to the skids. Hollow aluminium tubes, geometric estimate m = rho * A * L.
+
+    Only the discrete-mount concepts (elastomeric) need this: the bending concepts already
+    size their own cross-member, whereas the elastomer replaces it with a lumped spring and
+    would otherwise have NO structure between the fuselage and the skids."""
+    d = D_FRAME_TUBE - 2 * T_FRAME_TUBE
+    A = math.pi / 4 * (D_FRAME_TUBE**2 - d**2)
+    length_total = CROSSTUBE_COUNT * CROSS_SPAN + ELASTO_COUNT * L_ARM
+    return RHO_AL * A * length_total
 
 
 def whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, count, reusable):

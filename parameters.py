@@ -151,6 +151,11 @@ HONEYCOMB_DENSITY = 80.0   # [kg/m^3] honeycomb core density
 CRUSH_STROKE_EFF  = 0.75   # [-]   usable crush fraction before densification
 ELASTO_FIXED_MASS = 1.2    # [kg]  mount housing/bracket fixed mass
 ELASTO_MASS_PER_N = 1.0e-4 # [kg/N] mount mass vs peak load
+# -- Discrete-mount load-path frame (elastomeric): CROSSTUBE_COUNT cross-tubes + ELASTO_COUNT
+#    arms carrying the mounts down to the skids. Hollow aluminium tubes (density RHO_AL). --
+D_FRAME_TUBE      = 0.060  # [m]   cross-tube / arm outer diameter
+T_FRAME_TUBE      = 0.003  # [m]   cross-tube / arm wall thickness
+L_ARM             = 0.45   # [m]   arm length, mount/hinge down to skid
 
 # -- Trade-off scoring: qualitative scores 0..1 by engineering judgement (PLACEHOLDERS) --
 QUAL = {
