@@ -54,6 +54,7 @@ def wing_geometry(mtow_kg):
     mean_chord_m = WING_SPAN / aspect_ratio_per_wing
     root_chord_m = 2 * area_per_wing_m2 / ((1 + TAPER_W) * WING_SPAN)
     tip_chord_m = TAPER_W * root_chord_m
+    mac_m = (2.0 / 3.0) * root_chord_m * ((1 + TAPER_W + TAPER_W ** 2) / (1 + TAPER_W))
 
     return {
         "weight_n": weight_n,
@@ -62,6 +63,7 @@ def wing_geometry(mtow_kg):
         "span_m": WING_SPAN,
         "aspect_ratio": aspect_ratio,
         "mean_chord_m": mean_chord_m,
+        "mac_m": mac_m,
         "root_chord_m": root_chord_m,
         "tip_chord_m": tip_chord_m,
     }

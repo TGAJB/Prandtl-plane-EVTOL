@@ -82,7 +82,10 @@ def compute_mtow(mtow_kg, verbose=True):
         print(f"  Wing            : {m_wing:.2f} kg")
         print(f"    Wing area     : {wing_geom['total_area_m2']:.2f} m^2")
         print(f"    Wing AR       : {wing_geom['aspect_ratio']:.2f}")
-        print(f"    Root / tip c  : {wing_geom['root_chord_m']:.2f} / {wing_geom['tip_chord_m']:.2f} m")
+        print(
+            f"    Root / tip / mean c (MAC): "
+            f"{wing_geom['root_chord_m']:.2f} / {wing_geom['tip_chord_m']:.2f} / {wing_geom['mac_m']:.2f} m"
+        )
         print(f"  Landing gear    : {m_lg:.2f} kg")
         print(f"  Tail            : {m_tail:.2f} kg")
         print(f"  Motors          : {m_motors / N_MOTOR:.2f} kg/motor  ({N_MOTOR} motors)")
