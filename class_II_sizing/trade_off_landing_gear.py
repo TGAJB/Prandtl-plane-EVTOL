@@ -39,24 +39,51 @@ MTOW_STUDY = 2198.58
 #  Monte-Carlo sensitivity: how robust is the weighted winner?
 # =====================================================================
 def sensitivity(rows, trials=4000):
-    """Perturb the criterion weights (+/-30%) and the uncertain metrics (per-criterion
-    relative uncertainty in WEIGHTS) and count how often each architecture wins."""
-    feas = [r for r in rows if r["feasible"]]
-    if not feas:
+    """Monte-Carlo robustness of the weighted winner.
+
+    Each trial randomly perturbs the criterion weights (Gaussian +/-30%) AND the uncertain
+    metrics (each by its per-criterion relative uncertainty from WEIGHTS), re-scores the
+    architectures, and records which one wins. Returns {architecture: fraction of trials won}."""
+    feasible_archs = []
+    for arch in rows:
+        if arch["feasible"]:
+            feasible_archs.append(arch)
+    if not feasible_archs:
         return {}
-    wins = {r["name"]: 0 for r in feas}
+
+    # Tally of how many trials each architecture won; start every count at 0.
+    win_count = {}
+    for arch in feasible_archs:
+        win_count[arch["name"]] = 0
+
     for _ in range(trials):
-        w = {c: max(0.01, WEIGHTS[c][1] * (1 + random.gauss(0, 0.3))) for c in WEIGHTS}
-        data = {}
-        for r in feas:
-            mv = metrics(r)
-            for c, (_, _, u) in WEIGHTS.items():
-                if u > 0:
-                    mv[c] = mv[c] * (1 + random.gauss(0, u))
-            data[r["name"]] = mv
-        sc = score_table(data, w)
-        wins[max(sc, key=sc.get)] += 1
-    return {n: wins[n] / trials for n in wins}
+        # Perturb each criterion weight by a Gaussian +/-30% (floored at 0.01).
+        perturbed_weights = {}
+        for criterion in WEIGHTS:
+            base_weight = WEIGHTS[criterion][1]
+            noisy_weight = base_weight * (1 + random.gauss(0, 0.30))
+            perturbed_weights[criterion] = max(0.01, noisy_weight)
+
+        # Perturb each architecture's metrics by their per-criterion relative uncertainty.
+        perturbed_metrics = {}
+        for arch in feasible_archs:
+            values = metrics(arch)
+            for criterion in WEIGHTS:
+                uncertainty = WEIGHTS[criterion][2]
+                if uncertainty > 0:
+                    values[criterion] = values[criterion] * (1 + random.gauss(0, uncertainty))
+            perturbed_metrics[arch["name"]] = values
+
+        # Re-score with the perturbed weights and metrics, then tally the winner.
+        trial_scores = score_table(perturbed_metrics, perturbed_weights)
+        winner = max(trial_scores, key=trial_scores.get)
+        win_count[winner] = win_count[winner] + 1
+
+    # Convert win counts to fractions of the total trials.
+    win_fraction = {}
+    for name in win_count:
+        win_fraction[name] = win_count[name] / trials
+    return win_fraction
 
 
 # =====================================================================
@@ -71,12 +98,12 @@ def plot(rows, filename="fd_curves.png"):
         print("  (matplotlib not available - skipping plot)")
         return
     plt.figure(figsize=(9, 6))
-    for r in rows:
-        Fy = r["k"] * r["dy"]
-        xs = [0, r["dy"] * 1000, r["dmax"] * 1000]
-        ys = [0, Fy / 1000, r["Fmax"] / 1000]
-        style = "-" if r["feasible"] else "--"
-        plt.plot(xs, ys, style, lw=2, label=r["name"])
+    for arch in rows:
+        force_at_knee = arch["k"] * arch["dy"]          # reaction at the elastic-limit stroke [N]
+        strokes_mm = [0, arch["dy"] * 1000, arch["dmax"] * 1000]
+        forces_kn  = [0, force_at_knee / 1000, arch["Fmax"] / 1000]
+        style = "-" if arch["feasible"] else "--"
+        plt.plot(strokes_mm, forces_kn, style, lw=2, label=arch["name"])
     plt.xlabel("stroke  delta  [mm]")
     plt.ylabel("total reaction  F  [kN]")
     plt.title("Whole-gear load-deflection (area under curve = energy absorbed)")
@@ -112,28 +139,28 @@ def main():
     print("%-20s %4s %9s %9s %7s %7s %7s" %
           ("concept", "feas", "mass[kg]", "SEA", "MS_e", "MS_R", "n_pk"))
     print("-" * 64)
-    for r in rows:
+    for arch in rows:
         print("%-20s %4s %9.1f %9.0f %7.2f %7.2f %7.1f" %
-              (r["name"], "Y" if r["feasible"] else "N",
-               r["mass"], r["SEA"], r["MSe"], r["MSr"], r["npk"]))
+              (arch["name"], "Y" if arch["feasible"] else "N",
+               arch["mass"], arch["SEA"], arch["MSe"], arch["MSr"], arch["npk"]))
     print()
 
-    sc = score(rows)
-    pw = sensitivity(rows)
+    scores = score(rows)
+    win_fraction = sensitivity(rows)
     print("=" * 64)
     print("TRADE-OFF SCORE + SENSITIVITY")
     print("=" * 64)
-    if not sc:
+    if not scores:
         print("  No concept passed screening - relax inputs/bounds.")
     else:
         print("%-20s %8s %12s" % ("concept", "score", "P(rank #1)"))
         print("-" * 42)
-        for n in sorted(sc, key=sc.get, reverse=True):
-            print("%-20s %8.3f %10.0f%%" % (n, sc[n], pw.get(n, 0) * 100))
-        win = max(sc, key=sc.get)
-        rob = max(pw, key=pw.get)
-        print("\n  Weighted winner : %s" % win)
-        print("  Robust winner   : %s  (%.0f%% of trials)" % (rob, pw[rob] * 100))
+        for name in sorted(scores, key=scores.get, reverse=True):
+            print("%-20s %8.3f %10.0f%%" % (name, scores[name], win_fraction.get(name, 0) * 100))
+        weighted_winner = max(scores, key=scores.get)
+        robust_winner = max(win_fraction, key=win_fraction.get)
+        print("\n  Weighted winner : %s" % weighted_winner)
+        print("  Robust winner   : %s  (%.0f%% of trials)" % (robust_winner, win_fraction[robust_winner] * 100))
     print()
     plot(rows)
 

@@ -306,45 +306,133 @@ def size(name, fn, mat, x0, bounds, varnames, m_eff):
 
 
 # Trade-off scoring (weighted sum over feasible architectures) ---------------
+# Four small steps, written out explicitly (plain loops, not comprehensions) for clarity:
+#   metrics()     - gather the 7 trade-off criteria for one architecture
+#   normalise()   - rescale one criterion column to [0, 1] across the architectures
+#   score_table() - weighted sum of the normalised criteria -> one score per architecture
+#   score()       - run the above on the feasible architectures with the nominal weights
+#
+# Each entry in WEIGHTS is a 3-tuple: (direction, base_weight, uncertainty).
+#   direction    "max" if a higher raw value is better, "min" if lower is better
+#   base_weight  how much this criterion counts in the weighted sum
+#   uncertainty  relative scatter used only by the Monte-Carlo sensitivity study
 
-def metrics(r):
-    q = QUAL.get(r["name"], {})
-    return {
-        "SEA": r["SEA"], "mass": r["mass"], "npk": r["npk"],
-        "reusable": 1.0 if r["reusable"] else 0.0,
-        "tunable": q.get("tunable", 0.5),
-        "cert_risk": q.get("cert_risk", 0.5),
-        "cost": q.get("cost", 0.5),
-    }
+def metrics(arch):
+    """The seven trade-off criteria for one sized architecture, as a flat dict.
+
+    SEA / mass / npk come from the sizing result; `reusable` is 1.0 or 0.0; the
+    qualitative scores (tunable, cert_risk, cost) come from QUAL, defaulting to 0.5 if the
+    architecture is not listed there."""
+    qualitative = QUAL.get(arch["name"], {})
+
+    criteria = {}
+    criteria["SEA"] = arch["SEA"]
+    criteria["mass"] = arch["mass"]
+    criteria["npk"] = arch["npk"]
+    if arch["reusable"]:
+        criteria["reusable"] = 1.0
+    else:
+        criteria["reusable"] = 0.0
+    criteria["tunable"] = qualitative.get("tunable", 0.5)
+    criteria["cert_risk"] = qualitative.get("cert_risk", 0.5)
+    criteria["cost"] = qualitative.get("cost", 0.5)
+    return criteria
 
 
 def normalise(values, direction):
-    lo, hi = min(values), max(values)
-    if hi - lo < 1e-12:
-        return [1.0 for _ in values]
-    if direction == "max":
-        return [(x - lo) / (hi - lo) for x in values]
-    return [(hi - x) / (hi - lo) for x in values]
+    """Min-max rescale one criterion's values to [0, 1] across the architectures.
+
+    direction == "max": larger raw value is better, so the largest maps to 1.0.
+    direction == "min": smaller raw value is better, so the smallest maps to 1.0.
+    If all values are equal the criterion cannot discriminate, so everything scores 1.0."""
+    lowest = min(values)
+    highest = max(values)
+    spread = highest - lowest
+
+    # Every architecture is equal on this criterion -> it cannot tell them apart.
+    if spread < 1e-12:
+        all_ones = []
+        for _ in values:
+            all_ones.append(1.0)
+        return all_ones
+
+    normalised_values = []
+    for value in values:
+        if direction == "max":
+            # Larger is better: lowest -> 0.0, highest -> 1.0.
+            normalised_value = (value - lowest) / spread
+        else:
+            # Smaller is better: highest -> 0.0, lowest -> 1.0.
+            normalised_value = (highest - value) / spread
+        normalised_values.append(normalised_value)
+    return normalised_values
 
 
-def score_table(data, weights):
-    names = list(data)
-    norm = {n: {} for n in names}
-    for crit, (direction, _, _) in WEIGHTS.items():
-        col = [data[n][crit] for n in names]
-        for n, s in zip(names, normalise(col, direction)):
-            norm[n][crit] = s
-    wsum = sum(weights[c] for c in WEIGHTS)
-    return {n: sum(weights[c] / wsum * norm[n][c] for c in WEIGHTS) for n in names}
+def score_table(metrics_by_arch, weights):
+    """Weighted-sum trade-off score in [0, 1] for each architecture.
+
+    metrics_by_arch maps architecture name -> its metrics() dict. Each criterion column is
+    normalised to [0, 1] across the architectures (per WEIGHTS' max/min direction), then the
+    normalised criteria are combined with `weights` re-normalised to sum to 1."""
+    arch_names = list(metrics_by_arch)
+
+    # Start each architecture with an empty dict of normalised criteria.
+    normalised = {}
+    for name in arch_names:
+        normalised[name] = {}
+
+    # Step 1: normalise every criterion column to [0, 1] across the architectures.
+    for criterion in WEIGHTS:
+        direction = WEIGHTS[criterion][0]
+
+        # Collect this criterion's raw value from every architecture (the "column").
+        column = []
+        for name in arch_names:
+            column.append(metrics_by_arch[name][criterion])
+
+        # Normalise the column, then store one value back per architecture.
+        normalised_column = normalise(column, direction)
+        for index in range(len(arch_names)):
+            name = arch_names[index]
+            normalised[name][criterion] = normalised_column[index]
+
+    # Step 2: add up the weights so we can re-normalise them to sum to 1.
+    weight_total = 0.0
+    for criterion in WEIGHTS:
+        weight_total = weight_total + weights[criterion]
+
+    # Step 3: weighted sum of the normalised criteria, one score per architecture.
+    scores = {}
+    for name in arch_names:
+        running_total = 0.0
+        for criterion in WEIGHTS:
+            relative_weight = weights[criterion] / weight_total
+            running_total = running_total + relative_weight * normalised[name][criterion]
+        scores[name] = running_total
+    return scores
 
 
 def score(rows):
-    feas = [r for r in rows if r["feasible"]]
-    if not feas:
+    """Weighted trade-off score for each FEASIBLE architecture, using the nominal base
+    weights in WEIGHTS. Returns {} if nothing is feasible."""
+    feasible_archs = []
+    for arch in rows:
+        if arch["feasible"]:
+            feasible_archs.append(arch)
+    if not feasible_archs:
         return {}
-    data = {r["name"]: metrics(r) for r in feas}
-    base = {c: WEIGHTS[c][1] for c in WEIGHTS}
-    return score_table(data, base)
+
+    # Metrics for each feasible architecture, keyed by name.
+    metrics_by_arch = {}
+    for arch in feasible_archs:
+        metrics_by_arch[arch["name"]] = metrics(arch)
+
+    # Nominal weights = the base_weight (middle element) of each WEIGHTS entry.
+    base_weights = {}
+    for criterion in WEIGHTS:
+        base_weights[criterion] = WEIGHTS[criterion][1]
+
+    return score_table(metrics_by_arch, base_weights)
 
 
 # Architecture name -> concept function (search config lives in GEAR_OPT_BOUNDS).
@@ -367,19 +455,33 @@ def _scaled_gear_bounds(m_eff):
 
     Returns a per-architecture config dict shaped like GEAR_OPT_BOUNDS (scaled x0/bounds,
     same material/varnames)."""
-    ratio = m_eff / GEAR_BOUNDS_REF_MASS
-    out = {}
+    mass_ratio = m_eff / GEAR_BOUNDS_REF_MASS
+
+    scaled = {}
     for name, cfg in GEAR_OPT_BOUNDS.items():
-        scale = cfg.get("scale", [0.0] * len(cfg["varnames"]))
-        x0, bounds = [], []
-        for x0_i, (lo, hi), s in zip(cfg["x0"], cfg["bounds"], scale):
-            f = max(1.0, ratio ** s)                 # never shrink below the calibrated bounds
-            hi_s = hi * f
-            bounds.append((lo, hi_s))
-            x0.append(min(max(x0_i * f, lo), hi_s))  # keep the seed inside the scaled bounds
-        out[name] = dict(x0=x0, bounds=bounds,
-                         varnames=cfg["varnames"], material=cfg["material"])
-    return out
+        scale_exponents = cfg.get("scale", [0.0] * len(cfg["varnames"]))
+
+        scaled_x0 = []
+        scaled_bounds = []
+        for seed, (low, high), exponent in zip(cfg["x0"], cfg["bounds"], scale_exponents):
+            # Grow the upper bound with mass. max(1.0, ...) means a mass below the
+            # reference never shrinks the calibrated bound.
+            growth = max(1.0, mass_ratio ** exponent)
+            high_scaled = high * growth
+
+            # Keep the seed inside the (possibly widened) bounds.
+            seed_scaled = seed * growth
+            if seed_scaled < low:
+                seed_scaled = low
+            if seed_scaled > high_scaled:
+                seed_scaled = high_scaled
+
+            scaled_x0.append(seed_scaled)
+            scaled_bounds.append((low, high_scaled))
+
+        scaled[name] = dict(x0=scaled_x0, bounds=scaled_bounds,
+                            varnames=cfg["varnames"], material=cfg["material"])
+    return scaled
 
 
 def size_all_architectures(m_eff):
@@ -393,7 +495,7 @@ def size_all_architectures(m_eff):
 
 
 def landing_gear_mass(mtow_kg, return_details=True):
-    """Skid landing-gear mass [kg] from a 6-architecture drop trade study.
+    """Skid landing-gear mass [kg] from a five-architecture drop trade study.
 
     The whole aircraft (gear included) decelerates in the drop, so the effective drop
     mass M_EFF is formed from the full mtow_kg; the gear self-weight feedback is closed
@@ -412,8 +514,9 @@ def landing_gear_mass(mtow_kg, return_details=True):
     random.seed(GEAR_OPT_SEED)                       # reproducible SLSQP restarts in the loop
     m_eff = effective_mass(mtow_kg, H_L, D_EST, LIFT)
     rows = size_all_architectures(m_eff)
-    sc = score(rows)
-    if not sc:
+
+    scores = score(rows)                             # {architecture name: weighted score}
+    if not scores:
         warnings.warn(
             "landing_gear_mass: no feasible architecture - returning None (the MTOW loop "
             "falls back to a 3% class-1 gear estimate). Check the drop inputs (H_L, "
@@ -421,12 +524,29 @@ def landing_gear_mass(mtow_kg, return_details=True):
             stacklevel=2,
         )
         return None
-    win = max(sc, key=sc.get)
-    r = next(row for row in rows if row["name"] == win)
+
+    # Pick the architecture with the highest weighted score.
+    winner_name = max(scores, key=scores.get)
+    winner_score = scores[winner_name]
+
+    # Find that architecture's full sizing-result row.
+    winner = None
+    for row in rows:
+        if row["name"] == winner_name:
+            winner = row
+            break
+
     if not return_details:
-        return r["mass"]
-    return {**r, "m_gear": r["mass"], "arch": r["name"], "geom": {},
-            "score": sc[win], "all_architectures": rows}
+        return winner["mass"]
+
+    # Return a copy of the winning row plus the aliases / extras callers expect.
+    details = dict(winner)
+    details["m_gear"] = winner["mass"]               # alias used by mtow_sizing
+    details["arch"] = winner_name                    # alias used by mtow_sizing
+    details["geom"] = {}                             # these architectures have no Do/Di geometry
+    details["score"] = winner_score
+    details["all_architectures"] = rows
+    return details
 
 
 # V-tail (physics-based cantilever sizing)
