@@ -27,7 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import class_II_sizing.mass_components as mc
 from parameters import (
     G, H_L, D_EST, LIFT, N_LIMIT, ENVELOPE,
-    N_SKID, SKID_RAIL_MASS, GEAR_OPT_BOUNDS,
+    N_SKID, D_SKID_RAIL, T_SKID_RAIL, L_SKID_RAIL, RHO_AL, GEAR_OPT_BOUNDS,
 )
 
 ARCH_NAMES = set(GEAR_OPT_BOUNDS)            # the five architecture names
@@ -78,10 +78,18 @@ def test_whole_gear_scaling():
     assert r["Ue"] == count * 2.0
     assert r["Up"] == count * 3.0
     assert r["Fmax"] == count * 4.0
-    assert r["mass"] == count * 5.0 + N_SKID * SKID_RAIL_MASS
+    assert r["mass"] == count * 5.0 + N_SKID * mc.skid_rail_mass()
     # Members deflect together, so strokes do NOT scale.
     assert r["dy"] == 0.10 and r["dmax"] == 0.20
     assert r["reusable"] is True
+
+
+def test_skid_rail_mass():
+    # Closed form: hollow aluminium tube, m = rho * pi/4 (D^2 - d^2) * L.
+    d = D_SKID_RAIL - 2 * T_SKID_RAIL
+    expected = RHO_AL * np.pi / 4 * (D_SKID_RAIL**2 - d**2) * L_SKID_RAIL
+    assert mc.skid_rail_mass() > 0
+    assert mc.skid_rail_mass() == pytest.approx(expected)
 
 
 # ---------------------------------------------------------------------------

@@ -30,7 +30,8 @@ from parameters import (
     WING_SPAN, AREA_SPLIT, WING_LOADING_N,
     # landing-gear drop trade study
     H_L, D_EST, LIFT, N_LIMIT, ENVELOPE,
-    N_SKID, SKID_RAIL_MASS, CROSSTUBE_COUNT, HINGES_PER_TUBE,
+    N_SKID, D_SKID_RAIL, T_SKID_RAIL, L_SKID_RAIL, RHO_AL,
+    CROSSTUBE_COUNT, HINGES_PER_TUBE,
     LEAF_COUNT, HINGES_PER_LEAF, COMPOSITE_COUNT,
     CRUSH_COUNT, ELASTO_COUNT,
     BC_FACTOR, CROSS_SPAN, TUBE_HINGE_LEN, LEAF_HINGE_LEN, LEAF_DEV_FACTOR,
@@ -240,13 +241,21 @@ def elastomeric(x, m):
     return whole_gear(kb, Ue, Up, Fmax, mass1, dm, dm, ELASTO_COUNT, reusable=True)
 
 
+def skid_rail_mass():
+    """Mass [kg] of ONE longitudinal skid rail, modelled as a hollow aluminium tube.
+       Geometric estimate: m = rho * A * L, A the annular cross-section."""
+    d = D_SKID_RAIL - 2 * T_SKID_RAIL
+    A = math.pi / 4 * (D_SKID_RAIL**2 - d**2)
+    return RHO_AL * A * L_SKID_RAIL
+
+
 def whole_gear(k, Ue, Up, Fmax, mass1, dy, dmax, count, reusable):
     """Scale one member's properties to the whole gear (count members in parallel) and
     add the two shared skid rails. Members deflect together, so stiffness, energy, load
     and mass add up; stroke (dy, dmax) does not."""
     return dict(
         k=count * k, Ue=count * Ue, Up=count * Up, Fmax=count * Fmax,
-        mass=count * mass1 + N_SKID * SKID_RAIL_MASS,
+        mass=count * mass1 + N_SKID * skid_rail_mass(),
         dy=dy, dmax=dmax, reusable=reusable,
     )
 

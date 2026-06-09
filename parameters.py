@@ -124,7 +124,10 @@ CFRP  = {"E": 70e9,   "sy": 600e6,  "rho": 1600, "eu": 0.015, "Gc": 1500}
 
 # -- Gear architecture: how many parallel units form the full gear --
 N_SKID          = 2      # [-]   longitudinal ground rails
-SKID_RAIL_MASS  = 15     # [kg]  per rail (ground-contact tube)
+# -- Skid-rail tube geometry (hollow aluminium round tube, density RHO_AL) --
+D_SKID_RAIL     = 0.080  # [m]   rail outer diameter
+T_SKID_RAIL     = 0.004  # [m]   rail wall thickness
+L_SKID_RAIL     = 0.65 * L_FUS  # [m]  rail length ~ ground-contact footprint
 CROSSTUBE_COUNT = 2      # [-]   transverse cross-tubes (front + rear)
 HINGES_PER_TUBE = 2      # [-]   knees per cross-tube  -> 2*2 = 4 hinges total
 LEAF_COUNT      = 2      # [-]   transverse leaf springs

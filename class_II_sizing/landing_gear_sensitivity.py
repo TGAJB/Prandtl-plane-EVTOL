@@ -91,7 +91,7 @@ PARAMS = [
     ("CRUSH_STROKE_EFF",  0.60,    0.85,    0.75,    "crush usable fraction", "-"),
     ("ELASTO_FIXED_MASS", 0.8,     1.8,     1.2,     "elastomer fixed mass",  "kg"),
     ("ELASTO_MASS_PER_N", 6.0e-5,  1.5e-4,  1.0e-4,  "elastomer mass/load",   "kg/N"),
-    ("SKID_RAIL_MASS",    10.0,    22.0,    15.0,    "skid rail mass",        "kg"),
+    ("T_SKID_RAIL",       0.002,   0.006,   0.004,   "skid rail wall thickness", "m"),
 ]
 PNAMES  = [p[0] for p in PARAMS]
 PLABEL  = {p[0]: p[4] for p in PARAMS}
