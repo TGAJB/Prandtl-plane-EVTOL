@@ -49,19 +49,19 @@ class WingGeometry:
     A_fw:                 float = b_fw**2/S_fw  # [-]
     A_aw:                 float = b_aw**2/S_aw  # [-]
 
-    gap:                  float = None  # [m]
+    gap:                  float = 2.1  # [m]
     stagger:              float = None  # [m]
 
-    MAC_fw:               float = None  # [m]
-    MAC_aw:               float = None  # [m]
+    MAC_fw:               float = 1.262  # [m]
+    MAC_aw:               float = 1.262  # [m]
 
     taper_fw:             float = 0.4  # [-]
     taper_aw:             float = 0.4  # [-]
 
-    chord_fw_root:        float = None  # [m]
-    chord_fw_tip:         float = None  # [m]
-    chord_aw_root:        float = None  # [m]
-    chord_aw_tip:         float = None  # [m]
+    chord_fw_root:        float = 1.66  # [m]
+    chord_fw_tip:         float = 0.75  # [m]
+    chord_aw_root:        float = 1.66  # [m]
+    chord_aw_tip:         float = 0.75  # [m]
 
     LE_sweep_fw:          float = 0  # [deg.]
     LE_sweep_aw:          float = 0  # [deg.]
@@ -69,14 +69,14 @@ class WingGeometry:
     dihedral_front_wing:  float = 1.0  # [deg.]
     dihedral_aft_wing:    float = 1.0  # [deg.]
 
-    twist_fw:             float = None  # [deg.]
-    twist_aw:             float = None  # [deg.]
+    twist_fw:             float = 0  # [deg.]
+    twist_aw:             float = 0  # [deg.]
 
     incidence_fw:         float = None  # [deg.]
     incidence_aw:         float = None  # [deg.]
 
-    airfoil_fw:           str   = None  # [-]
-    airfoil_aw:           str   = None  # [-]
+    airfoil_fw:           str   = "NASA LANGLEY LS(1)-0417"  # [-]
+    airfoil_aw:           str   = "NASA LANGLEY LS(1)-0417"  # [-]
 
     # ===== ADDED FOR DATCOM ==================================================
     # Reference quantities for non-dimensionalisation. EVERY aircraft-level derivative is referenced to these; they must match the EOM reference.
@@ -88,14 +88,14 @@ class WingGeometry:
     # NOTE: the front/aft WING lift-curve slopes now use the aero department's
     # section slope (cl_alpha_fw / cl_alpha_aw) directly, so these are no longer
     # consumed by the lift methods. Retained as geometric descriptors only.
-    t_c_fw:               float = None  # [-]
-    t_c_aw:               float = None  # [-]
-    te_angle_fw:          float = None  # [deg.]
-    te_angle_aw:          float = None  # [deg.]
+    t_c_fw:               float = 0.17  # [-]
+    t_c_aw:               float = 0.17  # [-]
+    te_angle_fw:          float = 18  # [deg.]
+    te_angle_aw:          float = 18  # [deg.]
 
     # Wing vertical position relative to body centreline (+ is down)
-    z_w_fw:               float = None  # [m]
-    z_w_aw:               float = None  # [m]
+    z_w_fw:               float = -0.5  # [m]
+    z_w_aw:               float = 2.1   # [m]
 
 
 
@@ -108,14 +108,14 @@ class TailGeometry:
     x_vert_tail:                float = 8.5  # [m]
     S_vert_tail:                float = 2.0  # [m^2]
     b_vert_tail:                float = 2.5  # [m]
-    AR_vert_tail:               float = None  # [-]
-    LE_sweep_vert_tail:         float = None  # [rad]
-    airfoil_vert_tail:          str   = None  # [-]
+    AR_vert_tail:               float = b_vert_tail**2/S_vert_tail  # [-]
+    LE_sweep_vert_tail:         float = 0.31  # [rad]
+    airfoil_vert_tail:          str   = "NACA 0012"  # [-]
 
-    taper_vert_tail:            float = None  # [-]
-    MAC_vert_tail:              float = None  # [m]
-    t_c_vert_tail:              float = None  # [-]
-    te_angle_vert_tail:         float = None  # [deg.]
+    taper_vert_tail:            float = 0.33  # [-]
+    MAC_vert_tail:              float = 0.867  # [m]
+    t_c_vert_tail:              float = 0.12  # [-]
+    te_angle_vert_tail:         float = 14  # [deg.]
     z_vert_tail:                float = 1.0  # [m] vertical a.c. height (datum)
 
 
@@ -137,13 +137,12 @@ class WingletGeometry:
     b_winglet:                  float = 2.5  # [m] vertical span/height of ONE winglet
     AR_winglet:                 float = b_winglet**2/S_winglet  # [-] aspect ratio of ONE winglet
     taper_winglet:              float = 1.0 # [-]
-    MAC_winglet:                float = None  # [m]
     LE_sweep_winglet:           float = 0.5  # [rad]
 
     x_ac_winglet:               float = 3.6  # [m] longitudinal aerodynamic-centre location
     z_ac_winglet:               float = 0.0  # [m] vertical aerodynamic-centre location
 
-    airfoil_winglet:            str   = None  # [-]
+    airfoil_winglet:            str   = "NASA LANGLEY LS(1)-0417"  # [-]
     t_c_winglet:                float = 0.12  # [-]
     te_angle_winglet:           float = 10  # [deg.]
 
@@ -155,13 +154,13 @@ class FuselageGeometry:
     """
 
     fuselage_length:   float = 10.0  # [m]
-    d_fw:              float = None  # [m] - Fuselage is modelled as a tube for now
+    d_fw:              float = 2.0  # [m] - Fuselage is modelled as a tube for now
     d_aw:              float = 0     # [m]
     x_ac_fuselage:     float = None  # [m]
 
-    side_area:           float = 15.0  # [m^2] projected side area S_Bs (Cn_beta)
-    base_area:           float = None  # [m^2] reference/base area S_B0 (CY_beta body)
-    body_depth_at_wing:  float = None  # [m]   d at the wing (sidewash); ~ diameter
+    side_area:           float = 20.0 + TailGeometry.S_vert_tail  # [m^2] projected side area S_Bs (Cn_beta)
+    base_area:           float = 20.0  # [m^2] reference/base area S_B0 (CY_beta body)
+    body_depth_at_wing:  float = 2.0  # [m]   d at the wing (sidewash); ~ diameter
 
 
 @dataclass
@@ -171,15 +170,15 @@ class ControlSurfaceGeometry:
     Chord ratios feed the section-effectiveness charts (Sec 6.1.1.1); the span
     factors feed K_b / strip integration.
     """
-    elevator_cf_c:       float = None   # [-] flap-chord / wing-chord ratio
-    elevator_Kb:         float = None   # [-] flap-span factor (Fig 6.1.4.1)
+    elevator_cf_c:       float = 0.3   # [-] flap-chord / wing-chord ratio
+    elevator_Kb:         float = 0.46   # [-] flap-span factor (Fig 6.1.4.1)
     elevator_on_surface: str   = "aw"   # which wing carries the elevator ('fw' or 'aw')
 
-    aileron_cf_c:        float = None   # [-]
-    aileron_eta_inner:   float = None   # [-] inboard span station
-    aileron_eta_outer:   float = None   # [-] outboard span station
+    aileron_cf_c:        float = 0.3   # [-]
+    aileron_eta_inner:   float = 0.35   # [-] inboard span station
+    aileron_eta_outer:   float = 0.77   # [-] outboard span station
 
-    rudder_cf_c:         float = None   # [-]
+    rudder_cf_c:         float = 0.2   # [-]
 
 
 @dataclass
@@ -209,8 +208,8 @@ class AerodynamicCoefficients:
     Aerodynamic characteristics required by the Vehicle Dynamics model.
     """
     # Airfoil curve
-    cl_alpha_fw:                        float = 0.1  # [1/deg.]
-    cl_alpha_aw:                        float = 0.1  # [1/deg.]
+    cl_alpha_fw:                        float = 0.107  # [1/deg.]
+    cl_alpha_aw:                        float = 0.107  # [1/deg.]
     cl_alpha_vert_tail:                 float = None  # [1/deg.]
     cl_alpha_winglet:                   float = None  # [1/deg.]
 

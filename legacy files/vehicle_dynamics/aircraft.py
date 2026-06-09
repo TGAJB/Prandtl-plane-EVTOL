@@ -86,29 +86,29 @@ class DatcomChartInputs:
     K_CYp:                    float = 1.0   # clean-wing factor K
  
     # Rolling-moment-due-to-yaw (Fig 7.1.3.2-10) (Clr/CL)_CL0,M0 per wing
-    clr_over_CL_fw:           float = None
-    clr_over_CL_aw:           float = None
+    clr_over_CL_fw:           float = 0.225
+    clr_over_CL_aw:           float = 0.225
  
     # Yaw damping wing (Figs 7.1.3.3-6/7)
-    cnr_over_CL2:             float = None
-    cnr_over_CD0:             float = None
+    cnr_over_CL2:             float = -0.04
+    cnr_over_CD0:             float = -0.3
  
     # Section flap effectiveness (Figs 6.1.1.1-39/40) and 3-D ratio (6.1.4.1-14)
-    elev_ad_theory:           float = None  # (a_delta)_theory
-    elev_ad_ratio:            float = None  # a_delta/(a_delta)_theory
-    elev_ad_3D_over_2D:       float = None  # (a_delta)_CL/(a_delta)_cl
-    rudder_ad_theory:         float = None
-    rudder_ad_ratio:          float = None
-    aileron_ad_theory:        float = None
-    aileron_ad_ratio:         float = None
-    aileron_ad_full_chord:    float = None  # (a_delta)_{cf/c = 1}
-    aileron_param:            float = None  # (beta Cl_delta'/kappa)  Fig 6.2.1.1-23
+    elev_ad_theory:           float = 4.6  # (a_delta)_theory
+    elev_ad_ratio:            float = 0.79  # a_delta/(a_delta)_theory
+    elev_ad_3D_over_2D:       float = 1.05  # (a_delta)_CL/(a_delta)_cl
+    rudder_ad_theory:         float = 3.70
+    rudder_ad_ratio:          float = 0.76
+    aileron_ad_theory:        float = 4.6
+    aileron_ad_ratio:         float = 0.79
+    aileron_ad_full_chord:    float = 7.3  # (a_delta)_{cf/c = 1}
+    aileron_param:            float = 0.45  # (beta Cl_delta'/kappa)  Fig 6.2.1.1-23
  
     # Sideslip-acceleration sidewash parts (Eq 7.4.4.4-b; Figs 7.4.4.4-6/22/26/42)
-    sigma_beta_alpha:         float = None
-    sigma_beta_gamma:         float = None
-    sigma_beta_theta:         float = None
-    sigma_beta_WB:            float = None
+    sigma_beta_alpha:         float = -0.0006
+    sigma_beta_gamma:         float = -0.74
+    sigma_beta_theta:         float = -0.008
+    sigma_beta_WB:            float = 0.12
 
 
 # ---------------------------------------------------------------------------
@@ -1215,3 +1215,9 @@ if __name__ == "__main__":
     k = aircraft._kappa_from_section_slope(cl_alpha_per_deg=0.107)
     factor = beta*5.63/k
     print(factor)
+
+    aoa_cruise = FlightCondition.alpha
+    l_p = 6.9
+    z_p = 1.2
+    z_v = np.cos(aoa_cruise)*z_p - np.sin(aoa_cruise)*l_p
+    print(2*z_v/13)
