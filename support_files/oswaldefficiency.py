@@ -1,49 +1,80 @@
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 
+SCRIPT_DIR = Path(__file__).resolve().parent
 B_SPAN_M = 13.0
-H_LIMIT_M = 2.0
+DESIGN_GAP_M = 2.1
 H_MAX_M = 5.0
 N_POINTS = 500
 
 
-def oswald_efficiency(height_m: np.ndarray, span_m: float) -> np.ndarray:
+def induced_drag_factor(height_m: np.ndarray, span_m: float) -> np.ndarray:
     h_over_b = height_m / span_m
-    k = (0.44 + 0.9594 * h_over_b) / (0.44 + 2.219 * h_over_b)
-    return 1.0 / k
+    return (0.44 + 0.9594 * h_over_b) / (0.44 + 2.219 * h_over_b)
+
+
+def oswald_efficiency(height_m: np.ndarray, span_m: float) -> np.ndarray:
+    return 1.0 / induced_drag_factor(height_m, span_m)
 
 
 def main() -> None:
     h_values = np.linspace(0.0, H_MAX_M, N_POINTS)
     e_values = oswald_efficiency(h_values, B_SPAN_M)
-    e_limit = oswald_efficiency(np.array([H_LIMIT_M]), B_SPAN_M)[0]
+    design_e = float(oswald_efficiency(np.array([DESIGN_GAP_M]), B_SPAN_M)[0])
+    design_k = float(induced_drag_factor(np.array([DESIGN_GAP_M]), B_SPAN_M)[0])
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(h_values, e_values, color="navy", linewidth=2, label="Oswald efficiency factor")
-    ax.axvline(
-        H_LIMIT_M,
-        color="crimson",
+    figure, axis = plt.subplots(figsize=(9.5, 5.8))
+    axis.plot(
+        h_values,
+        e_values,
+        linewidth=1.8,
+        color=plt.rcParams["axes.prop_cycle"].by_key()["color"][0],
+        label="Rizzo relation",
+    )
+    axis.axvline(
+        DESIGN_GAP_M,
+        color="black",
         linestyle="--",
-        linewidth=2,
-        label=f"Height constraint: h = {H_LIMIT_M:.1f} m",
+        linewidth=1.1,
+        label=fr"Design gap $h = {DESIGN_GAP_M:g}$ m",
     )
-    ax.scatter(H_LIMIT_M, e_limit, color="crimson", zorder=3)
-
-    ax.set_xlabel("h [m]")
-    ax.set_ylabel("Oswald efficiency factor, e [-]")
-    ax.set_title("Oswald Efficiency Factor vs Wing Gap Height")
-    ax.grid(True, linestyle=":", alpha=0.7)
-    ax.legend()
-    ax.annotate(
-        f"e = {e_limit:.3f} at h = {H_LIMIT_M:.1f} m",
-        xy=(H_LIMIT_M, e_limit),
-        xytext=(H_LIMIT_M + 0.2, e_limit + 0.03),
-        arrowprops={"arrowstyle": "->", "color": "crimson"},
+    axis.scatter(
+        DESIGN_GAP_M,
+        design_e,
+        marker="D",
+        s=60,
+        color=plt.rcParams["axes.prop_cycle"].by_key()["color"][1],
+        edgecolor="black",
+        linewidth=0.8,
+        zorder=4,
+        label=fr"$e = {design_e:.3f}$",
     )
 
-    fig.tight_layout()
-    plt.show()
+    lower_padding = max(0.05, (design_e - 1.0) * 0.2)
+    upper_padding = max(0.08, (max(e_values) - design_e) * 0.2)
+    axis.set_ylim(min(e_values) - lower_padding, max(e_values) + upper_padding)
+
+    axis.set_xlabel("Vertical gap h [m]")
+    axis.set_ylabel("Oswald efficiency factor e [-]")
+    axis.set_title("Vertical Gap Oswald Efficiency")
+    axis.grid(True, alpha=0.35)
+    axis.legend(frameon=False, loc="best", ncol=1)
+
+    figure.tight_layout()
+
+    png_path = SCRIPT_DIR / "oswaldvsh.png"
+    pdf_path = SCRIPT_DIR / "oswaldvsh.pdf"
+    figure.savefig(png_path, dpi=300)
+    figure.savefig(pdf_path)
+    plt.close(figure)
+
+    print(f"h/b = {DESIGN_GAP_M / B_SPAN_M:.4f}")
+    print(f"k = {design_k:.4f}")
+    print(f"e = {design_e:.4f}")
+    print(f"Outputs written to: {png_path} and {pdf_path}")
 
 
 if __name__ == "__main__":

@@ -43,6 +43,7 @@ DEFAULT_DATA_DIR = SCRIPT_DIR / "Wing CL values"
 DEFAULT_OUTPUT_DIR = SCRIPT_DIR / "h_b_results"
 DEFAULT_ALPHA_DEGS = (0.0, 4.0, 8.0)
 DEFAULT_ERROR_BAND_PERCENT = 5.0
+DEFAULT_DESIGN_GAP_M = 2.1
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
@@ -192,9 +193,11 @@ def build_lift_ratio_rows(
         two_wing_cdi = polar.value_at_alpha("CDi", alpha_deg)
         single_wing_cl_over_cdi = single_wing_cl / single_wing_cdi
         two_wing_cl_over_cdi = two_wing_cl / two_wing_cdi
+        cl_ratio_two_wings_over_main = two_wing_cl / reference_cl
         cl_over_cdi_ratio = two_wing_cl_over_cdi / single_wing_cl_over_cdi
         cl_ratio = reference_cl / two_wing_cl
         cdi_ratio = reference_cdi / two_wing_cdi
+        cl_ratio_two_signed_distance_to_one = cl_ratio_two_wings_over_main - 1.0
         cl_signed_distance_to_one = cl_ratio - 1.0
         cdi_signed_distance_to_one = cdi_ratio - 1.0
 
@@ -208,6 +211,10 @@ def build_lift_ratio_rows(
                 "single_wing_factor": single_wing_factor,
                 "CL_reference": reference_cl,
                 "CL_two_wings": two_wing_cl,
+                "CL_ratio_two_wings_over_main_wing": cl_ratio_two_wings_over_main,
+                "CL_ratio_signed_distance_to_1": cl_ratio_two_signed_distance_to_one,
+                "CL_ratio_absolute_distance_to_1": abs(cl_ratio_two_signed_distance_to_one),
+                "CL_ratio_absolute_distance_to_1_percent": abs(cl_ratio_two_signed_distance_to_one) * 100.0,
                 "ratio_reference_over_two_wings": cl_ratio,
                 "signed_distance_to_1": cl_signed_distance_to_one,
                 "absolute_distance_to_1": abs(cl_signed_distance_to_one),
@@ -272,6 +279,33 @@ def _rows_for_alpha(
     ]
 
 
+def interpolate_ratio_at_gap(
+    rows: list[dict[str, float | str]],
+    ratio_key: str,
+    design_gap_m: float,
+) -> list[dict[str, float]]:
+    interpolated_rows = []
+    for alpha in _unique_alpha_values(rows):
+        alpha_rows = _rows_for_alpha(rows, alpha)
+        h_values = np.array([float(row["h_m"]) for row in alpha_rows])
+        ratio_values = np.array([float(row[ratio_key]) for row in alpha_rows])
+        if design_gap_m < h_values.min() or design_gap_m > h_values.max():
+            raise ValueError(
+                f"Design gap h = {design_gap_m:g} m is outside the sampled range "
+                f"for alpha = {alpha:g} deg ({h_values.min():g} to {h_values.max():g} m)."
+            )
+        ratio = float(np.interp(design_gap_m, h_values, ratio_values))
+        interpolated_rows.append(
+            {
+                "alpha_deg": alpha,
+                "h_m": design_gap_m,
+                "ratio": ratio,
+                "absolute_distance_to_1_percent": abs(ratio - 1.0) * 100.0,
+            }
+        )
+    return interpolated_rows
+
+
 def write_markdown_summary(
     path: Path,
     rows: list[dict[str, float | str]],
@@ -280,6 +314,7 @@ def write_markdown_summary(
     span_m: float,
     single_wing_factor: float,
     error_band_percent: float,
+    design_gap_m: float,
 ) -> None:
     def build_table(
         reference_key: str,
@@ -362,28 +397,51 @@ def write_markdown_summary(
                 parts.append(f"alpha = {alpha:g} deg: no sampled case inside band")
         return f"First available {label} cases inside the {error_band_percent:g}% band: " + "; ".join(parts) + "."
 
+    def design_gap_summary() -> str:
+        design_rows = interpolate_ratio_at_gap(
+            rows,
+            "CL_ratio_two_wings_over_main_wing",
+            design_gap_m,
+        )
+        parts = [
+            (
+                f"alpha = {row['alpha_deg']:g} deg: "
+                f"CL ratio = {row['ratio']:.4f} "
+                f"(|ratio - 1| = {row['absolute_distance_to_1_percent']:.2f}%)"
+            )
+            for row in design_rows
+        ]
+        return (
+            f"Interpolated design-gap CL ratio at h = {design_gap_m:.2f} m "
+            f"(h/b = {design_gap_m / span_m:.4f}): "
+            + "; ".join(parts)
+            + "."
+        )
+
     content = "\n\n".join(
         [
             "# h/b CL and CDi Ratio Summary",
             f"Single-wing reference file: `{single_wing_file.name}`",
             "Evaluation angles of attack: " + ", ".join(f"{alpha:g} deg" for alpha in alpha_degs),
             f"Wing span used for normalization: b = {span_m:.3f} m",
+            f"Design vertical gap: h = {design_gap_m:.2f} m (h/b = {design_gap_m / span_m:.4f})",
             (
-                "Ratio definition: "
-                f"{_plain_ratio_definition(single_wing_factor)}. "
-                "A value of 1 indicates that the two-wing case has reached the "
-                "same coefficient as the isolated-wing reference after the "
-                "chosen reference-area correction."
+                "Ratio definitions: CL/CDi and CL are reported as the two-wing "
+                "value divided by the isolated main-wing reference. CDi is "
+                f"reported as {_plain_ratio_definition(single_wing_factor)}. "
+                "A value of 1 indicates agreement with the isolated-wing "
+                "reference after the chosen reference-area correction."
             ),
-            first_inside_band_summary("absolute_distance_to_1_percent", "CL"),
+            first_inside_band_summary("CL_ratio_absolute_distance_to_1_percent", "CL"),
+            design_gap_summary(),
             first_inside_band_summary("CDi_absolute_distance_to_1_percent", "CDi"),
             "## CL/CDi ratio\n\n" + build_cl_over_cdi_table(),
             "## CL ratio\n\n"
             + build_table(
                 "CL_reference",
                 "CL_two_wings",
-                "ratio_reference_over_two_wings",
-                "absolute_distance_to_1_percent",
+                "CL_ratio_two_wings_over_main_wing",
+                "CL_ratio_absolute_distance_to_1_percent",
                 "CL",
             ),
             "## CDi ratio\n\n"
@@ -461,48 +519,121 @@ def plot_lift_ratio(
 
     figure.tight_layout()
 
-    png_path = output_dir / "h_b_lift_ratio.png"
-    pdf_path = output_dir / "h_b_lift_ratio.pdf"
-    combined_png_path = output_dir / "h_b_cl_cdi_ratio.png"
-    combined_pdf_path = output_dir / "h_b_cl_cdi_ratio.pdf"
-    cl_over_cdi_png_path = output_dir / "h_b_cl_over_cdi.png"
-    cl_over_cdi_pdf_path = output_dir / "h_b_cl_over_cdi.pdf"
-    cl_over_cdi_ratio_png_path = output_dir / "h_b_cl_over_cdi_ratio.png"
-    cl_over_cdi_ratio_pdf_path = output_dir / "h_b_cl_over_cdi_ratio.pdf"
-    legacy_cdi_png_path = output_dir / "h_b_cdi_ratio.png"
-    legacy_cdi_pdf_path = output_dir / "h_b_cdi_ratio.pdf"
+    png_path = output_dir / "h_b_cl_over_cdi_ratio.png"
+    pdf_path = output_dir / "h_b_cl_over_cdi_ratio.pdf"
     figure.savefig(png_path, dpi=300)
     figure.savefig(pdf_path)
-    figure.savefig(combined_png_path, dpi=300)
-    figure.savefig(combined_pdf_path)
-    figure.savefig(cl_over_cdi_png_path, dpi=300)
-    figure.savefig(cl_over_cdi_pdf_path)
-    figure.savefig(cl_over_cdi_ratio_png_path, dpi=300)
-    figure.savefig(cl_over_cdi_ratio_pdf_path)
-    figure.savefig(legacy_cdi_png_path, dpi=300)
-    figure.savefig(legacy_cdi_pdf_path)
     plt.close(figure)
-    return [
-        png_path,
-        pdf_path,
-        combined_png_path,
-        combined_pdf_path,
-        cl_over_cdi_png_path,
-        cl_over_cdi_pdf_path,
-        cl_over_cdi_ratio_png_path,
-        cl_over_cdi_ratio_pdf_path,
-        legacy_cdi_png_path,
-        legacy_cdi_pdf_path,
-    ]
+    return [png_path, pdf_path]
 
 
-def print_summary(rows: list[dict[str, float | str]], output_dir: Path) -> None:
+def plot_cl_ratio(
+    rows: list[dict[str, float | str]],
+    output_dir: Path,
+    design_gap_m: float,
+) -> list[Path]:
+    figure, ratio_axis = plt.subplots(figsize=(9.5, 5.8))
+    ratio_axis.axhline(1.0, color="black", linewidth=1.2, label="No interference target")
+
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    all_cl_ratios: list[float] = []
+    for alpha_index, alpha in enumerate(_unique_alpha_values(rows)):
+        alpha_rows = _rows_for_alpha(rows, alpha)
+        color = color_cycle[alpha_index % len(color_cycle)]
+        vertical_gap_m = np.array([float(row["h_m"]) for row in alpha_rows])
+        cl_ratio = np.array(
+            [float(row["CL_ratio_two_wings_over_main_wing"]) for row in alpha_rows]
+        )
+        all_cl_ratios.extend(cl_ratio.tolist())
+        ratio_axis.plot(
+            vertical_gap_m,
+            cl_ratio,
+            marker="o",
+            linewidth=1.8,
+            color=color,
+            label=fr"$\alpha = {alpha:g}^\circ$",
+        )
+
+    design_rows = interpolate_ratio_at_gap(
+        rows,
+        "CL_ratio_two_wings_over_main_wing",
+        design_gap_m,
+    )
+    ratio_axis.axvline(
+        design_gap_m,
+        color="black",
+        linestyle="--",
+        linewidth=1.1,
+        label=fr"Design gap $h = {design_gap_m:g}$ m",
+    )
+    for alpha_index, design_row in enumerate(design_rows):
+        color = color_cycle[alpha_index % len(color_cycle)]
+        ratio_axis.scatter(
+            design_gap_m,
+            design_row["ratio"],
+            marker="D",
+            s=52,
+            color=color,
+            edgecolor="black",
+            linewidth=0.8,
+            zorder=4,
+        )
+        all_cl_ratios.append(design_row["ratio"])
+
+    h_values = sorted({float(row["h_m"]) for row in rows})
+    for h_value in h_values:
+        rows_at_h = [
+            row
+            for row in rows
+            if abs(float(row["h_m"]) - h_value) < 1e-9
+        ]
+        label_y = max(float(row["CL_ratio_two_wings_over_main_wing"]) for row in rows_at_h)
+        ratio_axis.annotate(
+            f"{h_value:g} m",
+            xy=(h_value, label_y),
+            xytext=(0, 8),
+            textcoords="offset points",
+            ha="center",
+            fontsize=8,
+            color="black",
+            clip_on=False,
+        )
+
+    if all_cl_ratios:
+        min_ratio = min(all_cl_ratios)
+        max_ratio = max(max(all_cl_ratios), 1.0)
+        lower_padding = max(0.02, (1.0 - min_ratio) * 0.25)
+        upper_padding = max(0.005, (max_ratio - min_ratio) * 0.03)
+        ratio_axis.set_ylim(min_ratio - lower_padding, max_ratio + upper_padding)
+
+    ratio_axis.set_xlabel("Vertical gap h [m]")
+    ratio_axis.set_ylabel(r"$C_{L,2w}/C_{L,1w}$ [-]")
+    ratio_axis.set_title(r"Vertical Gap $C_L$ Ratio")
+    ratio_axis.grid(True, alpha=0.35)
+    ratio_axis.legend(frameon=False, loc="best", ncol=1)
+
+    figure.tight_layout()
+
+    png_path = output_dir / "h_b_cl_ratio.png"
+    pdf_path = output_dir / "h_b_cl_ratio.pdf"
+    figure.savefig(png_path, dpi=300)
+    figure.savefig(pdf_path)
+    plt.close(figure)
+    return [png_path, pdf_path]
+
+
+def print_summary(
+    rows: list[dict[str, float | str]],
+    output_dir: Path,
+    span_m: float,
+    design_gap_m: float,
+) -> None:
     print("h/b CL and CDi ratio analysis")
     for alpha in _unique_alpha_values(rows):
         alpha_rows = _rows_for_alpha(rows, alpha)
         best_cl_row = min(
             alpha_rows,
-            key=lambda row: float(row["absolute_distance_to_1_percent"]),
+            key=lambda row: float(row["CL_ratio_absolute_distance_to_1_percent"]),
         )
         best_cdi_row = min(
             alpha_rows,
@@ -511,11 +642,25 @@ def print_summary(rows: list[dict[str, float | str]], output_dir: Path) -> None:
         print(
             f"alpha = {alpha:g} deg | "
             f"best CL: h = {float(best_cl_row['h_m']):.2f} m, "
-            f"ratio = {float(best_cl_row['ratio_reference_over_two_wings']):.4f}, "
-            f"error = {float(best_cl_row['absolute_distance_to_1_percent']):.2f}% | "
+            f"ratio = {float(best_cl_row['CL_ratio_two_wings_over_main_wing']):.4f}, "
+            f"error = {float(best_cl_row['CL_ratio_absolute_distance_to_1_percent']):.2f}% | "
             f"best CDi: h = {float(best_cdi_row['h_m']):.2f} m, "
             f"ratio = {float(best_cdi_row['CDi_ratio_reference_over_two_wings']):.4f}, "
             f"error = {float(best_cdi_row['CDi_absolute_distance_to_1_percent']):.2f}%"
+        )
+    print(
+        f"Interpolated CL ratio at design gap h = {design_gap_m:.2f} m "
+        f"(h/b = {design_gap_m / span_m:.4f})"
+    )
+    for design_row in interpolate_ratio_at_gap(
+        rows,
+        "CL_ratio_two_wings_over_main_wing",
+        design_gap_m,
+    ):
+        print(
+            f"alpha = {design_row['alpha_deg']:g} deg | "
+            f"CL_2w/CL_1w = {design_row['ratio']:.4f}, "
+            f"error = {design_row['absolute_distance_to_1_percent']:.2f}%"
         )
     print(f"Outputs written to: {output_dir}")
 
@@ -529,6 +674,7 @@ def run_analysis(
     span_m: float,
     single_wing_factor: float,
     error_band_percent: float,
+    design_gap_m: float,
 ) -> None:
     single_wing_file, two_wing_files = discover_polar_files(
         data_dir=data_dir,
@@ -561,6 +707,7 @@ def run_analysis(
         span_m=span_m,
         single_wing_factor=single_wing_factor,
         error_band_percent=error_band_percent,
+        design_gap_m=design_gap_m,
     )
     plot_lift_ratio(
         rows=rows,
@@ -569,7 +716,12 @@ def run_analysis(
         single_wing_factor=single_wing_factor,
         error_band_percent=error_band_percent,
     )
-    print_summary(rows, output_dir)
+    plot_cl_ratio(
+        rows=rows,
+        output_dir=output_dir,
+        design_gap_m=design_gap_m,
+    )
+    print_summary(rows, output_dir, span_m, design_gap_m)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -629,6 +781,12 @@ def parse_arguments() -> argparse.Namespace:
         default=DEFAULT_ERROR_BAND_PERCENT,
         help="Acceptable |ratio - 1| band shown on the plot.",
     )
+    parser.add_argument(
+        "--design-gap-m",
+        type=float,
+        default=DEFAULT_DESIGN_GAP_M,
+        help="Chosen vertical gap h highlighted on the CL-ratio plot.",
+    )
     return parser.parse_args()
 
 
@@ -643,4 +801,5 @@ if __name__ == "__main__":
         span_m=args.span_m,
         single_wing_factor=args.single_wing_factor,
         error_band_percent=args.error_band_percent,
+        design_gap_m=args.design_gap_m,
     )
