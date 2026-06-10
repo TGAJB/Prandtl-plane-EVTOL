@@ -48,8 +48,8 @@ from parameters import T_TAKEOFF, T_CLIMB_ACC, T_CLIMB, T_CRUISE, T_LANDING, V_A
 mtow_kg = 2100 #CHANGE THIS for the actual MTOW in the end in    [kg]
 
 # ---- Propeller geometry ------------------------------------------------------
-DIAMETER       = 1.95  # propeller diameter (FIXED in your case)     [m]
-N_BLADES       = 8      # number of blades (your free variable)
+DIAMETER       = 1.90  # propeller diameter (FIXED in your case)     [m]
+N_BLADES       = 8    # number of blades (your free variable)
 A_prop = np.pi * (DIAMETER/2)**2  # propeller disk area [m^2]
 TWIST_ROOT_DEG = 14.0       # built-in geometric twist at the root        [deg]
 TWIST_TIP_DEG  = 2.0        # built-in geometric twist at the tip         [deg]
@@ -60,7 +60,7 @@ N_ELEMENTS     = 40         # spanwise blade elements (resolution)
 
 
 # ---- Vehicle / mission (per-PROP thrust; divide totals by number of props) ---
-N_PROPS        = 6          # nuxmber of propellers on the vehicle
+N_PROPS        = 6         # nuxmber of propellers on the vehicle
 T_HOVER_PROP   = mtow_kg * (G + V_HOVER / T_TAKEOFF) / N_PROPS  # thrust required per prop in hover           [N]
 T_CRUISE_PROP  = mtow_kg * G /LD_CRUISE / N_PROPS  # thrust required per prop in cruise          [N]
 V_CRUISE       = 55.5556    # cruise forward speed                        [m/s]
@@ -82,7 +82,7 @@ SOUND_SPEED_FT = 1125.0     # speed of sound for the noise model          [ft/s]
 NOISE_LIMIT_TO_DB = 80.0    # take-off noise requirement                  [dB]
 NOISE_LIMIT_CR_DB = 60.0    # cruise   noise requirement                  [dB]
 NOISE_OBS_DIST_M  = 15  # observer slant distance to a prop           [m]
-NOISE_OBS_THETA   = 100  # angle from prop heading to observer         [deg]
+NOISE_OBS_THETA   = 120  # angle from prop heading to observer         [deg]
 OBS_THETA_CHANGE = [0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160]  # for noise vs directivity plot
 
 # ---- Figure 10.5-style plot sweep -------------------------------------------
@@ -363,6 +363,89 @@ def noise_spl(res, blade, r_ft, theta_deg):
                 - 20*np.log10(r_ft - 1.0))
     return 10*np.log10(N_PROPS * 10**(spl_each/10.0))
 
+# ==============================================================================
+#  NOISE MODEL 2 -- A-weighted SOUND POWER LEVEL (PWL) regression
+#  Source: Wang, Lima Pereira & Ragni, "Design exploration of UAM vehicles",
+#  Aerospace Science and Technology 160 (2025) 110058, Eqs. (12)-(14).
+#
+#  Computes the A-weighted PWL [dBA] of the whole vehicle from basic powertrain
+#  data. NOTE: this is sound POWER (PWL), not SPL at an observer distance, so it
+#  is NOT directly comparable to the JPL noise_spl() output. It already includes
+#  A-weighting, so do NOT pass it through spl_to_dba().
+#
+#  Fitted regression (per-stage coefficients, Eqs. 13 & 14):
+#    Takeoff: PWL = 3.2*log10(Ps) - 20.3*log10(D) + 60*log10(Mt)
+#                   - 2.9*B + 10*log10(Nprop) + 124.1
+#    Cruise : PWL =              + 14.1*log10(D) + 60*log10(Mt)
+#                   + 0.5*B + 10*log10(Nprop) + 102.2     (Ps term ~ 0)
+# ==============================================================================
+def pwl_regression(res, blade, stage, fom=None, n_props=None, c_sound=SOUND_SPEED):
+    """
+    A-weighted sound power level [dBA] via the Wang et al. (2025) regression.
+
+    res     : a bemt_hover() or bemt_cruise() result dict (needs P, Vtip, n_rpm)
+    blade   : the Blade object (for diameter and blade count B)
+    stage   : "takeoff" or "cruise" -- selects the fitted coefficient set
+    fom     : figure of merit used to convert shaft power to Ps = P/FM.
+              Defaults to FOM_ASSUMED if available, else res['FoM'], else 0.75.
+    n_props : number of propellers; defaults to N_PROPS.
+    Returns the A-weighted PWL in dBA.
+    """
+    if n_props is None:
+        n_props = N_PROPS
+    if fom is None:
+        fom = globals().get("FOM_ASSUMED", res.get("FoM", 0.75))
+
+    D = 2 * blade.R                       # propeller diameter [m]
+    B = blade.B                           # number of blades
+    Ps = res["P"] / fom                   # shaft power per prop incl. FoM [W]
+    Mt = res["Vtip"] / c_sound            # tip Mach number
+
+    if Mt <= 0 or Ps <= 0:
+        return float("nan")
+
+    if stage == "takeoff":
+        pwl = (3.2 * np.log10(Ps)
+               - 20.3 * np.log10(D)
+               + 60.0 * np.log10(Mt)
+               - 2.9 * B
+               + 10.0 * np.log10(n_props)
+               + 124.1)
+    elif stage == "cruise":
+        pwl = (14.1 * np.log10(D)
+               + 60.0 * np.log10(Mt)
+               + 0.5 * B
+               + 10.0 * np.log10(n_props)
+               + 102.2)
+    else:
+        raise ValueError("stage must be 'takeoff' or 'cruise'")
+
+    return pwl
+def pwl_to_spl_directional(pwl_dba, r_m, theta_deg, hemisphere=True):
+    """
+    Convert A-weighted PWL [dBA] to SPL [dBA] at a SPECIFIC observer angle,
+    by spreading the power over a hemisphere AND applying a zero-mean
+    directivity index derived from the JPL Fig. B-8 curve (_Ldir).
+
+    This is more accurate than the direction-averaged pwl_to_spl() because it
+    accounts for the propeller radiating more strongly near the disc plane and
+    less along the axis -- redistributing the fixed total power by angle.
+
+    theta_deg : observer angle from the propeller heading (e.g. 100 deg).
+    """
+    area = 2*np.pi*r_m**2 if hemisphere else 4*np.pi*r_m**2
+    spl_avg = pwl_dba - 10*np.log10(area)
+
+    # build a zero-mean directivity index from the JPL Fig. B-8 curve.
+    # energy-average _Ldir over the hemisphere (20..180 deg), then subtract.
+    th = np.linspace(20, 180, 100)
+    Ld = np.array([_Ldir(t) for t in th])
+    # energy (intensity) average, weighted by sin(theta) for the solid angle
+    w = np.sin(np.deg2rad(th))
+    Ld_mean = 10*np.log10(np.sum(w * 10**(Ld/10.0)) / np.sum(w))
+    D_theta = _Ldir(theta_deg) - Ld_mean
+
+    return spl_avg + D_theta
 
 # ------------------------------------------------------------------------------
 #  dB -> dBA CONVERSION  (A-weighting via octave-band spectrum)
@@ -582,7 +665,12 @@ def main():
               f"(limit {NOISE_LIMIT_TO_DB}: {v})")
         dba, _ = spl_to_dba(hov, blade, spl)
         print(f"  TO noise     : {dba:8.1f} dBA (A-weighted)")
- 
+        pwl_t = pwl_regression(hov, blade, "takeoff")
+        spl_t_dir = pwl_to_spl_directional(pwl_t, NOISE_OBS_DIST_M,
+                                           NOISE_OBS_THETA, hemisphere=True)
+        print(f"  TO PWL (Wang2025): {pwl_t:8.1f} dBA (sound power level)")
+        print(f"  TO SPL (Wang2025, theta={NOISE_OBS_THETA:.0f} deg): "
+              f"{spl_t_dir:8.1f} dBA")
     # ---------- CRUISE ----------
     print("\n--- CRUISE (min power) ---")
     cru, nf, nr = size_phase(blade, T_CRUISE_PROP, V_CRUISE, hover=False)
@@ -621,8 +709,9 @@ def main():
         print("  No feasible cruise pitch under current constraints.")
  
     print("\nNOTE: noise chart functions are DIGITIZED approximations (+/-10 dB).")
- 
- 
+    pwl_c = pwl_regression(cru, blade, "cruise")
+    spl_c_dir = pwl_to_spl_directional(pwl_c, NOISE_OBS_DIST_M, NOISE_OBS_THETA, hemisphere=True)
+    print(f"  cruise SPL (Wang2025, theta={NOISE_OBS_THETA:.0f} deg): "f"{spl_c_dir:8.1f} dBA")
 if __name__ == "__main__":
     main()
 

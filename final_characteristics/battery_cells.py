@@ -16,7 +16,28 @@ PARAMETER SET:
   mass allocation            : 546 kg     (Class-II estimate, with margin)
 """
 
+"""
+battery_cells.py -- Battery pack cell-count sizing for the Folding Prandtl eVTOL.
+
+BASELINE CELL: Amprius SA504 SiCore (High Energy + High Power) silicon-anode
+Li-ion, a real, commercially-available pouch cell. Datasheet: 386 Wh/kg
+cell-level, 6C continuous discharge, 500 cycles (100% DOD to 80% SOH). Chosen
+over the SA88 (365 Wh/kg, 10C, 200 cycles) because its higher energy density
+and 2.5x longer cycle life outweigh the lower (but still adequate) power
+rating: hover needs ~4.4C at pack level, which the 6C cell covers with a
+~1.35x margin. Lower-power higher-energy SiCore variants (1C) cannot meet hover.
+
+PARAMETER SET:
+  cell-level specific energy : 386 Wh/kg  (SA504, datasheet)
+  cell-to-pack ratio         : 0.72       (realistic integrated pack)
+  energy margin              : 20% reserve (no separate SOC/contingency)
+  mass allocation            : 546 kg     (Class-II estimate, with margin)
+"""
+
 from dataclasses import dataclass
+import math
+
+
 import math
 
 
@@ -35,8 +56,21 @@ class Cell:
     cycle_life: int = 500       # cycles, 1C/-1C, 100% DOD to 80% SOH (datasheet)
     clamp_psi: float = 0.0      # pouch; clamping not specified on datasheet
 
+    name: str = "Amprius SA504 SiCore (High Energy + High Power)"
+    V_nom: float = 3.40         # nominal voltage [V] (datasheet)
+    capacity_Ah: float = 11.05  # typical capacity @ C/5 [Ah] (datasheet)
+    # SA504: 37.57 Wh typical, 97.3 g -> 386 Wh/kg; 66.3 A (6C) continuous.
+    I_cont_max: float = 66.3    # max continuous discharge current [A] (6C)
+    mass_kg: float = 0.0973     # cell mass [kg] (datasheet, 97.3 g)
+    assumed_density_Wh_kg: float = 386.0  # cell-level density (datasheet)
+    cycle_life: int = 500       # cycles, 1C/-1C, 100% DOD to 80% SOH (datasheet)
+    clamp_psi: float = 0.0      # pouch; clamping not specified on datasheet
+
     @property
     def energy_Wh(self) -> float:
+        """Per-cell energy at nominal voltage [Wh] (datasheet typical 37.57)."""
+        return self.V_nom * self.capacity_Ah     # 3.40 * 11.05 = 37.57 Wh
+
         """Per-cell energy at nominal voltage [Wh] (datasheet typical 37.57)."""
         return self.V_nom * self.capacity_Ah     # 3.40 * 11.05 = 37.57 Wh
 
@@ -45,16 +79,22 @@ class Cell:
         """Energy-driven count uses the real datasheet per-cell energy."""
         return self.energy_Wh
 
+
     @property
     def power_cont_W(self) -> float:
+        """Continuous power per cell at nominal voltage [W] (6C)."""
+        return self.V_nom * self.I_cont_max      # 3.40 * 66.3 = 225 W
+
         """Continuous power per cell at nominal voltage [W] (6C)."""
         return self.V_nom * self.I_cont_max      # 3.40 * 66.3 = 225 W
 
     @property
     def density_Wh_kg(self) -> float:
         return self.energy_Wh / self.mass_kg     # ~386 Wh/kg
+        return self.energy_Wh / self.mass_kg     # ~386 Wh/kg
 
 
+# --------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------- #
 # Sizing inputs
 # --------------------------------------------------------------------------- #
@@ -66,9 +106,11 @@ class PackRequirement:
     E_mission_kWh: float = 137.2     # main PROPULSION mission energy [kWh]
     E_aux_kWh: float = 0.0           # auxiliary (270V+28V) energy [kWh];
                                      # set from aux_loads.py in main
+                                     # set from aux_loads.py in main
     E_reserve_frac: float = 0.20     # reserve = 20% of (mission + aux)
     usable_soc: float = 1.00         # no separate SOC derate; reserve is margin
     contingency: float = 1.00        # no separate contingency (reserve is it)
+
 
     # POWER side
     # 870 kW = takeoff_power(2314.08) from energy.py at the converged MTOW
@@ -80,9 +122,11 @@ class PackRequirement:
                                      # realistic basis -- propulsion dominates
     power_derate: float = 1.0        # optional pack-level derate on cell I_cont
 
+
     @property
     def E_reserve_kWh(self) -> float:
         return (self.E_mission_kWh + self.E_aux_kWh) * self.E_reserve_frac
+
 
     # Architecture target (for reporting S/P split)
     bus_voltage_V: float = 800.0     # high-voltage bus target [V]
@@ -102,6 +146,9 @@ def cells_for_energy(cell: Cell, req: PackRequirement) -> dict:
     Energy-driven cell count.
         E_deliverable = E_mission + E_aux + E_reserve
         E_installed   = E_deliverable * contingency / usable_soc
+    Energy-driven cell count.
+        E_deliverable = E_mission + E_aux + E_reserve
+        E_installed   = E_deliverable * contingency / usable_soc
         N = ceil(E_installed / E_cell)
     """
     E_deliverable_kWh = req.E_mission_kWh + req.E_aux_kWh + req.E_reserve_kWh
@@ -117,8 +164,11 @@ def cells_for_energy(cell: Cell, req: PackRequirement) -> dict:
     }
 
 
+
+
 def cells_for_power(cell: Cell, req: PackRequirement) -> dict:
     """
+    Power-driven cell count.
     Power-driven cell count.
         P_cell = V_nom * I_cont_max * power_derate
         N = ceil(P_hover / P_cell)
@@ -136,8 +186,13 @@ def cells_for_power(cell: Cell, req: PackRequirement) -> dict:
     }
 
 
+
+
 def series_parallel(cell: Cell, N_cells: int, req: PackRequirement) -> dict:
     """
+    Series/parallel layout for the chosen cell count and bus voltage.
+        S = round(bus_voltage / V_nom)   (series sets pack voltage)
+        P = ceil(N_cells / S)            (parallel strings for energy/power)
     Series/parallel layout for the chosen cell count and bus voltage.
         S = round(bus_voltage / V_nom)   (series sets pack voltage)
         P = ceil(N_cells / S)            (parallel strings for energy/power)
@@ -152,6 +207,8 @@ def series_parallel(cell: Cell, N_cells: int, req: PackRequirement) -> dict:
         "pack_power_cont_kW": N_actual * cell.power_cont_W / 1000.0,
         "pack_mass_cells_kg": N_actual * cell.mass_kg,
     }
+
+
 
 
 def cells_from_mass_budget(cell: Cell, req: PackRequirement) -> dict:
@@ -179,6 +236,8 @@ def cells_from_mass_budget(cell: Cell, req: PackRequirement) -> dict:
     }
 
 
+
+
 def size_pack(cell: Cell, req: PackRequirement) -> dict:
     e = cells_for_energy(cell, req)
     p = cells_for_power(cell, req)
@@ -187,6 +246,8 @@ def size_pack(cell: Cell, req: PackRequirement) -> dict:
     layout = series_parallel(cell, N, req)
     return {"energy": e, "power": p, "driver": driver,
             "N_required": N, "layout": layout}
+
+
 
 
 # --------------------------------------------------------------------------- #
@@ -199,8 +260,12 @@ def report(cell: Cell, req: PackRequirement) -> None:
     print("=" * 70)
     print(f"Cell: {cell.V_nom} V x {cell.capacity_Ah} Ah = {cell.energy_Wh:.1f} Wh "
           f"({cell.assumed_density_Wh_kg:.0f} Wh/kg), "
+    print(f"Cell: {cell.V_nom} V x {cell.capacity_Ah} Ah = {cell.energy_Wh:.1f} Wh "
+          f"({cell.assumed_density_Wh_kg:.0f} Wh/kg), "
           f"{cell.I_cont_max:.0f} A -> {cell.power_cont_W:.0f} W, {cell.mass_kg*1000:.0f} g")
     print("-" * 70)
+    print("ENERGY constraint (per-cell energy at the SA504 datasheet density):")
+    print(f"  ({req.E_mission_kWh:.1f} mission + {req.E_aux_kWh:.2f} aux + "
     print("ENERGY constraint (per-cell energy at the SA504 datasheet density):")
     print(f"  ({req.E_mission_kWh:.1f} mission + {req.E_aux_kWh:.2f} aux + "
           f"{req.E_reserve_kWh:.1f} reserve) "
@@ -228,7 +293,10 @@ def report(cell: Cell, req: PackRequirement) -> None:
     print("=" * 70)
 
     # --- Mass-allocation feasibility check ----------------------------- #
+
+    # --- Mass-allocation feasibility check ----------------------------- #
     m = cells_from_mass_budget(cell, req)
+    print(f"\nMASS-ALLOCATION FEASIBILITY (Class-II pack mass "
     print(f"\nMASS-ALLOCATION FEASIBILITY (Class-II pack mass "
           f"{req.pack_mass_budget_kg:.0f} kg, cell-to-pack {req.cell_to_pack})")
     print(f"  cell mass available : {m['cell_mass_available_kg']:.0f} kg "
@@ -246,8 +314,11 @@ def report(cell: Cell, req: PackRequirement) -> None:
     print("=" * 70)
 
 
+
+
 if __name__ == "__main__":
     cell = Cell()
+
 
     # --- Auxiliary energy from the component build-up (aux_loads.py) ----- #
     # Single source of truth: edit loads/duties in aux_loads.py, not here.
@@ -263,6 +334,8 @@ if __name__ == "__main__":
     print(f"  {'270 V bus':<16}{_aux_b['bus_E'][270]:>8.2f} kWh")
     print(f"  {'TOTAL':<16}{aux_total:>8.2f} kWh")
     print("=" * 70 + "\n")
+
+    # Energy governs; propulsion dominates the hover peak so concurrent aux ~ 0.
 
     # Energy governs; propulsion dominates the hover peak so concurrent aux ~ 0.
     req = PackRequirement(E_aux_kWh=aux_total, P_aux_concurrent_kW=0.0)
