@@ -81,7 +81,7 @@ class WingGeometry:
 
     # ===== ADDED FOR DATCOM ==================================================
     # Reference quantities for non-dimensionalisation. EVERY aircraft-level derivative is referenced to these; they must match the EOM reference.
-    S_ref:                float = None  # [m^2]
+    S_ref:                float = S_tot  # [m^2]
     b_ref:                float = 13.0  # [m]
     MAC_ref:              float = 1.262  # [m]
 
@@ -95,8 +95,8 @@ class WingGeometry:
     te_angle_aw:          float = 18  # [deg.]
 
     # Wing vertical position relative to body centreline (+ is down)
-    z_w_fw:               float = -0.5  # [m]
-    z_w_aw:               float = 2.1   # [m]
+    z_w_fw:               float = +0.5   # [m]
+    z_w_aw:               float = -2.1   # [m]
 
     x_LEMAC_fw:           float = 1 # [m] - very rough estimate
 
@@ -107,6 +107,7 @@ class TailGeometry:
     Geometry and position of the vertical tail.
     """
 
+    n_fins:                     float = 2    # [-]
     x_vert_tail:                float = 8.5  # [m]
     c_r_vert_tail:              float = 1.4  # [m]
     c_t_vert_tail:              float = 0.5  # [m]
@@ -264,8 +265,8 @@ class AerodynamicCoefficients:
     I_v:                                float = -1.75 # [-] - Vortex interference factor
 
     # Long. positions of aerodynamic centres
-    x_ac_fw_cruise:                     float = 0.313  # [m] as seen from the LEMAC of the front wing
-    x_ac_aw_cruise:                     float = 0.313  # [m] as seen from the LEMAC of the aft wing
+    x_ac_fw_cruise:                     float = 1.60  # [m]
+    x_ac_aw_cruise:                     float = 6.02  # [m]
     x_ac_fw_approach:                   float = None  # [m]
     x_ac_aw_approach:                   float = None  # [m]
 
