@@ -70,12 +70,12 @@ T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prep
 
 # V-tail structural parameters
 
-V_ANGLE        = 45.0    # [deg]  V-tail dihedral from horizontal
+V_ANGLE        = 25.0    # [deg]  V-tail dihedral from horizontal
 TAPER_TAIL     = 0.40    # [-]    chord taper ratio (c_tip / c_root)
 TIP_TO_CHORD   = 0.10    # [-]    thickness-to-chord ratio
 F_REAR_WING    = 0.50    # [-]    rear Prandtl-wing lift fraction
 N_W            = 3.5     # [-]    design limit load factor
-T_SKIN_MIN_AL  = 1.2e-3  # [m]    minimum skin gauge (Niu 1988)
+T_SKIN_MIN_AL  = 2.0e-3  # [m]    minimum skin gauge (Niu 1988)
 STRUCT_SF      = 1.5     # [-]    ultimate safety factor (FAR/CS 25.303)
 C_N_TAIL_MAX   = 1.2     # [-]    peak normal force coefficient at max deflection
 V_DIVE_FACTOR  = 1.25    # [-]    V_dive / V_cruise (FAR/CS 25.335 lower bound)
@@ -99,47 +99,132 @@ CONTINGENCY  = 1.05    # [-]     energy contingency factor
 # Airframe geometry
 
 L_FUS       = 7.0    # [m]   fuselage length
+FUSE_WIDTH  = 2.0    # [m]   fuselage width (front view; placeholder)
 PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
 
 
-# Landing Gear design constants
+# Landing-gear drop trade study (CS-27.725 limit + 27.727 reserve)
+#
+# Skid gear modelled as 2 ground rails joined by 2 transverse cross-members; each
+# member has 2 knees -> 4 "legs"/hinges across the 2 skids. Every architecture is an
+# energy absorber sized for the two drops (stay ELASTIC at the limit, survive the
+# reserve), and all capacities/masses are WHOLE-GEAR totals (per-member values scaled
+# by the *_COUNT constants below). Used by mass_components.landing_gear_mass and the
+# offline study class_II_sizing/trade_off_landing_gear.py.
 
-ETA = 0.003       # legacy placeholder - superseded by ETA_LG_* below
-D_O_SKID = 0.06   # [m]  placeholder outer diameter (sizing sweeps DO_SKID_MIN->MAX)
-D_I_SKID = 0.054  # [m]  placeholder inner diameter (sizing uses T_WALL_SKID)
-L_EFF    = 1.2    # [m]  effective cantilever length of each skid leg
-                  #       CALIBRATION REQUIRED: with the simple cantilever model,
-                  #       sigma ~ n*W*L/(Do^2*t), so the Do that keeps n<=N_LIMIT_LG
-                  #       is too small to carry the root bending moment for L~1 m.
-                  #       Set L_EFF to the actual bent-section arm (often 0.2-0.5 m
-                  #       for helicopter skid cross-tubes), not the full half-track.
-N_REACT  = 4      # [-]  total reaction points = 2 * n_cross (2 cross-tubes)
+# -- Whole-aircraft drop inputs (MTOW is supplied by the caller, not a constant) --
+H_L      = 0.25      # [m]  limit drop height (>= 0.20 floor)                  PLACEHOLDER
+D_EST    = 0.15      # [m]  estimated impact deflection (gear stroke); used    PLACEHOLDER
+                     #       ONLY to size the effective drop mass M_EFF
+LIFT     = 0.0       # [-]  rotor/lift credit ratio L (0 = conservative, no credit)
+N_LIMIT  = 20.0      # [g]  max allowed peak deceleration                      PLACEHOLDER
+ENVELOPE = 0.40      # [m]  available vertical stroke envelope                 PLACEHOLDER
 
-# CS-27/29 certification conditions
-V_Z_LIMIT        = 2.44   # [m/s]  limit-condition sink rate
-V_Z_RESERVE      = 3.7    # [m/s]  reserve-energy sink rate
-# Efficiency: keep ETA_LG_RESERVE = 0.50 for CFRP (brittle; no plastic plateau).
-# For ductile metals (Al, Ti) the reserve value may be raised to 0.60-0.80.
-ETA_LG_LIMIT     = 0.50   # [-]  elastic absorption efficiency (limit condition)
-ETA_LG_RESERVE   = 0.50   # [-]  absorption efficiency (reserve); override per material
+# -- Materials: E [Pa], sy [Pa], rho [kg/m^3], eu [-] ductility, Gc [J/m^2] --
+#    (MMPDS / MIL-HDBK-5 for metals; laminate datasheet for CFRP)
+AL    = {"E": 71.7e9, "sy": 503e6,  "rho": 2810, "eu": 0.11,  "Gc": 0}
+STEEL = {"E": 200e9,  "sy": 1200e6, "rho": 7850, "eu": 0.06,  "Gc": 0}
+CFRP  = {"E": 70e9,   "sy": 600e6,  "rho": 1600, "eu": 0.015, "Gc": 1500}
 
-# Load-factor and stroke constraints
-# N_LIMIT_LG is the landing-gear load-factor limit, NOT the wing limit N_W = 3.5.
-# Typical skid-gear values: 4-8 g depending on aircraft category and cert basis.
-N_LIMIT_LG       = 7.0    # [-]  landing-gear ultimate load-factor limit (placeholder)
-KAPPA_LG         = 1.0    # [-]  lift fraction at touchdown; 1.0 = full rotor lift (powered VTOL landing)
-GROUND_CLEARANCE = 0.30   # [m]  maximum allowable stroke (30 cm; covers reserve case)
+# -- Gear architecture: how many parallel units form the full gear --
+N_SKID          = 2      # [-]   longitudinal ground rails
+# -- Skid-rail tube geometry (hollow aluminium round tube, density RHO_AL) --
+D_SKID_RAIL     = 0.080  # [m]   rail outer diameter
+T_SKID_RAIL     = 0.004  # [m]   rail wall thickness
+L_SKID_RAIL     = 0.65 * L_FUS  # [m]  rail length ~ ground-contact footprint
+CROSSTUBE_COUNT = 2      # [-]   transverse cross-tubes (front + rear)
+HINGES_PER_TUBE = 2      # [-]   knees per cross-tube  -> 2*2 = 4 hinges total
+LEAF_COUNT      = 2      # [-]   transverse leaf springs
+HINGES_PER_LEAF = 2      # [-]
+COMPOSITE_COUNT = 2      # [-]
+CRUSH_COUNT     = 4      # [-]   one crush unit per leg
+ELASTO_COUNT    = 4      # [-]   one elastomeric mount per leg
 
-# Tube geometry
-T_WALL_SKID  = 0.003  # [m]  skid tube wall thickness (placeholder - refine from sizing)
-DO_SKID_MIN  = 0.03   # [m]  outer-diameter sweep lower bound
-DO_SKID_MAX  = 0.30   # [m]  outer-diameter sweep upper bound
+# -- Structural-model constants --
+BC_FACTOR         = 3.0    # [-]   k = BC*EI/L^3 (3 = tip-loaded cantilever)
+CROSS_SPAN        = 0.60   # [m]   skid track width under fuselage             PLACEHOLDER
+FOOTPRINT_MAX_SPAN = 6.0   # [m]   max lateral gear track (spanwise footprint cap)
+TUBE_HINGE_LEN    = 1.0    # [xD]  plastic-hinge length, tube knee
+LEAF_HINGE_LEN    = 1.5    # [xt]  plastic-hinge length, leaf
+LEAF_DEV_FACTOR   = 2.0    # [-]   developed leaf length = factor * L
+COMP_CRUSH_FRAC   = 0.5    # [xL]  post-failure crush travel, composite        PLACEHOLDER
+COMP_DELAM_FACTOR = 2.0    # [-]   delaminated length = factor * L
+CRUSH_LEAF_B      = 0.08   # [m]   width of the elastic leaf in the hybrid
+CRUSH_LEAF_L      = 0.45   # [m]   length of that leaf
+HONEYCOMB_STRESS  = 2.5e6  # [Pa]  honeycomb crush plateau stress
+HONEYCOMB_DENSITY = 80.0   # [kg/m^3] honeycomb core density
+CRUSH_STROKE_EFF  = 0.75   # [-]   usable crush fraction before densification
+ELASTO_FIXED_MASS = 1.2    # [kg]  mount housing/bracket fixed mass
+ELASTO_MASS_PER_N = 1.0e-4 # [kg/N] mount mass vs peak load
+# -- Discrete-mount load-path frame (elastomeric): CROSSTUBE_COUNT cross-tubes + ELASTO_COUNT
+#    arms carrying the mounts down to the skids. Hollow aluminium tubes (density RHO_AL). --
+D_FRAME_TUBE      = 0.060  # [m]   cross-tube / arm outer diameter
+T_FRAME_TUBE      = 0.003  # [m]   cross-tube / arm wall thickness
+L_ARM             = 0.45   # [m]   arm length, mount/hinge down to skid
 
-# Frame geometry
-L_TRACK    = 2.0   # [m]  lateral track width (cross-tube chord)
-L_SKID     = 3.0   # [m]  skid runner length (each side)
-K_FITTINGS = 1.3   # [-]  mass knockup factor for fittings and attachments
+# -- Trade-off scoring: qualitative scores 0..1 by engineering judgement (PLACEHOLDERS) --
+QUAL = {
+    "A cross-tube":       dict(tunable=0.3, cert_risk=0.1, cost=0.1),
+    "B metal leaf":       dict(tunable=0.5, cert_risk=0.2, cost=0.2),
+    "B' composite leaf":  dict(tunable=0.5, cert_risk=0.8, cost=0.5),
+    "F crushable hybrid": dict(tunable=0.9, cert_risk=0.5, cost=0.5),
+    "E elastomeric":      dict(tunable=0.4, cert_risk=0.4, cost=0.2),
+}
+# criterion -> (direction, base weight, relative uncertainty for sensitivity)
+#   direction "min_ratio" (mass only) is magnitude-aware: score = lightest/value, so a 6x
+#   heavier design scores ~0.16 (not just "worst in the feasible set" as plain min-max would).
+#   Mass is the dominant weight so a much heavier gear cannot win on the soft criteria.
+WEIGHTS = {
+    "SEA":       ("max",       0.18, 0.10),
+    "mass":      ("min_ratio", 0.45, 0.05),
+    "npk":       ("min",       0.11, 0.10),
+    "reusable":  ("max",       0.07, 0.00),
+    "tunable":   ("max",       0.06, 0.20),
+    "cert_risk": ("min",       0.09, 0.20),
+    "cost":      ("min",       0.04, 0.20),
+}
+
+# -- Per-architecture SLSQP search config (x0 / bounds / varnames / material / scale) --
+#    Keys match the concept-function map in mass_components and the QUAL table above.
+#
+#    The `bounds`/`x0` below are calibrated at GEAR_BOUNDS_REF_MASS. `scale` gives a
+#    per-variable exponent so mass_components._scaled_gear_bounds grows each variable's
+#    UPPER bound (and seed) by (m_eff / GEAR_BOUNDS_REF_MASS) ** scale_i, keeping the
+#    study valid at any MTOW. Scale the ENERGY-bearing, stroke-neutral dimensions ~linearly
+#    (leaf width, honeycomb area, elastomer stiffness) so elastic capacity tracks E_L ~ m_eff,
+#    while leaving stroke / thickness / dimensionless variables fixed (exponent 0) so the
+#    stroke envelope and load-factor cap are not blown. The cross-tube grows only modestly
+#    and stays elastic-infeasible at high sink speeds by design (a bending tube is not an
+#    elastic spring).
+GEAR_OPT_SEED = 0          # [-]  seed for the SLSQP random restarts (reproducible sizing)
+GEAR_OPT_RESTARTS = 48     # [-]  random multi-starts per architecture. Marginal designs
+                           #       (e.g. a stiff metal leaf near the load-factor cap) sit on
+                           #       a small feasible island; too few restarts make feasibility
+                           #       and the optimum flicker, so this is set generously.
+GEAR_BOUNDS_REF_MASS = 700.0  # [kg] effective mass at which the bounds/x0 below are tuned
+GEAR_OPT_BOUNDS = {
+    "A cross-tube":      dict(x0=[0.060, 0.004, 0.45],
+                              bounds=[(0.03, 0.14), (0.002, 0.014), (0.30, 0.70)],
+                              varnames=["D", "t", "L"], material=AL,
+                              scale=[0.5, 0.0, 0.0]),
+    "B metal leaf":      dict(x0=[0.080, 0.010, 0.45],
+                              bounds=[(0.04, 0.18), (0.004, 0.030), (0.30, 0.70)],
+                              varnames=["b", "t", "L"], material=STEEL,
+                              scale=[1.0, 0.0, 0.0]),
+    "B' composite leaf": dict(x0=[0.090, 0.012, 0.45],
+                              bounds=[(0.04, 0.20), (0.004, 0.035), (0.30, 0.70)],
+                              varnames=["b", "t", "L"], material=CFRP,
+                              scale=[1.0, 0.0, 0.0]),
+    "F crushable hybrid": dict(x0=[0.008, 0.003, 0.10],
+                               bounds=[(0.003, 0.020), (0.0005, 0.012), (0.04, 0.25)],
+                               varnames=["tleaf", "Ac", "sc"], material=STEEL,
+                               scale=[0.5, 1.0, 0.5]),
+    "E elastomeric":     dict(x0=[6e5, 0.08, 0.4],
+                              bounds=[(1e5, 3e6), (0.03, 0.20), (0.3, 0.6)],
+                              varnames=["kb", "dm", "loss"], material=AL,
+                              scale=[1.0, 0.0, 0.0]),
+}
 
 
 
