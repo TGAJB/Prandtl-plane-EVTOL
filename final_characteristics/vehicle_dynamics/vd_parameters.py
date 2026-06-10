@@ -1,7 +1,7 @@
 # This file contains all the independent variables that describe the aircraft in variable form.
 
 from dataclasses import dataclass, field
-
+import numpy as np
 
 @dataclass
 class Mission:
@@ -56,8 +56,8 @@ class WingGeometry:
     MAC_fw:               float = 1.262  # [m]
     MAC_aw:               float = 1.262  # [m]
 
-    taper_fw:             float = 0.4  # [-]
-    taper_aw:             float = 0.4  # [-]
+    taper_fw:             float = 0.45  # [-]
+    taper_aw:             float = 0.45  # [-]
 
     chord_fw_root:        float = 1.66  # [m]
     chord_fw_tip:         float = 0.75  # [m]
@@ -108,20 +108,20 @@ class TailGeometry:
     """
 
     n_fins:                     float = 2    # [-]
-    x_vert_tail:                float = 8.5  # [m]
-    c_r_vert_tail:              float = 1.4  # [m]
-    c_t_vert_tail:              float = 0.5  # [m]
-    b_vert_tail:                float = 2.5  # [m]
+    x_vert_tail:                float = 6.4  # [m]
+    c_r_vert_tail:              float = 1.8  # [m]
+    c_t_vert_tail:              float = 1.3  # [m]
+    taper_vert_tail:            float = c_t_vert_tail/c_r_vert_tail  # [-]
+    b_vert_tail:                float = 1.6  # [m]
     S_vert_tail:                float = ((c_r_vert_tail + c_t_vert_tail)*b_vert_tail)/2  # [m^2]
     AR_vert_tail:               float = b_vert_tail**2/S_vert_tail  # [-]
-    LE_sweep_vert_tail:         float = 0.31  # [rad]
+    LE_sweep_vert_tail:         float = np.arctan(c_r_vert_tail*(1 - taper_vert_tail)/b_vert_tail)  # [rad]
     airfoil_vert_tail:          str   = "NACA 0012"  # [-]
 
-    taper_vert_tail:            float = 0.33  # [-]
-    MAC_vert_tail:              float = 0.867  # [m]
+    MAC_vert_tail:              float = (2/3)*c_r_vert_tail*((1 + taper_vert_tail + taper_vert_tail**2)/(1 + taper_vert_tail))  # [m]
     t_c_vert_tail:              float = 0.12  # [-]
     te_angle_vert_tail:         float = 14  # [deg.]
-    z_vert_tail:                float = 1.0  # [m] vertical a.c. height (datum)
+    z_vert_tail:                float = 0.65  # [m] vertical a.c. height (datum)
 
 
 @dataclass
@@ -138,13 +138,13 @@ class WingletGeometry:
     enabled:                    bool  = True  # keep existing model backward-compatible
     n_winglets:                 int   = 2      # usually left and right tip joiners
 
-    S_winglet:                  float = 3.125  # [m^2] planform area of ONE winglet/joiner
-    b_winglet:                  float = 2.5  # [m] vertical span/height of ONE winglet
+    S_winglet:                  float = 1.57  # [m^2] planform area of ONE winglet/joiner
+    b_winglet:                  float = 2.1  # [m] vertical span/height of ONE winglet
     AR_winglet:                 float = b_winglet**2/S_winglet  # [-] aspect ratio of ONE winglet
     taper_winglet:              float = 1.0 # [-]
-    LE_sweep_winglet:           float = 0.5  # [rad]
+    LE_sweep_winglet:           float = np.arctan(WingGeometry.stagger/WingGeometry.gap)  # [rad]
 
-    x_ac_winglet:               float = 3.6  # [m] longitudinal aerodynamic-centre location
+    x_ac_winglet:               float = 4.125  # [m] longitudinal aerodynamic-centre location
     z_ac_winglet:               float = 0.0  # [m] vertical aerodynamic-centre location
 
     airfoil_winglet:            str   = "NASA LANGLEY LS(1)-0417"  # [-]
@@ -192,19 +192,19 @@ class MassProperties:
     Aircraft mass and inertia properties.
     """
 
-    mtow:         float = 2000.0  # [kg]
-    oew:          float = None  # [kg]
-    payload_mass: int   = 400  # [kg]
+    mtow:         float = 2000.0    # [kg]
+    oew:          float = None      # [kg]
+    payload_mass: int   = 400       # [kg]
 
-    x_cg_min:     float = None  # [m]
-    x_cg_max:     float = None  # [m]
-    x_cg_opt:     float = 2.8  # [m] - Optimal CG location during cruise
-    z_cg:         float = None  # [m] - vertical CG (datum), used by moment arms
+    x_cg_min:     float = None      # [m]
+    x_cg_max:     float = None      # [m]
+    x_cg_opt:     float = 3.311     # [m] - Optimal CG location during cruise
+    z_cg:         float = -0.162    # [m] - vertical CG (datum), used by moment arms
 
-    I_xx:         float = None  # [kg m^2]
-    I_yy:         float = None  # [kg m^2]
-    I_zz:         float = None  # [kg m^2]
-    I_xz:         float = None  # [kg m^2]
+    I_xx:         float = 11458.0   # [kg m^2]
+    I_yy:         float = 9707.0    # [kg m^2]
+    I_zz:         float = 18196.0   # [kg m^2]
+    I_xz:         float = 1949.0    # [kg m^2]
 
 
 @dataclass
@@ -266,7 +266,7 @@ class AerodynamicCoefficients:
 
     # Long. positions of aerodynamic centres
     x_ac_fw_cruise:                     float = 1.60  # [m]
-    x_ac_aw_cruise:                     float = 6.02  # [m]
+    x_ac_aw_cruise:                     float = 6.65  # [m]
     x_ac_fw_approach:                   float = None  # [m]
     x_ac_aw_approach:                   float = None  # [m]
 

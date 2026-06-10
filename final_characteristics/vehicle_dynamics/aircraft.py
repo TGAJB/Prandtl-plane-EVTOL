@@ -51,7 +51,7 @@ class DatcomChartInputs:
     # Vertical-tail effective aspect ratio and other ratios (Figs 5.3.1.1-22a/b)
     vtail_Aeff_A:             float = 1.5
     cyb_v_over_cyb_v_eff:     float = 0.9
-    cyb_v_eff:                float = 4.0
+    cyb_v_eff:                float = 3.75
  
     # CY_beta body interference K_i (Fig 5.2.1.1-7)
     cyb_Ki:                   float = 1.4
