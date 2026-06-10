@@ -63,7 +63,7 @@ misc          solid cylinder filling the fuselage (20%-MTOW systems/wiring/ECS
 
 Known inconsistencies flagged (parameters.py is authoritative)
 --------------------------------------------------------------
-- vd_parameters.py assumes a 10 m fuselage vs L_FUS = 7.0 m; vd-derived seed
+- vd_parameters.py assumes a 10 m fuselage vs L_FUS = 10.0 m; vd-derived seed
   coordinates in parameters.py were rescaled accordingly.
 - All layout coordinates are PLACEHOLDER pending a real layout drawing.
 
@@ -241,7 +241,7 @@ def build_components(breakdown):
     # -- Misc systems: solid cylinder filling the fuselage --
     m_misc = breakdown["misc"]
     add("misc", m_misc, (X_MISC, 0.0, Z_MISC),
-        inertia_solid_cylinder(m_misc, D_FUS / 2.0, L_FUS))
+        inertia_solid_cylinder(m_misc, D_FUS / 2.0, L_FUS*FAT_CYLINDER_SECTION))
 
     return comps
 
@@ -350,8 +350,8 @@ def _print_breakdown(components, result):
     # conventional-configuration band - expected for a box wing.
     m = result["mass"]
     rx = np.sqrt(result["Ixx"] / m) / (WING_SPAN / 2.0)
-    ry = np.sqrt(result["Iyy"] / m) / (L_FUS / 2.0)
-    print(f"Gyradii: R_x = {rx:.3f} (b/2 ref), R_y = {ry:.3f} (L_fus/2 ref)")
+    ry = np.sqrt(result["Iyy"] / m) / ((L_FUS*FAT_CYLINDER_SECTION) / 2.0)
+    print(f"Gyradii: R_x = {rx:.3f} (b/2 ref), R_y = {ry:.3f} ((L_fus*FAT_CYLINDER_SECTION)/2 ref)")
 
 
 if __name__ == "__main__":
