@@ -110,6 +110,69 @@ PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
 
 
+# MMOI component layout (class_II_sizing/MMOI.py)
+#
+# Datum: nose tip. x positive aft, y positive starboard, z positive up, origin on the
+# fuselage centreline. Seeds taken from final_characteristics/vehicle_dynamics/
+# vd_parameters.py where available, rescaled to L_FUS = 7.0 m (vd assumes a 10 m
+# fuselage - parameters.py is authoritative). All coordinates are component-CG
+# locations pending a real layout drawing.
+
+# -- Fuselage equivalent cylinder --
+D_FUS    = FUSE_WIDTH     # [m]   equivalent-cylinder diameter (circular section assumed)
+X_CG_FUS = 0.45 * L_FUS   # [m]   shell CG slightly fwd of mid-length (light tailcone)  PLACEHOLDER
+Z_CG_FUS = 0.0            # [m]   shell CG on the centreline
+
+# -- Wings (Prandtl pair) --
+X_WING_F     = 1.5                       # [m]  front-wing CG ~ x_LEMAC (vd: 1.0) + 0.4*MAC  PLACEHOLDER
+Z_WING_F     = -0.5                      # [m]  low-mounted front wing (vd z_w_fw)
+WING_STAGGER = 5.0                       # [m]  longitudinal distance front -> rear wing (vd stagger)
+H_GAP_WINGS  = 2.1                       # [m]  vertical gap between wing planes (vd gap); tip-plate height
+X_WING_R     = X_WING_F + WING_STAGGER   # [m]  rear-wing CG station (derived)
+Z_WING_R     = Z_WING_F + H_GAP_WINGS    # [m]  high rear wing (derived)
+WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out for the two
+                                         #      vertical tip joiners                      PLACEHOLDER
+
+# -- V-tail --
+X_TAIL      = 6.3   # [m]  panel-pair CG station (vd x_vert_tail = 8.5 scaled x 7/10)   PLACEHOLDER
+Z_TAIL_ROOT = 0.5   # [m]  panel root height above centreline                           PLACEHOLDER
+
+# -- Rotor / motor stations (4 on the front wing, 2 on the rear wing, symmetric) --
+ETA_ROTOR_FW_IN  = 0.30  # [-]  inboard front rotor, fraction of semi-span (tip clears fuselage)  PLACEHOLDER
+ETA_ROTOR_FW_OUT = 0.70  # [-]  outboard front rotor (2.6 m spacing > D_PROP, no disc overlap)    PLACEHOLDER
+ETA_ROTOR_RW     = 0.50  # [-]  rear rotor, one per side                                          PLACEHOLDER
+X_ROTOR_OFFSET   = 0.8   # [m]  pod CG ahead of the wing CG station (pylon + spinner)             PLACEHOLDER
+X_ROTOR_FW = X_WING_F - X_ROTOR_OFFSET  # [m]  front-rotor station (derived)
+X_ROTOR_RW = X_WING_R - X_ROTOR_OFFSET  # [m]  rear-rotor station (derived)
+Z_ROTOR_FW = Z_WING_F                   # [m]  rotors carried at front-wing height
+Z_ROTOR_RW = Z_WING_R                   # [m]  rotors carried at rear-wing height
+
+# -- Battery (underfloor box) --
+L_BATT = 3.0    # [m]  box length ~ cabin floor length                                  PLACEHOLDER
+W_BATT = 1.2    # [m]  box width between cabin floor beams                              PLACEHOLDER
+H_BATT = 0.25   # [m]  underfloor bay depth                                             PLACEHOLDER
+X_BATT = 2.8    # [m]  box mid-length at the cruise-optimal CG (vd x_cg_opt) so the
+                #      heaviest item is CG-neutral
+Z_BATT = -0.7   # [m]  below the cabin floor (floor ~ -0.5 m for the 2.0 m section)
+
+# -- Payload (pax + luggage cabin box) --
+X_PAYLOAD     = 2.8    # [m]  pax + luggage centred on the target CG
+Z_PAYLOAD     = -0.2   # [m]  seated-occupant CG slightly below centreline
+L_PAYLOAD_BOX = 2.0    # [m]  two seat rows                                             PLACEHOLDER
+W_PAYLOAD_BOX = 1.4    # [m]  cabin width                                               PLACEHOLDER
+H_PAYLOAD_BOX = 1.2    # [m]  seated height                                             PLACEHOLDER
+
+# -- Landing gear (skid rails) --
+X_GEAR      = 0.5 * L_FUS                  # [m]  rail mid-length under the cabin
+Z_GEAR      = -(FUSE_WIDTH / 2 + 0.30)     # [m]  belly radius + 0.30 m static clearance
+# Y_GEAR_RAIL (half-track) is derived from L_ARM further down, after the landing-gear
+# trade-study constants that define it.
+
+# -- Misc systems (20% MTOW: wiring, ECS, avionics, furnishings) --
+X_MISC = X_CG_FUS   # [m]  smeared through the fuselage -> fuselage CG
+Z_MISC = 0.0        # [m]  on the centreline
+
+
 # Landing-gear drop trade study (CS-27.725 limit + 27.727 reserve)
 #
 # Skid gear modelled as 2 ground rails joined by 2 transverse cross-members; each
@@ -168,6 +231,9 @@ ELASTO_MASS_PER_N = 1.0e-4 # [kg/N] mount mass vs peak load
 D_FRAME_TUBE      = 0.060  # [m]   cross-tube / arm outer diameter
 T_FRAME_TUBE      = 0.003  # [m]   cross-tube / arm wall thickness
 L_ARM             = 0.45   # [m]   arm length, mount/hinge down to skid
+
+# -- MMOI layout, gear half-track (see "MMOI component layout" section above) --
+Y_GEAR_RAIL = (FUSE_WIDTH + 2 * L_ARM) / 2  # [m]  matches the whole_gear track FUSE_WIDTH + 2*L
 
 # -- Trade-off scoring: qualitative scores 0..1 by engineering judgement (PLACEHOLDERS) --
 QUAL = {
