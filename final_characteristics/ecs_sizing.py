@@ -1,4 +1,3 @@
-
 """
 Electric Environmental Control System (E-ECS) sizing model
 ============================================================
@@ -157,16 +156,16 @@ def default_avionics() -> list[AvionicsItem]:
     to see the cabin-load reduction.
     """
     return [
-        AvionicsItem("Flight computer",      3, 50.0, False, "redundant set (RAMS)"),
-        AvionicsItem("IMU",                  2, 2.0,  False, "redundant"),
-        AvionicsItem("GNSS receiver",        2, 3.0,  False, "redundant"),
-        AvionicsItem("Air-data (pitot/AoA/baro)", 1, 5.0, False, ""),
-        AvionicsItem("ADS-B transponder",    1, 3.0,  False, ""),
-        AvionicsItem("LiDAR",                1, 90.0, False, "scanning aviation LiDAR, datasheet"),
-        AvionicsItem("Radar",                1, 30.0, False, "vehicle avoidance"),
-        AvionicsItem("SATCOM terminal",      1, 150.0, False, "LEO link; main driver"),
+        AvionicsItem("Flight computer",      3, 60.0, False, "3 x Collins FMC-4000, <60 W ea (datasheet); hot triplex"),
+        AvionicsItem("IMU",                  2, 2.0,  False, "2 x Sensonor STIM300 (datasheet)"),
+        AvionicsItem("GNSS receiver",        2, 0.2,  False, "2 x u-blox ZED-F9P (datasheet)"),
+        AvionicsItem("Air-data electronics", 1, 5.0,  False, "transducers + ADC; probe heaters NOT a cabin heat source"),
+        AvionicsItem("ADS-B transponder",    1, 3.0,  False, "uAvionix ping200X"),
+        AvionicsItem("LiDAR",                1, 90.0, False, "Phoenix PLS Ranger (datasheet)"),
+        AvionicsItem("Radar",                1, 45.0, False, "Echodyne (datasheet)"),
+        AvionicsItem("SATCOM terminal",      1, 45.0, False, "SKYTRAC IMS-350; ~45 W est. (power customizable)"),
         AvionicsItem("Cellular modem",       1, 15.0, False, "backup link"),
-        AvionicsItem("Exterior cameras",     4, 4.0,  False, "remote-pilot feed"),
+        AvionicsItem("Exterior cameras",     4, 4.0,  False, "Kappa Flight Eye; ~4 W ea est."),
         AvionicsItem("Interior camera",      1, 4.0,  False, ""),
     ]
 
@@ -762,7 +761,7 @@ if __name__ == "__main__":
 
     summary = size_mission(ac, cond, phases)
     _print_report(summary)
-    _write_csv(summary, "ecs_results.csv")
+    _write_csv(summary, "/home/claude/ecs_results.csv")
 
     # --- Climb sub-segment breakdown (shows the pressurization ramp) ----- #
     for r in summary["per_phase"]:
