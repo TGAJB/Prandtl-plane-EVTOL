@@ -92,7 +92,7 @@ from parameters import (
     L_BATT, W_BATT, H_BATT, X_BATT, Z_BATT,
     X_PAYLOAD, Z_PAYLOAD, L_PAYLOAD_BOX, W_PAYLOAD_BOX, H_PAYLOAD_BOX,
     X_GEAR, Y_GEAR_RAIL, Z_GEAR, L_SKID_RAIL,
-    X_MISC, Z_MISC,
+    X_MISC, Z_MISC, FAT_CYLINDER_SECTION
 )
 from class_II_sizing.mtow_sizing import converged_mass
 
@@ -175,7 +175,7 @@ def build_components(breakdown):
     # -- Fuselage: thin-walled cylinder shell --
     m_fus = breakdown["fuselage"]
     add("fuselage", m_fus, (X_CG_FUS, 0.0, Z_CG_FUS),
-        inertia_cylinder_shell(m_fus, D_FUS / 2.0, L_FUS))
+        inertia_cylinder_shell(m_fus, D_FUS / 2.0, L_FUS*FAT_CYLINDER_SECTION))
 
     # -- Wings: rectangular prisms, tip-joiner fraction carved out first --
     m_wing_each = (1.0 - WINGLET_MASS_FRAC) * breakdown["wing"] / 2.0

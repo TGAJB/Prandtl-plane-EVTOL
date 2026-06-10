@@ -104,11 +104,11 @@ E_CELL_DENS_WH_KG = E_CELL_WH / M_CELL_KG   # = 386 Wh/kg (derived, do not edit)
 
 # Airframe geometry
 
-L_FUS       = 7.0    # [m]   fuselage length
+L_FUS       = 10.0    # [m]   fuselage length
 FUSE_WIDTH  = 2.0    # [m]   fuselage width (front view; placeholder)
 PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
-
+FAT_CYLINDER_SECTION = 0.4 #this is for mmoi calculations on what we assume is the cylinder (rest of fus is neglected)
 
 # MMOI component layout (class_II_sizing/MMOI.py)
 #
