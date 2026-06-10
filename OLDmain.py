@@ -40,7 +40,7 @@ def compute_mtow(mtow_kg):
     wing_geom   = wing_geometry(mtow_kg)
     m_fuselage  = fuselage_mass(mtow_kg)
     m_wing      = wing_mass(mtow_kg, wing_geom)
-    m_lg        = landing_gear_mass(mtow_kg, E_AL, RHO_AL, SIGMA_ALLOW_AL)
+    m_lg, *_    = landing_gear_mass(mtow_kg, RHO_AL, SIGMA_ALLOW_AL, E_AL)
     m_tail      = tail_mass(mtow_kg)
     m_motors    = motor_mass(max_power_kw)
     m_props     = propeller_mass(max_power_kw, USE_FUSION_PROP, M_BLADE_FUSION)
