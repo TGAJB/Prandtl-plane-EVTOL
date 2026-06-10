@@ -38,7 +38,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from energy import takeoff_power, vertical_climb_power, climb_acceleration_power, climb_power, cruise_power, landing_power, mission_energy
+#from energy import takeoff_power, vertical_climb_power, climb_acceleration_power, climb_power, cruise_power, landing_power, mission_energy
 from parameters import T_TAKEOFF, T_CLIMB_ACC, T_CLIMB, T_CRUISE, T_LANDING, V_AVG_TO, V_CRUISE, V_HOVER, N_PROP, ETA_POWERTRAIN_HOVER, ETA_CLIMB, ETA_CRUISE, LD_CRUISE,G
 
 # ==============================================================================
