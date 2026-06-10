@@ -11,6 +11,7 @@ class Mission:
 
     transition_speed:    float = None  # [m/s]
     cruise_speed:        float = 200/3.6  # [m/s]
+    M_cr:                float = 0.17   # [-]
     wind_gust_speed:     float = None  # [m/s]
     
     transition_altitude: float = None  # [m]
@@ -39,29 +40,28 @@ class WingGeometry:
     S_e_aw:               float = None  # [m^2]
     S_tot:                float = None  # [m^2]
 
-    
-    b_fw:                 float = None  # [m]
-    b_aw:                 float = None  # [m]
+    b_fw:                 float = 13  # [m]
+    b_aw:                 float = 13  # [m]
 
     A_fw:                 float = None  # [-]
     A_aw:                 float = None  # [-]
 
-    gap:                  float = None  # [m]
-    stagger:              float = None  # [m]
+    gap:                  float = 2.1  # [m]
+    stagger:              float = 5.0   # [m]
 
-    MAC_fw:               float = None  # [m]
-    MAC_aw:               float = None  # [m]
+    MAC_fw:               float = 1.262  # [m]
+    MAC_aw:               float = 1.262  # [m]
 
-    taper_fw:             float = None  # [-]
-    taper_aw:             float = None  # [-]
+    taper_fw:             float = 0.4  # [-]
+    taper_aw:             float = 0.4  # [-]
 
     chord_fw_root:        float = None  # [m]
     chord_fw_tip:         float = None  # [m]
     chord_aw_root:        float = None  # [m]
     chord_aw_tip:         float = None  # [m]
 
-    LE_sweep_fw:          float = None  # [deg.]
-    LE_sweep_aw:          float = None  # [deg.]
+    LE_sweep_fw:          float = 0  # [deg.]
+    LE_sweep_aw:          float = 0  # [deg.]
 
     dihedral_front_wing:  float = None  # [deg.]
     dihedral_aft_wing:    float = None  # [deg.]
@@ -75,6 +75,7 @@ class WingGeometry:
     airfoil_fw:           str   = None  # [-]
     airfoil_aw:           str   = None  # [-]
 
+    x_LEMAC_fw:           float = 1 # [m] - very rough estimate
 
 
 @dataclass
@@ -98,8 +99,8 @@ class FuselageGeometry:
     """
 
     fuselage_length:   float = None  # [m]
-    d_fw:              float = None  # [m] - Fuselage is modelled as a tube for now
-    d_aw:              float = 0     # [m]
+    d_fw:              float = 2.0  # [m] - Fuselage is modelled as a tube for now
+    d_aw:              float = 0.0  # [m]
     x_ac_fuselage:     float = None  # [m]
 
 
@@ -109,7 +110,7 @@ class MassProperties:
     Aircraft mass and inertia properties.
     """
 
-    mtow:         float = None  # [kg]
+    mtow:         float = 2200  # [kg]
     oew:          float = None  # [kg]
     payload_mass: int   = 400  # [kg]
 
@@ -130,8 +131,8 @@ class AerodynamicCoefficients:
     """
 
     # Lift curve
-    CL_alpha_fw:                        float = None  # [1/rad.]
-    CL_alpha_aw:                        float = None  # [1/rad.]
+    CL_alpha_fw:                        float = 5.02484  # [1/rad.]
+    CL_alpha_aw:                        float = 5.02484  # [1/rad.]
     CL_alpha_vert_tail:                 float = None  # [1/rad.]
 
     # Maximum lift coefficients
@@ -155,8 +156,8 @@ class AerodynamicCoefficients:
     e_winglet:                           float = None  # [-]
 
     # Aerodynamic moments
-    C_M_ac_fw:                           float = None  # [-]
-    C_M_ac_aw:                           float = None  # [-]
+    C_M_ac_fw:                           float = -0.118  # [-]
+    C_M_ac_aw:                           float = -0.118  # [-]
     C_M_ac_fuselage:                     float = None  # [-]
 
     # Downwash gradients
@@ -172,11 +173,11 @@ class AerodynamicCoefficients:
     flow_speed_ratio_fuselage_to_tail:  float = None  # [-]
 
     # Interference coefficients
-    I_v:                                float = None #  [-] - Vortex interference factor
+    I_v:                                float = -1.75 # [-] - Vortex interference factor
 
     # Long. positions of aerodynamic centres
-    x_ac_fw_cruise:                     float = None  # [m]
-    x_ac_aw_cruise:                     float = None  # [m]
+    x_ac_fw_cruise:                     float = 0.313  # [m] as seen from the LEMAC of the front wing
+    x_ac_aw_cruise:                     float = 0.313  # [m] as seen from the LEMAC of the aft wing
     x_ac_fw_approach:                   float = None  # [m]
     x_ac_aw_approach:                   float = None  # [m]
 

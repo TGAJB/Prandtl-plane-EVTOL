@@ -1,5 +1,5 @@
 from vd_parameters import AircraftParameters
-from parameters import *
+#from parameters import *
 from dataclasses import dataclass
 import numpy as np
 
@@ -20,7 +20,7 @@ class Physical:
 # ---------------------------------------------------------------------------
 @dataclass
 class FlightCondition:
-    mach:               float = None
+    mach:               float = 0.17
     rho:                float = None
     tas:                float = None       # true airspeed [m/s]
     alpha:              float = 0.0        # [rad]
@@ -118,7 +118,8 @@ class Aircraft:
 
         return 4.44*(K_A*K_lambda*K_H*(np.sqrt(np.cos(sweep_c4_fw))))**(1.19) * (1/beta)
     
-    def CL_alpha_aircraft(self, S_e_fw, S_e_aft): # These are all placeholders for now, add them to param sheet after  
+
+    def CL_alpha_aircraft(self):  
         """
         Aircraft lift curve slope (per radian).
         """
@@ -133,6 +134,8 @@ class Aircraft:
         S_e_2 = self._require(wg.S_e_aw, "wing_geometry.S_e_aw")
         b_1 = self._require(wg.b_fw, "wing_geometry.b_fw")
         d_1 = self._require(fg.d_fw, "fuselage_geometry.d_fw")
+        b_2 = self._require(wg.b_aw, "wing_geometry.b_aw")
+        d_2 = self._require(fg.d_aw, "fuselage_geometry.d_aw")
         A_2 = self._require(wg.A_aw, "wing_geometry.A_aw")
 
         CL_alpha_1 = self._require(ac.CL_alpha_fw, "aerodynamics.CL_alpha_fw")
@@ -142,7 +145,7 @@ class Aircraft:
         I_v = self._require(ac.I_v, "aerodynamics.I_v")
 
         # COMPUTATIONS
-        K_N = (np.pi*d_1**2)/(2*CL_alpha_1*S_e_1)
+        K_N = (np.pi*(d_1**2))/(2*CL_alpha_1*S_e_1)
         wing_body_sum_1 = ((d_1/b_1) + 1)**2
         wing_body_sum_2 = 1
         K_WB_1 = 0.8*(d_1/b_1) + 1
