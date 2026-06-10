@@ -19,7 +19,8 @@ from parameters import (
     ETA_POWERTRAIN_HOVER, ETA_CLIMB, ETA_CRUISE, LD_CRUISE, V_CRUISE,
     T_TAKEOFF, T_LANDING, T_CRUISE, T_CLIMB, T_CLIMB_ACC, T_VERTICAL_CLIMB,
     D_PROP, N_PROP,
-    E_PACK_WH_KG, SOC_USABLE, CONTINGENCY, VS_0, V_I
+    E_CELL_WH, M_CELL_KG, CELL_TO_PACK, E_AUX_KWH, RESERVE_FRAC, S_SERIES,
+    VS_0, V_I,
 )
 
 _A_DISK_PROP = np.pi * (D_PROP / 2) ** 2   # disk area from D_PROP
@@ -82,8 +83,27 @@ def mission_energy(mtow_kg):
             + p_l    * T_LANDING)
 
 
-def battery_mass(mtow_kg):
-    """Installed battery mass [kg] required to complete the mission."""
-    e_mission_wh   = mission_energy(mtow_kg) / 3600.0
-    e_installed_wh = e_mission_wh * CONTINGENCY / SOC_USABLE
-    return e_installed_wh / E_PACK_WH_KG
+def battery_mass(mtow_kg, round_to_strings=True):
+    """
+    Installed battery pack mass [kg] -- SA504 cell-count method.
+
+    Deliverable energy = (mission + aux) x (1 + 20% reserve); cells =
+    energy / 37.57 Wh; built pack rounds up to whole 235-cell strings
+    (the 235SxP layout); pack mass = cell mass / 0.72 cell-to-pack.
+    The 20% energy reserve is the sole margin (the previous 1.05
+    mass-growth allowance is superseded by it + the string round-up).
+
+    round_to_strings=True returns the BUILT pack (step function of MTOW,
+    flat between string boundaries -- convergence-friendly). Set False
+    for a smooth continuous approximation if the MTOW iteration ever
+    oscillates at a string boundary.
+    """
+    import math
+    e_mission_kwh = mission_energy(mtow_kg) / 3.6e6
+    e_deliv_kwh = (e_mission_kwh + E_AUX_KWH) * (1.0 + RESERVE_FRAC)
+    n_cells = e_deliv_kwh * 1000.0 / E_CELL_WH
+    if round_to_strings:
+        n_built = S_SERIES * math.ceil(math.ceil(n_cells) / S_SERIES)
+    else:
+        n_built = n_cells
+    return n_built * M_CELL_KG / CELL_TO_PACK

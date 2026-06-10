@@ -90,11 +90,17 @@ N_BLADES = 5      # [-]  blades per rotor
 D_PROP   = 1.9    # [m]  rotor diameter
 A_DISK   = 2.84   # [m^2] rotor disk area per rotor
 
-# Battery
+# Battery -- Amprius SA504 cell-count basis (see battery_cells.py)
+# The 20% energy reserve is the sole margin
+# allowance is superseded by the reserve + whole-string layout round-up.
 
-E_PACK_WH_KG = 300.0   # [Wh/kg] pack-level specific energy
-SOC_USABLE   = 0.80    # [-]     usable state-of-charge fraction
-CONTINGENCY  = 1.05    # [-]     energy contingency factor
+E_CELL_WH    = 37.57    # [Wh]  energy per cell (SA504 datasheet)
+M_CELL_KG    = 0.0973   # [kg]  cell mass (SA504 datasheet, 97.3 g)
+CELL_TO_PACK = 0.72     # [-]   pack mass fraction that is cells
+E_AUX_KWH    = 2.79     # [kWh] auxiliary energy (aux_loads.py build-up)
+RESERVE_FRAC = 0.20     # [-]   20% energy reserve on (mission + aux)
+S_SERIES     = 235      # [-]   cells in series for the 800 V bus
+E_CELL_DENS_WH_KG = E_CELL_WH / M_CELL_KG   # = 386 Wh/kg (derived, do not edit)
 
 # Airframe geometry
 
