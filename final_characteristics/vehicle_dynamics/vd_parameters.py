@@ -95,8 +95,8 @@ class WingGeometry:
     te_angle_aw:          float = 18  # [deg.]
 
     # Wing vertical position relative to body centreline (+ is down)
-    z_w_fw:               float = +0.5   # [m]
-    z_w_aw:               float = -2.1   # [m]
+    z_w_fw:               float = +0.4   # [m]
+    z_w_aw:               float = -1.7   # [m]
 
     x_LEMAC_fw:           float = 1 # [m] - very rough estimate
 
@@ -109,7 +109,7 @@ class TailGeometry:
 
     n_fins:                     float = 2    # [-]
     x_vert_tail:                float = 6.4  # [m]
-    c_r_vert_tail:              float = 1.8  # [m]
+    c_r_vert_tail:              float = 1.6  # [m]
     c_t_vert_tail:              float = 1.3  # [m]
     taper_vert_tail:            float = c_t_vert_tail/c_r_vert_tail  # [-]
     b_vert_tail:                float = 1.6  # [m]
@@ -120,8 +120,8 @@ class TailGeometry:
 
     MAC_vert_tail:              float = (2/3)*c_r_vert_tail*((1 + taper_vert_tail + taper_vert_tail**2)/(1 + taper_vert_tail))  # [m]
     t_c_vert_tail:              float = 0.12  # [-]
-    te_angle_vert_tail:         float = 14  # [deg.]
-    z_vert_tail:                float = 0.65  # [m] vertical a.c. height (datum)
+    te_angle_vert_tail:         float = 20  # [deg.]
+    z_vert_tail:                float = 0.68  # [m] vertical a.c. height (datum)
 
 
 @dataclass
@@ -145,7 +145,7 @@ class WingletGeometry:
     LE_sweep_winglet:           float = np.arctan(WingGeometry.stagger/WingGeometry.gap)  # [rad]
 
     x_ac_winglet:               float = 4.125  # [m] longitudinal aerodynamic-centre location
-    z_ac_winglet:               float = 0.0  # [m] vertical aerodynamic-centre location
+    z_ac_winglet:               float = 0.68  # [m] vertical aerodynamic-centre location
 
     airfoil_winglet:            str   = "NASA LANGLEY LS(1)-0417"  # [-]
     t_c_winglet:                float = 0.12  # [-]
