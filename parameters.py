@@ -1,3 +1,6 @@
+import numpy as np
+
+# ── Physical constants ─────────────────────────────────────────────────────────
 # Physical constants
 
 G          = 9.81          # [m/s^2]  gravitational acceleration
@@ -21,7 +24,7 @@ T_ELAPSED_VC     = 5.0        # [s]   vertical climb elapsed time
 V_AVG_TO         = 2.0        # [m/s] average takeoff vertical speed
 V_HOVER          = 3.0        # [m/s] hover climb speed
 V_I               = 20.0       # [m/s] initial climbing speed
-VS_0             = D_VERT_DESCENT / T_DESCENT # [m/s] 
+VS_0             = D_VERT_DESCENT / T_DESCENT # [m/s]
 
 # Material parameters
 
@@ -41,7 +44,7 @@ ETA_CLIMB            = 0.90   # [-]   climb powertrain efficiency
 FM                   = 0.73   # [-]   rotor figure of merit
 POWER_SAFETY_FACTOR  = 1.4    # [-]   power safety factor
 PM                   = 0.5    # [-]   power margin
-CL_MAX_OPERATIONAL   = 2.0    # [-]   operational upper lift coefficient limit 
+CL_MAX_OPERATIONAL   = 2.0    # [-]   operational upper lift coefficient limit
 CL_PLOT_MIN          = -0.5   # [-]   lower bound for drag-polar plotting
 CL_PLOT_MAX          = 2.20   # [-]   upper bound for drag-polar plotting
 DRAG_POLAR_N_POINTS  = 100    # [-]   number of points used for drag-polar plots
@@ -62,8 +65,8 @@ LE_SWEEP_W          = 0       # [rad]   wing leading edge sweep angle
 DIHEDRAL            = 0       # [rad]   wing digedral angle
 TWIST               = 0.05236 # [rad]   wing twist angle (3 deg) NOT FINAL
 #    Class I parameters (OUTDATED - CLASS II AVAILABLE)
-S_W         = 30.0            # [m^2]   class I total wing reference area 
-AR_W        = 5.63            # [-]     class I wing aspect ratio 
+S_W         = 30.0            # [m^2]   class I total wing reference area
+AR_W        = 5.63            # [-]     class I wing aspect ratio
 #    Wing material: CFRP (standard for modern eVTOL primary structure)
 T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prepreg (MIL-HDBK-17-3F)
 
@@ -315,3 +318,38 @@ rho_propeller_blade      = 1550.0 # [kg/m^3] blade material density (CFRP)
 
 
 
+
+
+def project_vector(v1, v2, return_perpendicular=False):
+    """
+    Projects vector v1 onto vector v2.
+
+    Parameters:
+    v1 (array-like): The vector being projected.
+    v2 (array-like): The vector being projected onto.
+    return_perpendicular (bool): If True, also returns the perpendicular component.
+
+    Returns:
+    v1_parallel (np.ndarray): Component of v1 parallel to v2.
+    v1_perpendicular (np.ndarray): Component of v1 perpendicular to v2 (if requested).
+    """
+    # Convert inputs to numpy arrays just in case they are passed as lists
+    v1 = np.asarray(v1)
+    v2 = np.asarray(v2)
+
+    # Formula: v1_parallel = (np.dot(v1, v2) / np.dot(v2, v2)) * v2
+    # Note: np.dot(v2, v2) is equivalent to ||v2||^2
+    v2_squared_mag = np.dot(v2, v2)
+
+    # Handle the edge case where v2 is a zero vector to avoid division by zero
+    if v2_squared_mag == 0:
+        raise ValueError("Cannot project onto a zero vector.")
+
+    scalar_factor = np.dot(v1, v2) / v2_squared_mag
+    v1_parallel = scalar_factor * v2
+
+    if return_perpendicular:
+        v1_perpendicular = v1 - v1_parallel
+        return v1_parallel, v1_perpendicular
+
+    return v1_parallel
