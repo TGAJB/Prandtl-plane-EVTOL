@@ -14,6 +14,7 @@
 # ============================================================================
 
 import math
+import numpy as np
 from dataclasses import dataclass, field
 
 
@@ -100,7 +101,7 @@ class WingGeometry:
 
     # ===== ADDED FOR DATCOM ==================================================
     # Reference quantities for non-dimensionalisation. EVERY aircraft-level derivative is referenced to these; they must match the EOM reference.
-    S_ref:                float = None  # [m^2]
+    S_ref:                float = S_tot  # [m^2]
     b_ref:                float = b_fw  # [m]
     MAC_ref:              float = 1.262  # [m]
 
@@ -131,20 +132,21 @@ class TailGeometry:
     (V-tail mounting angle and CG-station placeholder).
     """
 
-    x_vert_tail:                float = 8.5  # [m]
-    c_r_vert_tail:              float = 1.4  # [m]
-    c_t_vert_tail:              float = 0.5  # [m]
-    b_vert_tail:                float = 2.5  # [m]
+    n_fins:                     float = 2.0  # [-]
+    x_vert_tail:                float = 6.4  # [m]
+    c_r_vert_tail:              float = 1.6  # [m]
+    c_t_vert_tail:              float = 1.3  # [m]
+    b_vert_tail:                float = 1.6  # [m]
     S_vert_tail:                float = ((c_r_vert_tail + c_t_vert_tail)*b_vert_tail)/2  # [m^2]
     AR_vert_tail:               float = b_vert_tail**2/S_vert_tail  # [-]
     LE_sweep_vert_tail:         float = 0.31  # [rad]
     airfoil_vert_tail:          str   = "NACA 0012"  # [-]
 
-    taper_vert_tail:            float = 0.33  # [-]
-    MAC_vert_tail:              float = 0.867  # [m]
+    taper_vert_tail:            float = c_t_vert_tail/c_r_vert_tail  # [-]
+    MAC_vert_tail:              float = (2/3)*c_r_vert_tail*((1 + taper_vert_tail + taper_vert_tail**2)/(1 + taper_vert_tail))  # [m]
     t_c_vert_tail:              float = 0.12  # [-]
     te_angle_vert_tail:         float = 14  # [deg.]
-    z_vert_tail:                float = 1.0  # [m] vertical a.c. height (datum)
+    z_vert_tail:                float = 0.68  # [m] vertical a.c. height (datum)
 
 
 @dataclass
@@ -161,18 +163,18 @@ class WingletGeometry:
     enabled:                    bool  = True  # keep existing model backward-compatible
     n_winglets:                 int   = 2      # usually left and right tip joiners
 
-    S_winglet:                  float = 3.125  # [m^2] planform area of ONE winglet/joiner
-    b_winglet:                  float = 2.5  # [m] vertical span/height of ONE winglet
+    S_winglet:                  float = 1.57  # [m^2] planform area of ONE winglet/joiner
+    b_winglet:                  float = 2.1  # [m] vertical span/height of ONE winglet
     AR_winglet:                 float = b_winglet**2/S_winglet  # [-] aspect ratio of ONE winglet
     taper_winglet:              float = 1.0 # [-]
-    LE_sweep_winglet:           float = 0.5  # [rad]
+    LE_sweep_winglet:           float = np.arctan(WingGeometry.stagger/WingGeometry.gap)  # [rad]
 
-    x_ac_winglet:               float = 3.6  # [m] longitudinal aerodynamic-centre location
-    z_ac_winglet:               float = 0.0  # [m] vertical aerodynamic-centre location
+    x_ac_winglet:               float = 4.125  # [m] longitudinal aerodynamic-centre location
+    z_ac_winglet:               float = 0.68  # [m] vertical aerodynamic-centre location
 
     airfoil_winglet:            str   = "NASA LANGLEY LS(1)-0417"  # [-]
-    t_c_winglet:                float = 0.12  # [-]
-    te_angle_winglet:           float = 10  # [deg.]
+    t_c_winglet:                float = 0.17  # [-]
+    te_angle_winglet:           float = 18  # [deg.]
 
 
 @dataclass
@@ -181,7 +183,7 @@ class FuselageGeometry:
     Fuselage geometry relevant to aerodynamics and vehicle dynamics.
     """
 
-    fuselage_length:   float = 10.0  # [m]
+    fuselage_length:   float = 7.0  # [m]
     d_fw:              float = 2.0   # [m] - Fuselage is modelled as a tube for now
     d_aw:              float = 0     # [m]
     x_ac_fuselage:     float = None  # [m]
@@ -224,13 +226,13 @@ class MassProperties:
 
     x_cg_min:     float = None  # [m]
     x_cg_max:     float = None  # [m]
-    x_cg_opt:     float = 2.8   # [m] - Optimal CG location during cruise
-    z_cg:         float = None  # [m] - vertical CG (datum), used by moment arms
+    x_cg_opt:     float = 3.311   # [m] - Optimal CG location during cruise
+    z_cg:         float = -0.162  # [m] - vertical CG (datum), used by moment arms
 
-    I_xx:         float = None  # [kg m^2]
-    I_yy:         float = None  # [kg m^2]
-    I_zz:         float = None  # [kg m^2]
-    I_xz:         float = None  # [kg m^2]
+    I_xx:         float = 11458.0  # [kg m^2]
+    I_yy:         float = 9707.0  # [kg m^2]
+    I_zz:         float = 18196.0  # [kg m^2]
+    I_xz:         float = 1949.0  # [kg m^2]
 
 
 @dataclass
@@ -291,8 +293,12 @@ class AerodynamicCoefficients:
     I_v:                                float = -1.75 # [-] - Vortex interference factor
 
     # Long. positions of aerodynamic centres
-    x_ac_fw_cruise:                     float = 0.313  # [m] as seen from the LEMAC of the front wing
-    x_ac_aw_cruise:                     float = 0.313  # [m] as seen from the LEMAC of the aft wing
+    x_ac_fw_cruise:                     float = 0.313 # [m] as seen from the LEMAC of the front wing
+    x_ac_aw_cruise:                     float = 0.313 # [m] as seen from the LEMAC of the aft wing
+
+    x_ac_fw:                            float = 1.60  # [m]
+    x_ac_aw:                            float = 6.65  # [m]
+
     x_ac_fw_approach:                   float = None  # [m]
     x_ac_aw_approach:                   float = None  # [m]
 
@@ -609,19 +615,19 @@ X_CG_FUS = 0.45 * L_FUS   # [m]   shell CG slightly fwd of mid-length (light tai
 Z_CG_FUS = 0.0            # [m]   shell CG on the centreline
 
 # -- Wings (Prandtl pair) --
-X_WING_F     = 1.5                       # [m]  front-wing CG ~ x_LEMAC (vd: 1.0) + 0.4*MAC  PLACEHOLDER
+X_WING_F     = AerodynamicCoefficients.x_ac_fw                       # [m]  front-wing CG ~ x_LEMAC (vd: 1.0) + 0.4*MAC  PLACEHOLDER
 Z_WING_F     = WingGeometry.z_w_fw       # [m]  low-mounted front wing
 WING_STAGGER = WingGeometry.stagger      # [m]  longitudinal distance front -> rear wing
 H_GAP_WINGS  = WingGeometry.gap          # [m]  vertical gap between wing planes; tip-plate height
-X_WING_R     = X_WING_F + WING_STAGGER   # [m]  rear-wing CG station (derived)
+X_WING_R     = AerodynamicCoefficients.x_ac_aw   # [m]  rear-wing CG station (derived)
 Z_WING_R     = WingGeometry.z_w_aw       # [m]  high rear wing (= z_w_fw + gap)
 WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out for the two
                                          #      vertical tip joiners                      PLACEHOLDER
 
 # -- V-tail --
-X_TAIL      = 6.3   # [m]  panel-pair CG station (kept separate from TailGeometry.x_vert_tail,
+X_TAIL      = TailGeometry.x_vert_tail   # [m]  panel-pair CG station (kept separate from TailGeometry.x_vert_tail,
                     #      which is the fin a.c. station)                                PLACEHOLDER
-Z_TAIL_ROOT = 0.5   # [m]  panel root height above centreline                            PLACEHOLDER
+Z_TAIL_ROOT = TailGeometry.z_vert_tail   # [m]  panel root height above centreline                            PLACEHOLDER
 
 # -- Rotor / motor stations (4 on the front wing, 2 on the rear wing, symmetric) --
 ETA_ROTOR_FW_IN  = 0.30  # [-]  inboard front rotor, fraction of semi-span (tip clears fuselage)  PLACEHOLDER
@@ -640,12 +646,12 @@ X_CG_OPT = MassProperties.x_cg_opt  # [m]  optimal CG location during cruise
 L_BATT = 3.0    # [m]  box length ~ cabin floor length                                  PLACEHOLDER
 W_BATT = 1.2    # [m]  box width between cabin floor beams                              PLACEHOLDER
 H_BATT = 0.25   # [m]  underfloor bay depth                                             PLACEHOLDER
-X_BATT = X_CG_OPT  # [m]  box mid-length at the cruise-optimal CG so the
+X_BATT = 2.7  # [m]  box mid-length at the cruise-optimal CG so the
                    #      heaviest item is CG-neutral
 Z_BATT = -0.7   # [m]  below the cabin floor (floor ~ -0.5 m for the 2.0 m section)
 
 # -- Payload (pax + luggage cabin box) --
-X_PAYLOAD     = X_CG_OPT  # [m]  pax + luggage centred on the target CG
+X_PAYLOAD     = 2.7  # [m]  pax + luggage centred on the target CG
 Z_PAYLOAD     = -0.2   # [m]  seated-occupant CG slightly below centreline
 L_PAYLOAD_BOX = 2.0    # [m]  two seat rows                                             PLACEHOLDER
 W_PAYLOAD_BOX = 1.4    # [m]  cabin width                                               PLACEHOLDER
