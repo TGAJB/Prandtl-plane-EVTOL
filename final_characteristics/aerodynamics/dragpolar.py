@@ -32,7 +32,7 @@ from parameters import (
     RHO_ORIGIN,
     S_W,
     V_CRUISE,
-    hcruise,
+    H_CRUISE,
 )
 
 
@@ -186,7 +186,7 @@ class DragPolarAnalysis:
         self,
         mass_kg=None,
         gravity_m_s2=G,
-        cruise_altitude_m=hcruise,
+        cruise_altitude_m=H_CRUISE,
         stall_density_kg_m3=RHO_ORIGIN,
         wing_area_m2=None,
         cruise_speed_m_s=V_CRUISE,

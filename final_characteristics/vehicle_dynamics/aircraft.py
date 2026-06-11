@@ -1,4 +1,11 @@
-from vd_parameters import AircraftParameters
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+from parameters import AircraftParameters
 from dataclasses import dataclass
 import numpy as np
 
