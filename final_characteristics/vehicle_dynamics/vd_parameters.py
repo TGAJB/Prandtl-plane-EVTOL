@@ -176,12 +176,12 @@ class ControlSurfaceGeometry:
     factors feed K_b / strip integration.
     """
     elevator_cf_c:       float = 0.3   # [-] flap-chord / wing-chord ratio
-    elevator_Kb:         float = 0.46   # [-] flap-span factor (Fig 6.1.4.1)
+    elevator_Kb:         float = 0.31   # [-] flap-span factor (Fig 6.1.4.1)
     elevator_on_surface: str   = "aw"   # which wing carries the elevator ('fw' or 'aw')
 
     aileron_cf_c:        float = 0.3   # [-]
-    aileron_eta_inner:   float = 0.35   # [-] inboard span station
-    aileron_eta_outer:   float = 0.77   # [-] outboard span station
+    aileron_eta_inner:   float = 0.23   # [-] inboard span station
+    aileron_eta_outer:   float = 0.62   # [-] outboard span station
 
     rudder_cf_c:         float = 0.2   # [-]
 
