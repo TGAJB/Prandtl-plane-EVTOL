@@ -42,13 +42,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 #from energy import takeoff_power, vertical_climb_power, climb_acceleration_power, climb_power, cruise_power, landing_power, mission_energy
 from parameters import T_TAKEOFF, T_CLIMB_ACC, T_CLIMB, T_CRUISE, T_LANDING, V_AVG_TO, V_CRUISE, V_HOVER, N_PROP, ETA_POWERTRAIN_HOVER, ETA_CLIMB, ETA_CRUISE, LD_CRUISE,G
-from mtow_sizing import _solve_converged_mass
+from class_II_sizing.mtow_sizing import load_final_design_state
+design_state = load_final_design_state(verbose=False)
 # ==============================================================================
 #  PARAMETERS  --  EDIT EVERYTHING IN THIS BLOCK
 # ==============================================================================
 
 #mtow_kg = _solve_converged_mass() #CHANGE THIS for the actual MTOW in the end in    [kg]
-mtow_kg = 2200
+mtow_kg = design_state["mtow"]
+# mtow_kg = 2200
 # ---- Propeller geometry ------------------------------------------------------
 DIAMETER       = 1.90  # propeller diameter (FIXED in your case)     [m]
 N_BLADES       = 8    # number of blades (your free variable)
