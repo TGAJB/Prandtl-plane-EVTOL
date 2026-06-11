@@ -157,8 +157,8 @@ class FuselageGeometry:
     Fuselage geometry relevant to aerodynamics and vehicle dynamics.
     """
 
-    fuselage_length:   float = 10.0  # [m]
-    d_fw:              float = 2.0  # [m] - Fuselage is modelled as a tube for now
+    fuselage_length:   float = 7.0  # [m]
+    d_fw:              float = 1.8   # [m] - Fuselage is modelled as a tube for now
     d_aw:              float = 0     # [m]
     x_ac_fuselage:     float = None  # [m]
 
@@ -356,6 +356,7 @@ class Propulsion:
     """
 
     P_max_SL:               float = None  # [W]
+    T_max_SL:               float = 5570  # [N] per propeller (rough estimate)
     propulsive_efficiency:  float = None  # [-]
 
     n_engines:              int   = 6  # [-] - Number of engines
@@ -387,28 +388,28 @@ class Propulsion:
     z_cr_6:               float = None  # [m]
 
     # Engine locations in VTOL CONFIGURATION
-    x_vtol_1:               float = None  # [m]
-    y_vtol_1:               float = None  # [m]
+    x_vtol_1:               float = 1.15  # [m]
+    y_vtol_1:               float = 2.0  # [m]
     z_vtol_1:               float = None  # [m]
 
-    x_vtol_2:               float = None  # [m]
-    y_vtol_2:               float = None  # [m]
+    x_vtol_2:               float = 3.3  # [m]
+    y_vtol_2:               float = 2.0  # [m]
     z_vtol_2:               float = None  # [m]
 
-    x_vtol_3:               float = None  # [m]
-    y_vtol_3:               float = None  # [m]
+    x_vtol_3:               float = 5.75  # [m]
+    y_vtol_3:               float = 2.0  # [m]
     z_vtol_3:               float = None  # [m]
 
-    x_vtol_4:               float = None  # [m]
-    y_vtol_4:               float = None  # [m]
+    x_vtol_4:               float = 1.15  # [m]
+    y_vtol_4:               float = -2.0  # [m]
     z_vtol_4:               float = None  # [m]
 
-    x_vtol_5:               float = None  # [m]
-    y_vtol_5:               float = None  # [m]
+    x_vtol_5:               float = 3.3  # [m]
+    y_vtol_5:               float = -2.0  # [m]
     z_vtol_5:               float = None  # [m]
 
-    x_vtol_6:               float = None  # [m]
-    y_vtol_6:               float = None  # [m]
+    x_vtol_6:               float = 5.75  # [m]
+    y_vtol_6:               float = -2.0  # [m]
     z_vtol_6:               float = None  # [m]
 
     # Mass

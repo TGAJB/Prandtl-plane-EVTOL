@@ -261,16 +261,12 @@ class Aircraft:
 
         S = self._require(wg.S_fw, "wing_geometry.S_fw")
         b = self._require(wg.b_fw, "wing_geometry.b_fw")
-        x_ac_aw = self.x_ac_aw()
-        x_cg = self.x_cg()
-
-        l_h = x_ac_aw - x_cg
-        A = b**2 / S
+        A = self._require(wg.A_fw, "wing_geometry.A_fw")
         sweep_c4_fw = self._le_to_c4(np.radians(wg.LE_sweep_fw), A, wg.taper_fw)
 
         K_A = (1/A) - (1/(1 + A**1.7))
         K_lambda = (10 - 3*wg.taper_fw) / 7
-        K_H = (1 - (np.abs(wg.gap)/b))/(((2*l_h)/b)**(1/3))
+        K_H = (1 - (np.abs(wg.gap)/b))/(((2*wg.stagger)/b)**(1/3))
 
         beta = self.beta()
 
