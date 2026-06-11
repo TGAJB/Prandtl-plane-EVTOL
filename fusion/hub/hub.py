@@ -55,9 +55,9 @@ def _get(attr, default):
 # Values come from fusion_params.py; inline defaults are fallbacks only.
 
 N_BLADES             = int(_get("N_BLADES",             8))
-HUB_OUTER_RADIUS_M   = _get("HUB_OUTER_RADIUS_M",      0.191)   # [m]  = blade HUB_RADIUS_M
+HUB_OUTER_RADIUS_M   = _get("HUB_OUTER_RADIUS_M",      0.140)   # [m]  = blade HUB_RADIUS_M
 HUB_INNER_RADIUS_M   = _get("HUB_INNER_RADIUS_M",      0.025)   # [m]  motor shaft bore
-HUB_HEIGHT_M         = _get("HUB_HEIGHT_M",             0.160)   # [m]  axial thickness
+HUB_HEIGHT_M         = _get("HUB_HEIGHT_M",             0.120)   # [m]  axial thickness
 HUB_SOCKET_RADIUS_M  = _get("HUB_SOCKET_RADIUS_M",     0.030)   # [m]  blade-root cutout radius
 RHO_PROPELLER_HUB    = _get("RHO_PROPELLER_HUB",       2700.0)  # [kg/m³]  aluminium
 

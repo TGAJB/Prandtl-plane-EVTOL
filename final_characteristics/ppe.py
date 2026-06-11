@@ -47,8 +47,8 @@ from mtow_sizing import _solve_converged_mass
 #  PARAMETERS  --  EDIT EVERYTHING IN THIS BLOCK
 # ==============================================================================
 
-mtow_kg = _solve_converged_mass() #CHANGE THIS for the actual MTOW in the end in    [kg]
-
+#mtow_kg = _solve_converged_mass() #CHANGE THIS for the actual MTOW in the end in    [kg]
+mtow_kg = 2200
 # ---- Propeller geometry ------------------------------------------------------
 DIAMETER       = 1.90  # propeller diameter (FIXED in your case)     [m]
 N_BLADES       = 8    # number of blades (your free variable)
