@@ -86,7 +86,7 @@ AR_T        = 1.23   # [-]   V-tail aspect ratio
 
 N_PROP   = 6      # [-]  number of rotors
 N_MOTOR  = 6      # [-]  number of motors
-N_BLADES = 5      # [-]  blades per rotor
+N_BLADES = 8      # [-]  blades per rotor
 D_PROP   = 1.9    # [m]  rotor diameter
 A_DISK   = 2.84   # [m^2] rotor disk area per rotor
 
