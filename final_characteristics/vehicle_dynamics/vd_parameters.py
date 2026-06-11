@@ -1,6 +1,35 @@
 # This file contains all the independent variables that describe the aircraft in variable form.
 
+import sys
+from pathlib import Path
+
 from dataclasses import dataclass, field
+
+# ---------------------------------------------------------------------------
+# Single source of truth for MTOW.
+#
+# MTOW is no longer a hardcoded constant. It is the CONVERGED value produced by
+# the Class-II sizing converger (class_II_sizing/mtow_sizing.py), the same value
+# that ppe.py consumes. We import it once here so that every reader of
+# params.mass.mtow automatically sees the converged mass.
+#
+# Circular-import note: the MTOW chain
+#   mtow_sizing -> energy, mass_components, parameters, fusion_geometry
+# imports nothing from the vehicle_dynamics package, so this import is safe.
+# mtow_sizing also caches its result in module globals, so the convergence runs
+# at most once per session.
+#
+# vd_parameters.py lives in final_characteristics/vehicle_dynamics, so the
+# project root is two levels up. We add it to sys.path so "class_II_sizing"
+# resolves no matter what the current working directory is.
+# ---------------------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+from class_II_sizing.mtow_sizing import load_final_design_state
+
+_CONVERGED_MTOW = load_final_design_state()["mtow"]  # [kg] converged MTOW
 
 
 @dataclass
@@ -191,7 +220,7 @@ class MassProperties:
     Aircraft mass and inertia properties.
     """
 
-    mtow:         float = 2000.0  # [kg]
+    mtow:         float = field(default_factory=lambda: _CONVERGED_MTOW)  # [kg] converged value from mtow_sizing.py
     oew:          float = None  # [kg]
     payload_mass: int   = 400  # [kg]
 
