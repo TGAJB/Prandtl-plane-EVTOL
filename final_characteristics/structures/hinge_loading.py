@@ -21,6 +21,17 @@ class Wing():
         self.hinge_vector = self.hinge_axes[0]
         self.disc_res = 0.01
 
+        reaction_forces = []
+        reaction_forces.append((np.array([1, 0, 0]), np.zeros(3)))
+        reaction_forces.append((np.array([0, 1, 0]), np.zeros(3)))
+        reaction_forces.append((np.array([0, 0, 1]), np.zeros(3)))
+
+        self.reaction_forces = reaction_forces #[(force, direction), ...] Magnitude unknown!!!!
+
+
+
+        self.wing_axes = np.eye(3)
+
         self.shear_diagrams = {} #(x, y) means forces pointing towards x analyzed in the y direction
         self.moment_diagrams = {}
     @property
@@ -42,9 +53,11 @@ class Wing():
         for dist_load in self.nonangled_distributed_loads:
             dist_load.dir = rotate_vectors_around_axis(self.hinge_vector, -self._angle, dist_load.dir)
 
+        self.wing_axes = rotate_vectors_around_axis(self.hinge_vector, self.angle, self.wing_axes)
     def add_point_load(self, load, nonangled = False):
         if isinstance(load, PointLoad):
             if nonangled:
+                load.dir = rotate_vectors_around_axis(self.hinge_vector, -self._angle, load.dir)
                 self.nonangled_point_loads.append(load)
             else:
                 self.point_loads.append(load)
@@ -53,6 +66,7 @@ class Wing():
         if isinstance(distributed_load, DistributedLoad):
             if nonangled:
                 self.nonangled_distributed_loads.append(distributed_load)
+                distributed_load.dir = rotate_vectors_around_axis(self.hinge_vector, -self._angle, distributed_load.dir)
             else:
                 self.distributed_loads.append(distributed_load)
         else: raise TypeError
@@ -61,7 +75,6 @@ class Wing():
         plot_quadrilateral(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, self.geometry), alpha=0)
 
         plot_single_vector(self.ax, self.hinge_vector, color="yellow")
-
         #find max scale factor among loads
         maxload = 0
         for load in self.point_loads:
@@ -71,7 +84,7 @@ class Wing():
             if load.magn > maxload:
                 maxload = load.magn
 
-        maxload /= 3
+        maxload /= 1
 
         if point_forces:
 
@@ -85,7 +98,6 @@ class Wing():
                 point_loc_rotated = rotate_vectors_around_axis(self.hinge_vector, self.angle, point_load.loc)
                 plot_single_vector(self.ax, point_dir_rotated*point_load.magn/maxload, point_loc_rotated, point_load.color)
 
-
         if distributed_loads:
             number_of_points = 10 #points for plotting distributed loads
 
@@ -96,7 +108,7 @@ class Wing():
                     x = np.sqrt(np.dot(load.load_dir, load.load_dir))/number_of_points*i
                     y = load.func(x)
                     load_dir_normalized = load.load_dir/np.sqrt(np.dot(load.load_dir, load.load_dir))
-                    geo.append(load.loc + load.dir*y + load_dir_normalized*x)
+                    geo.append(load.loc + load.dir*y/1 + load_dir_normalized*x)
                 geo.append(load.loc + load.load_dir)
                 plot_polygon_3d(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, geo), face_color=load.color)
 
@@ -107,14 +119,17 @@ class Wing():
                     x = np.sqrt(np.dot(load.load_dir, load.load_dir)) / number_of_points * i
                     y = load.func(x)
                     load_dir_normalized = load.load_dir / np.sqrt(np.dot(load.load_dir, load.load_dir))
-                    geo.append(load.loc + load.dir * y + load_dir_normalized * x)
+                    geo.append(load.loc + load.dir * y/1 + load_dir_normalized * x)
                 geo.append(load.loc + load.load_dir)
                 plot_polygon_3d(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, geo), face_color=load.color)
 
-        if axes:
-            plot_axes(self.ax)
+        plot_axes(self.ax)
 
-        #plot_axes(self.ax, self.hinge_axes)
+        if axes:
+            plot_axes(self.ax, axis=self.wing_axes)
+
+
+
 
         # 4. Add finishing touches
         self.ax.set_xlabel('X Axis')
@@ -175,6 +190,7 @@ class Wing():
             for i in range(distributed_mesh_size):
                 x = load_dir_magn/(distributed_mesh_size - 1)*i
                 y = load.func(x)
+
                 discretized_forces.append(load.dir * y *load_dir_magn/distributed_mesh_size)
                 discretized_positions.append(np.round((load.loc + load_dir_norm*x) / res) * res)
             discretized_pos = np.round(load.loc / res) * res
@@ -189,10 +205,9 @@ class Wing():
                 discretized_positions.append(np.round((load.loc + load_dir_norm*x) / res) * res)
             discretized_pos = np.round(load.loc / res) * res
 
-
         self.discretized_forces = np.array(discretized_forces).T
         self.discretized_positions = np.array(discretized_positions).T
-    def create_loading_diagram(self, force_direction="y", path_direction="x"):
+    def create_loading_diagram(self, force_direction="y", path_direction="x", plot=False):
 
 
         force_index = ["x", "y", "z"].index(force_direction)
@@ -222,27 +237,25 @@ class Wing():
                 c -= 1
             i += 1
 
-        #combine stuff (i dont think its needed in the end)
-
-        x_ax = np.round(np.arange(arr[1][0], arr[1, -1] + self.disc_res, self.disc_res), decimals=5).tolist()
+        x_ax = np.round(np.arange(min(arr[1][0], 0), max(arr[1, -1], 0) + self.disc_res, self.disc_res), decimals=5).tolist()
         y_ax = np.zeros_like(x_ax)
 
         for i in range(len(arr[0])):
             start_idx = x_ax.index(arr[1][i])
             y_ax[start_idx : start_idx + len(x_ax)] += arr[0, i]
 
-        reaction_force = -y_ax[x_ax.index(0)]
-        y_ax += reaction_force
+        reaction_force = -np.sum(arr[0])
 
-        """
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
-        ax1.plot(x_ax, y_ax, color='b')
-        """
+        y_ax[x_ax.index(0):] += reaction_force
+
+        if plot:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+            ax1.plot(x_ax, y_ax, color='b')
 
         self.shear_diagrams[(force_direction, path_direction)] = (x_ax, y_ax)
 
         return reaction_force
-    def create_moment_diagram(self, axis="y", plot=True):
+    def create_moment_diagram(self, axis="y", plot=False):
         #get info from the shear diagrams and if it doesn't exist, create it
         #eg for y axis we need force in x dir towards z and vice versa
         lst = ["x", "y", "z"]
@@ -274,16 +287,18 @@ class Wing():
             total_moment_x_ax = shear_2[0]
 
         # reaction_moment_1 = shear_1[1].index(0)
-        r_moment_1 = -moment_1[shear_2[0].index(0)]
+
+
+        r_moment_1 = -moment_1[-1]
         moment_1 += r_moment_1
-        r_moment_2 = -moment_2[shear_2[0].index(0)]
+        r_moment_2 = -moment_2[-1]
         moment_2 += r_moment_2
 
         total_moment = moment_1 + moment_2
 
 
         if plot:
-            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 6), sharex=True)
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
             ax1.plot(shear_1[0], shear_1[1], color='b', label=f"shear of force {lst[0]} in direction {lst[1]}", alpha=0.4)
             ax1.plot(shear_2[0], shear_2[1], color="r", label=f"shear of force {lst[1]} in direction {lst[0]}", alpha=0.4)
             m = max(np.abs(shear_1[1]).max(), np.abs(shear_2[1]).max())
@@ -298,9 +313,97 @@ class Wing():
             ax2.legend()
             ax2.axhline(0, color='black', linestyle=':', linewidth=1.5)
 
-            ax3.plot(total_moment_x_ax, total_moment, self.disc_res, color="r")
+        return r_moment_1 + r_moment_2
+    def resolve_reactions(self):
 
-        return r_moment_1, r_moment_2
+        ###RANDOM AHH REACTION FORCE
+        #self.reaction_forces.append((self.hinge_vector, [0, 0, 10]))
+
+
+        reaction_force_res = np.sum(self.discretized_forces, axis=1).reshape(3, 1)
+        reaction_force_mat = np.array([[0], [0], [0]])
+
+        for tup in self.reaction_forces:
+            tup = np.array(tup[0]).reshape(3, 1)
+            reaction_force_mat = np.append(reaction_force_mat, tup, axis=1)
+        reaction_force_mat = np.delete(reaction_force_mat, 0, axis=1)
+
+        final_matrix = reaction_force_mat
+        final_reactions = reaction_force_res
+
+        ###THE PLAN!!!
+        #Each reaction force (even the ones at the origin) has a position and a direction, MAGNITUDE MUST BE FOUND!!!
+        #Each reaction force also produces a reaction moment, the equations of which will have to be built and resolved
+        #EQUATIONS FOR REACTION FORCES are easy because you don't care about which point you're looking from.
+        ###FOR NOW THIS IS ALL DONE
+        """
+        For moments, you need to take moments around different points
+        Every position in self.discretized_positions must be expressed relative to the point you're taking moments around
+        Then for that position generate 3 moment equations. FIGURE OUT HOW TO DO THAT
+        """
+
+        #This code now finds the right hand side for each moment equation. Now it's just time for the left hand side!
+
+        already_checked = []
+
+        for tup in self.reaction_forces:
+
+            if not any(np.array_equal(tup[1], x) for x in already_checked):
+                #print("")
+                #print("RESOLVING MOMENTS")
+
+                already_checked.append(tup[1])
+                current_origin = np.array(tup[1])
+                #find the vector positions relative to the new origin
+                relative_positions = self.discretized_positions - current_origin.reshape(3, 1)
+                #compute moments at that relative position
+                mx = self.discretized_forces[2, :]*relative_positions[1, :] - self.discretized_forces[1, :]*relative_positions[2, :]
+                my = self.discretized_forces[0, :]*relative_positions[2, :] - self.discretized_forces[2, :]*relative_positions[0, :]
+                mz = self.discretized_forces[1, :]*relative_positions[0, :] - self.discretized_forces[0, :]*relative_positions[1, :]
+                total_moments = np.array([mx, my, mz]).reshape(3, 1)
+                #print(f"moments around {current_origin}: {mx, my, mz}")
+
+                curr_matrix = np.array([0, 0, 0]).reshape(3, 1)
+                for tup in self.reaction_forces:
+                    curr_reaction_force = tup[0]
+                    curr_reaction_position_relative = tup[1] - current_origin
+                    rmx = curr_reaction_force[2] * curr_reaction_position_relative[1] - curr_reaction_force[1] * curr_reaction_position_relative[2]
+                    rmy = curr_reaction_force[0] * curr_reaction_position_relative[2] - curr_reaction_force[2] * curr_reaction_position_relative[0]
+                    rmz = curr_reaction_force[1] * curr_reaction_position_relative[0] - curr_reaction_force[0] * curr_reaction_position_relative[1]
+                    curr_reaction_force_moments = np.array([rmx, rmy, rmz])
+                    #print(f"Force {curr_reaction_force} at {tup[1]} relative to {current_origin} is at {curr_reaction_position_relative} and produces {curr_reaction_force_moments}")
+                    curr_matrix = np.append(curr_matrix, curr_reaction_force_moments.reshape(3, 1), axis=1)
+                curr_matrix = np.delete(curr_matrix, 0, axis=1)
+                print(current_origin)
+                if np.dot(current_origin, current_origin) == 0:
+                    origin_matrix = curr_matrix
+                    origin_reactions = total_moments
+                    print("HOOLAHOOP")
+                else:
+                    final_matrix = np.vstack((final_matrix, curr_matrix))
+                    final_reactions = np.vstack((final_reactions, total_moments))
+
+        ###attempt to solve
+        x, residuals, rank, s = np.linalg.lstsq(final_matrix, final_reactions, rcond=None)
+
+        self.reaction_force_magnitudes = x
+
+        print(final_matrix)
+        print(final_reactions)
+
+        """
+        print(self.discretized_forces)
+        print(self.reaction_forces)
+        print(self.reaction_force_magnitudes)
+
+        for i in range(len(self.reaction_forces)):
+            self.discretized_positions = np.hstack((self.discretized_positions,  np.round(np.array(self.reaction_forces[i][1]).reshape(3,1) / self.disc_res) * self.disc_res))
+            self.discretized_forces = np.hstack((self.discretized_forces,  np.array(self.reaction_forces[i][1]).reshape(3,1) * self.reaction_force_magnitudes[i]))
+
+        print(self.discretized_positions)
+        print(self.discretized_forces)
+        """
+
 
 class Load():
     def __init__(self, force, loc, label="", color="purple"):
@@ -367,8 +470,26 @@ def transform_axes(theta_deg, phi_deg):
     transformed_axes = np.dot(R_combined, unit_axes)
 
     return transformed_axes
-def decompose(vec, axes):
-    return np.array([project_vector(vec, axes[0]), project_vector(vec, axes[1]), project_vector(vec, axes[2])])
+def transform_vector(vector, native_axis, axis_transform_to):
+
+    if native_axis is axis_transform_to:
+        return vector
+
+    #Both the native axis and the axis to transform to must be relative to the origin
+    vector_transform_1 = native_axis[0]*vector[0] + native_axis[1]*vector[1] + native_axis[2]*vector[2]
+
+
+    x_comp = project_vector(vector_transform_1, axis_transform_to[0])
+    x_magn = np.dot(x_comp, axis_transform_to[0])/(np.sqrt(np.dot(axis_transform_to[0], axis_transform_to[0])))
+
+
+    y_comp = project_vector(vector_transform_1, axis_transform_to[1])
+    y_magn = np.dot(y_comp, axis_transform_to[1])/(np.sqrt(np.dot(axis_transform_to[1], axis_transform_to[1])))
+
+    z_comp = project_vector(vector_transform_1, axis_transform_to[2])
+    z_magn = np.dot(z_comp, axis_transform_to[2])/(np.sqrt(np.dot(axis_transform_to[2], axis_transform_to[2])))
+
+    return(x_magn, y_magn, z_magn)
 def rotate_vectors_around_axis(d, alpha_deg, vectors=None):
     """
     Rotates a set of 3D vectors around an arbitrary axis vector d by angle alpha.
@@ -467,7 +588,7 @@ def rotate_axes_around_vector(d, alpha_deg):
     rotated_axes = R
 
     return rotated_axes
-def plot_single_vector(ax, vector, origin=(0, 0, 0), color='b', label=None):
+def plot_single_vector(ax, vector, origin=(0, 0, 0), color='b', label=None, alpha=1):
     """
     Plots a single 3D vector on a given Matplotlib axis.
     Safely handles both Python lists and numpy arrays (including column vectors).
@@ -487,7 +608,7 @@ def plot_single_vector(ax, vector, origin=(0, 0, 0), color='b', label=None):
     # 3. Plot
     ax.quiver(x_start, y_start, z_start,
               u, v, w,
-              color=color, arrow_length_ratio=0.5, linewidth=2, label=label)
+              color=color, arrow_length_ratio=0.5, linewidth=2, label=label, alpha=alpha)
 def plot_quadrilateral(ax, vertices, scale_factor=1, face_color='cyan', edge_color='black', alpha=0.4):
     """
     Plots a 3D quadrilateral (or any polygon) from a list of vertices.
@@ -510,9 +631,9 @@ def plot_quadrilateral(ax, vertices, scale_factor=1, face_color='cyan', edge_col
     # Add the polygon to the axis
     ax.add_collection3d(polygon)
 def plot_axes(ax, axis=np.eye(3)):
-    plot_single_vector(ax, axis[0], color='r', label='Vector 1')
-    plot_single_vector(ax, axis[1], color='g', label='Vector 1')
-    plot_single_vector(ax, axis[2], color='b', label='Vector 1')
+    plot_single_vector(ax, axis[0], color='r', label='Vector 1', alpha=0.1)
+    plot_single_vector(ax, axis[1], color='g', label='Vector 1', alpha=0.1)
+    plot_single_vector(ax, axis[2], color='b', label='Vector 1', alpha=0.1)
 def plot_polygon_3d(ax, vertices, scale_factor=1, face_color='cyan', edge_color='black', alpha=0.4):
     """
     Plots a 3D polygon from a list of vertices with any number of corners.
@@ -543,6 +664,99 @@ def plot_polygon_3d(ax, vertices, scale_factor=1, face_color='cyan', edge_color=
     # Add the polygon to the axis
     ax.add_collection3d(polygon)
 
+
+def run_wing_sim(angle, v):
+
+    wing_planform = Wing(
+        np.array([[0.25 * root_chord, 0, 0], [0.25 * root_chord * taper, 0, halfspan_hinge],
+                  [-0.75 * root_chord * taper, 0, halfspan_hinge], [-0.75 * root_chord, 0, 0]]),
+        theta_input,
+        phi_input)
+
+    v_actual = v
+
+    def weight(x):
+        return 145
+
+    def wing_loading(x):
+        return (-(x/7)**2 + 3)*180/v_cruise**2*v_actual**2
+
+    wing_planform.add_distributed_load(
+        DistributedLoad((0, -1, 0), (0, 0, 0), (taper - 1, 0, halfspan_hinge), wing_loading))
+
+    wing_planform.add_distributed_load(
+        DistributedLoad((0, 1, 0), (-1, 0, 0), (-0, 0, halfspan_hinge), weight, color="blue"), nonangled=True)
+
+    ###PROPELLER THRUST FORCES
+    wing_planform.add_point_load(PointLoad((propeller_thrust, 0, 0), thruster_position_1, color="orange"))
+    wing_planform.add_point_load(PointLoad((propeller_thrust, 0, 0), thruster_position_2, color="orange"))
+    wing_planform.add_point_load(PointLoad((0, propeller_weight, 0), thruster_position_1, color="brown"))
+    wing_planform.add_point_load(PointLoad((0, propeller_weight, 0), thruster_position_2, color="brown"))
+
+    wing_planform.angle = angle
+
+    wing_planform.discretize()
+
+    rx = wing_planform.create_loading_diagram(force_direction="x", path_direction="z")
+    ry = wing_planform.create_loading_diagram(force_direction="y", path_direction="z")
+    rz = wing_planform.create_loading_diagram(force_direction="z", path_direction="y")
+    mx = wing_planform.create_moment_diagram("x")
+    my = wing_planform.create_moment_diagram("y")
+    mz = wing_planform.create_moment_diagram("z")
+
+    resultant_force = np.array([rx, ry, rz])
+
+    resultant_force_n = resultant_force/np.sqrt(np.dot(resultant_force, resultant_force))
+
+    #plot_single_vector(wing_planform.ax, resultant_force_n, color="purple", alpha=1)
+
+    resultant_force = transform_vector(resultant_force, wing_planform.wing_axes, np.eye(3))
+
+    resultant_moment = np.array([mx, my, mz])
+
+    #plot_axes(wing_planform.ax, wing_planform.hinge_axes)
+
+    return resultant_force
+
+
+def plot_vectors_3d(vectors):
+    vectors = np.asarray(vectors)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    # Draw arrows from origin
+    origins = np.zeros_like(vectors)
+
+    ax.quiver(
+        origins[:, 0],
+        origins[:, 1],
+        origins[:, 2],
+        vectors[:, 0],
+        vectors[:, 1],
+        vectors[:, 2],
+        arrow_length_ratio=0.08,
+        normalize=False,   # preserve actual vector magnitudes
+    )
+
+    # Equal scaling for x/y/z axes
+    max_range = np.abs(vectors).max()
+
+    ax.set_xlim(-max_range, max_range)
+    ax.set_ylim(-max_range, max_range)
+    ax.set_zlim(-max_range, max_range)
+
+    # Force equal aspect ratio (important!)
+    ax.set_box_aspect([1, 1, 1])
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+
+    return fig
+
+
+
 if __name__ == "__main__":
 
     #Initialize plot
@@ -550,51 +764,32 @@ if __name__ == "__main__":
     ###3 coords systems used in this model, fuselage (a.c), wing and hinge
 
     theta_input = -45 #deg
-    phi_input = 36 #deg
+    phi_input = 35.26438968 #deg
 
-    wing_planform = Wing(
-                np.array([[2, 0, 0], [0, 0, 10], [-1, 0, 10], [-1, 0, 0]]),
-                theta_input,
-                phi_input)
+    root_chord = 3 #m
+    taper = 0.8
+    halfspan_hinge = 10 #From the point where the hinge starts
+    #assuming hinge is positioned at the quarter chord
 
-    def weight(x):
-        return 10
+    thruster_position_1 = (0.5, 0, 3)
+    thruster_position_2 = (0.5, 0, 6)
 
-    #wing_planform.add_point_load(PointLoad((100, 0, 0), (0, 0, 6)))
-    #wing_planform.add_point_load(PointLoad((100, 0, 0), (1, 0, 3)))
+    v_cruise = 81
+    v_actual = 0 #The actual velocity you are expecting during whatever config you're testing out
+    propeller_thrust = 240 #N
+    propeller_weight = (7.31 + 48.09) * 9.81
 
-    def wing_loading(x):
-        return -(x/5)**2 + 4
+    angle_cases = [i for i in range(121)]
+    v_cases = [(120 - angle)**2/251.221 for angle in angle_cases]
 
-    wing_planform.add_distributed_load(DistributedLoad((0, -1, 0), (0.5, 0, 0), (-1, 0, 10), wing_loading))
-    
-    wing_planform.add_distributed_load(DistributedLoad((0, 1, 0), (0.5, 0, 0), (-1, 0, 10), weight, color="blue"), nonangled=True)
+    forces_lst = []
+    moments_lst = []
 
-    wing_planform.add_point_load(PointLoad((200, 0, 0), (1, 0, 3), color="orange"))
-    wing_planform.add_point_load(PointLoad((200, 0, 0), (0.5, 0, 6), color="orange"))
+    for i in range(len(angle_cases)):
+        forces_lst.append(run_wing_sim(angle_cases[i], v_cases[i]))
 
+    print(np.array(forces_lst))
 
-
-    #wing_planform.add_distributed_load(DistributedLoad((0, -1, 0), (0, 0, 0), (0, 0, 10), weight))
-    #wing_planform.add_point_load(PointLoad((10, 0, 0), (10, 0, 0)))
-    #wing_planform.add_point_load(PointLoad((0, -10, 0), (1, 0, 5)))
-    #wing_planform.add_distributed_load(DistributedLoad((0, -1, 0), (1, 0, 7), (-2, 0, 0), weight))
-
-    wing_planform.angle = 0
-    """
-    for i in range(6):
-        wing_planform.angle += 20
-        wing_planform.discretize()
-        rforce_x = wing_planform.create_loading_diagram(force_direction = "x", path_direction = "z")
-        rforce_y = wing_planform.create_loading_diagram(force_direction = "y", path_direction = "z")
-        plot_single_vector(wing_planform.ax, np.array([rforce_x, rforce_y, 0]), color="pink")
-    wing_planform.plot_wing(point_forces=False, distributed_loads=False)
-    """
-
-    wing_planform.plot_wing()
-
-    wing_planform.discretize()
-
-    wing_planform.create_moment_diagram("x")
-
-    plt.show()
+    tfig = plot_vectors_3d(forces_lst)
+    tfig.show()
+    plt.pause(1000)  # seconds
