@@ -37,5 +37,5 @@ def plot_vectors_3d(vectors):
 
     plt.show()
 
-vectors = np.loadtxt("vectors.txt")
+vectors = np.loadtxt("r_moments.txt")
 plot_vectors_3d(vectors)
