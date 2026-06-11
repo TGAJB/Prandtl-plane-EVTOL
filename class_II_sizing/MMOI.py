@@ -97,7 +97,6 @@ from parameters import (
 )
 from class_II_sizing.mtow_sizing import converged_mass
 
-
 # ---------------------------------------------------------------------------
 # Shape helpers - all return the 3x3 inertia tensor [kg m^2] about the shape's
 # own CG, in body-parallel axes.
@@ -316,11 +315,13 @@ def as_mass_properties(result):
         params.mass = replace(params.mass, **as_mass_properties(res))
     """
     return {
+        "mtow": float(result["mass"]),
         "I_xx": float(result["Ixx"]),
         "I_yy": float(result["Iyy"]),
         "I_zz": float(result["Izz"]),
         "I_xz": float(result["Ixz"]),
         "z_cg": float(result["cg"][2]),
+        "x_cg": float(result["cg"][0]),
     }
 
 
@@ -357,3 +358,4 @@ def _print_breakdown(components, result):
 
 if __name__ == "__main__":
     aircraft_inertia(verbose=True)
+    

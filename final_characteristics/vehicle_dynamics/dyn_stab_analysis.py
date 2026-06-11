@@ -33,7 +33,13 @@ except ImportError:                      # fall back to scipy if control is abse
     HAVE_CONTROL = False
 
 from parameters import AircraftParameters
-from aircraft import Aircraft, Physical, FlightCondition, DatcomChartInputs
+from final_characteristics.vehicle_dynamics.aircraft import (
+    Aircraft,
+    Physical,
+    FlightCondition,
+    DatcomChartInputs,
+    main_aircraft,
+)
 
 
 # ===========================================================================
@@ -82,9 +88,9 @@ class CruiseModel:
     Cnda   = 0.0      # ADVERSE YAW — placeholder! matters for Dutch-roll/
                       # aileron coordination; estimate ~ -k*CL*Clda, k=0.1-0.3
 
-    def __init__(self, aircraft: Aircraft):
+    def __init__(self, aircraft: Aircraft, solved):
         self.ac = aircraft
-        p = aircraft.solve()                    # populates p.stability / p.controls
+        p = solved                  # populates p.stability / p.controls
         s, c = p.stability, p.controls
         fc = aircraft.fc
 
@@ -331,9 +337,10 @@ def simulate_eigenmotions(model, As, Bs, Aa, Ba, save_dir="./final_characteristi
 # MAIN
 # ===========================================================================
 def main(plot=True, save_dir="./final_characteristics/vehicle_dynamics/plots/dyn_stab"):
-    params = fill_inertia_placeholders(AircraftParameters())
-    ac = Aircraft(params, Physical(), FlightCondition(), DatcomChartInputs())
-    model = CruiseModel(ac)
+    solved, aircraft = main_aircraft()
+
+    model = CruiseModel(aircraft, solved)
+
     As, Bs, Aa, Ba = model.state_space()
     eig_s, eig_a, modes = identify_modes(As, Aa)
 
