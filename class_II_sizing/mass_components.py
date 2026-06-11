@@ -663,7 +663,8 @@ def tail_mass(mtow_kg):
 
 def motor_mass(max_power_kw):
     """Total mass of all motors [kg]."""
-    m_single = 0.165 * ((max_power_kw * (1 + PM)) / N_MOTOR)
+    #m_single = 0.165 * ((max_power_kw * (1 + PM)) / N_MOTOR)
+    m_single = 24 + 4 #24 is actual kg of motor where 4 is the variable pitch controller estimate
     return m_single * N_MOTOR
 
 
