@@ -48,7 +48,7 @@ DRAG_POLAR_N_POINTS  = 100    # [-]   number of points used for drag-polar plots
 #   Preliminary values
 LD_CRUISE            = 14.7   # [-]   box-wing cruise L/D (preliminary)
 CD0                  = 0.0205 # [-]   zero-lift drag coefficient (preliminary)
-OSWALD_EFFICIENCY    = 1.26   # [-]   Oswald efficiency factor (preliminary)
+OSWALD_EFFICIENCY    = 1.34   # [-]   Oswald efficiency factor (updated 11-06-2026)
 
 # Wing structural parameters
 
