@@ -687,7 +687,7 @@ def hub_mass(use_fusion=False, m_hub_fusion=None):
 # Miscellaneous & hinge
 
 def misc_mass(mtow_kg):
-    return 0.20 * mtow_kg
+    return 0.10 * mtow_kg + 32 #kg of the thermal battery management system 
 
 
 def hinge_mass(mtow_kg):
