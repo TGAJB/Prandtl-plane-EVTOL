@@ -260,12 +260,8 @@ def report(cell: Cell, req: PackRequirement) -> None:
     print("=" * 70)
     print(f"Cell: {cell.V_nom} V x {cell.capacity_Ah} Ah = {cell.energy_Wh:.1f} Wh "
           f"({cell.assumed_density_Wh_kg:.0f} Wh/kg), "
-    print(f"Cell: {cell.V_nom} V x {cell.capacity_Ah} Ah = {cell.energy_Wh:.1f} Wh "
-          f"({cell.assumed_density_Wh_kg:.0f} Wh/kg), "
           f"{cell.I_cont_max:.0f} A -> {cell.power_cont_W:.0f} W, {cell.mass_kg*1000:.0f} g")
     print("-" * 70)
-    print("ENERGY constraint (per-cell energy at the SA504 datasheet density):")
-    print(f"  ({req.E_mission_kWh:.1f} mission + {req.E_aux_kWh:.2f} aux + "
     print("ENERGY constraint (per-cell energy at the SA504 datasheet density):")
     print(f"  ({req.E_mission_kWh:.1f} mission + {req.E_aux_kWh:.2f} aux + "
           f"{req.E_reserve_kWh:.1f} reserve) "
@@ -293,10 +289,7 @@ def report(cell: Cell, req: PackRequirement) -> None:
     print("=" * 70)
 
     # --- Mass-allocation feasibility check ----------------------------- #
-
-    # --- Mass-allocation feasibility check ----------------------------- #
     m = cells_from_mass_budget(cell, req)
-    print(f"\nMASS-ALLOCATION FEASIBILITY (Class-II pack mass "
     print(f"\nMASS-ALLOCATION FEASIBILITY (Class-II pack mass "
           f"{req.pack_mass_budget_kg:.0f} kg, cell-to-pack {req.cell_to_pack})")
     print(f"  cell mass available : {m['cell_mass_available_kg']:.0f} kg "
@@ -334,8 +327,6 @@ if __name__ == "__main__":
     print(f"  {'270 V bus':<16}{_aux_b['bus_E'][270]:>8.2f} kWh")
     print(f"  {'TOTAL':<16}{aux_total:>8.2f} kWh")
     print("=" * 70 + "\n")
-
-    # Energy governs; propulsion dominates the hover peak so concurrent aux ~ 0.
 
     # Energy governs; propulsion dominates the hover peak so concurrent aux ~ 0.
     req = PackRequirement(E_aux_kWh=aux_total, P_aux_concurrent_kW=0.0)
