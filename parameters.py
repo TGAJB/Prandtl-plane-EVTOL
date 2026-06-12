@@ -1,15 +1,506 @@
+# ============================================================================
+# PROJECT PARAMETER SHEET
+#
+# Part 1 - Vehicle Dynamics parameter sheet (dataclasses, formerly
+#          final_characteristics/vehicle_dynamics/vd_parameters.py).
+#          For every quantity that appears in both parts, the DATACLASS FIELD
+#          is the single source of truth.
+# Part 2 - module-level design constants (sizing, structures, propulsion, ...).
+#          Shared quantities are assigned FROM the Part 1 dataclasses; edit
+#          them there, not here.
+#
+# Angles in the Part 1 sheet are in DEGREES unless noted; the Part 2 wing
+# constants are in radians and converted from Part 1 with math.radians().
+# ============================================================================
+
+import math
+import numpy as np
+from dataclasses import dataclass, field
+
+
+# ============================================================================
+# Part 1 - VEHICLE DYNAMICS PARAMETER SHEET (single source of truth for
+#          shared quantities)
+# ============================================================================
+
+
+@dataclass
+class Mission:
+    """
+    Mission-level independent requirements relevant to the Vehicle Dynamics model.
+    """
+
+    transition_speed:    float = None      # [m/s]
+    cruise_speed:        float = 200/3.6   # [m/s]
+    M_cr:                float = 0.17      # [-]
+    wind_gust_speed:     float = None      # [m/s]
+
+    transition_altitude: float = 0.0       # [m]   PLACEHOLDER
+    cruise_altitude:     float = 3810.0    # [m]   consistent with rho_cr / T_cr below
+
+    rho_cr:              float = 0.835679  # [kg/(m^3)] ISA density at cruise_altitude
+    rho_SL:              float = 1.225     # [kg/(m^3)] ISA sea-level density
+
+    T_cr:                float = 263.385   # [K] ISA temperature at cruise_altitude
+    T_SL:                float = 288.15    # [K] ISA sea-level temperature
+
+    minimum_range:       float = 200000.0  # [m] design range
+
+
+@dataclass
+class WingGeometry:
+    """
+    Geometric layout of the horizontal lifting surfaces.
+
+    For the Prandtl-plane / box-wing configuration, these parameters describe
+    the position, size, and orientation of the front and aft horizontal wings.
+    """
+
+    design_point:         float = 760.0  # [N/m^2] selected wing loading from matching diagram
+
+    S_fw:                 float = 12.91  # [m^2]
+    S_aw:                 float = 12.91  # [m^2]
+    S_e_fw:               float = 9.685  # [m^2]
+    S_e_aw:               float = 9.685  # [m^2]
+    S_tot:                float = 25.82  # [m^2]
+
+    b_fw:                 float = 13.0  # [m] span from the footprint constraint
+    b_aw:                 float = b_fw  # [m]
+
+    A_fw:                 float = b_fw**2/S_fw  # [-]
+    A_aw:                 float = b_aw**2/S_aw  # [-]
+
+    gap:                  float = 2.1  # [m]
+    stagger:              float = 5.0  # [m]
+
+    MAC_fw:               float = 1.262  # [m]
+    MAC_aw:               float = 1.262  # [m]
+
+    taper_fw:             float = 0.45      # [-] (merged value; consistent with the chords below)
+    taper_aw:             float = taper_fw  # [-]
+
+    chord_fw_root:        float = 1.66  # [m]
+    chord_fw_tip:         float = 0.75  # [m]
+    chord_aw_root:        float = 1.66  # [m]
+    chord_aw_tip:         float = 0.75  # [m]
+
+    LE_sweep_fw:          float = 0.0  # [deg.]
+    LE_sweep_aw:          float = 0.0  # [deg.]
+
+    dihedral_front_wing:  float = 0.0  # [deg.]
+    dihedral_aft_wing:    float = 0.0  # [deg.]
+
+    twist_fw:             float = 3.0  # [deg.] NOT FINAL
+    twist_aw:             float = 3.0  # [deg.] NOT FINAL
+
+    incidence_fw:         float = None  # [deg.]
+    incidence_aw:         float = None  # [deg.]
+
+    airfoil_fw:           str   = "NASA LANGLEY LS(1)-0417"  # [-]
+    airfoil_aw:           str   = "NASA LANGLEY LS(1)-0417"  # [-]
+
+    # ===== ADDED FOR DATCOM ==================================================
+    # Reference quantities for non-dimensionalisation. EVERY aircraft-level derivative is referenced to these; they must match the EOM reference.
+    S_ref:                float = S_tot  # [m^2]
+    b_ref:                float = b_fw  # [m]
+    MAC_ref:              float = 1.262  # [m]
+
+    # Airfoil thickness and trailing-edge angle.
+    # NOTE: the front/aft WING lift-curve slopes now use the aero department's
+    # section slope (cl_alpha_fw / cl_alpha_aw) directly, so these are no longer
+    # consumed by the lift methods. Retained as geometric descriptors only.
+    t_c_fw:               float = 0.17  # [-]
+    t_c_aw:               float = 0.17  # [-]
+    te_angle_fw:          float = 18  # [deg.]
+    te_angle_aw:          float = 18  # [deg.]
+
+    # Wing vertical position relative to body centreline (z positive up,
+    # matching the MMOI layout: front wing low, aft wing one gap above it)
+    z_w_fw:               float = -0.5         # [m]
+    z_w_aw:               float = z_w_fw + gap  # [m]
+
+    x_LEMAC_fw:           float = 1 # [m] - very rough estimate
+
+
+@dataclass
+class TailGeometry:
+    """
+    Geometry and position of the vertical tail.
+
+    The Part 2 structural tail constants (TAPER_TAIL, TIP_TO_CHORD, S_TAIL,
+    AR_T) are derived from this class; V_ANGLE and X_TAIL remain Part 2-only
+    (V-tail mounting angle and CG-station placeholder).
+    """
+
+    n_fins:                     float = 2.0  # [-]
+    x_vert_tail:                float = 6.4  # [m]
+    c_r_vert_tail:              float = 1.6  # [m]
+    c_t_vert_tail:              float = 1.3  # [m]
+    b_vert_tail:                float = 1.6  # [m]
+    S_vert_tail:                float = ((c_r_vert_tail + c_t_vert_tail)*b_vert_tail)/2  # [m^2]
+    AR_vert_tail:               float = b_vert_tail**2/S_vert_tail  # [-]
+    LE_sweep_vert_tail:         float = 0.31  # [rad]
+    airfoil_vert_tail:          str   = "NACA 0012"  # [-]
+
+    taper_vert_tail:            float = c_t_vert_tail/c_r_vert_tail  # [-]
+    MAC_vert_tail:              float = (2/3)*c_r_vert_tail*((1 + taper_vert_tail + taper_vert_tail**2)/(1 + taper_vert_tail))  # [m]
+    t_c_vert_tail:              float = 0.12  # [-]
+    te_angle_vert_tail:         float = 14  # [deg.]
+    z_vert_tail:                float = 0.68  # [m] vertical a.c. height (datum)
+
+
+@dataclass
+class WingletGeometry:
+    """
+    Geometry of the Prandtl-plane vertical joiners / winglets.
+
+    These are not treated as conventional aft vertical tails. They are modelled
+    as vertical side-force-producing panels at the wing tips, with their own
+    effective aspect-ratio and local-flow corrections. Set enabled=True only
+    after the geometry and chart/correction inputs have been supplied.
+    """
+
+    enabled:                    bool  = True  # keep existing model backward-compatible
+    n_winglets:                 int   = 2      # usually left and right tip joiners
+
+    S_winglet:                  float = 1.57  # [m^2] planform area of ONE winglet/joiner
+    b_winglet:                  float = 2.1  # [m] vertical span/height of ONE winglet
+    AR_winglet:                 float = b_winglet**2/S_winglet  # [-] aspect ratio of ONE winglet
+    taper_winglet:              float = 1.0 # [-]
+    LE_sweep_winglet:           float = np.arctan(WingGeometry.stagger/WingGeometry.gap)  # [rad]
+
+    x_ac_winglet:               float = 4.125  # [m] longitudinal aerodynamic-centre location
+    z_ac_winglet:               float = 0.68  # [m] vertical aerodynamic-centre location
+
+    airfoil_winglet:            str   = "NASA LANGLEY LS(1)-0417"  # [-]
+    t_c_winglet:                float = 0.17  # [-]
+    te_angle_winglet:           float = 18  # [deg.]
+
+
+@dataclass
+class FuselageGeometry:
+    """
+    Fuselage geometry relevant to aerodynamics and vehicle dynamics.
+    """
+
+    fuselage_length:   float = 7.0  # [m]
+    d_fw:              float = 2.0   # [m] - Fuselage is modelled as a tube for now
+    d_aw:              float = 0     # [m]
+    x_ac_fuselage:     float = None  # [m]
+
+    side_area:           float = 20.0 + TailGeometry.S_vert_tail  # [m^2] projected side area S_Bs (Cn_beta)
+    base_area:           float = 20.0  # [m^2] reference/base area S_B0 (CY_beta body)
+    body_depth_at_wing:  float = d_fw  # [m]   d at the wing (sidewash); ~ diameter
+
+
+@dataclass
+class ControlSurfaceGeometry:
+    """
+    Control-surface geometry needed for the deflection (control) derivatives.
+    Chord ratios feed the section-effectiveness charts (Sec 6.1.1.1); the span
+    factors feed K_b / strip integration.
+    """
+    elevator_cf_c:       float = 0.3   # [-] flap-chord / wing-chord ratio
+    elevator_Kb:         float = 0.46   # [-] flap-span factor (Fig 6.1.4.1)
+    elevator_on_surface: str   = "aw"   # which wing carries the elevator ('fw' or 'aw')
+
+    aileron_cf_c:        float = 0.3   # [-]
+    aileron_eta_inner:   float = 0.35   # [-] inboard span station
+    aileron_eta_outer:   float = 0.77   # [-] outboard span station
+
+    rudder_cf_c:         float = 0.2   # [-]
+
+
+@dataclass
+class MassProperties:
+    """
+    Aircraft mass and inertia properties.
+
+    mtow here is a seed value for standalone VD runs; the converged class-II
+    design state (class_II_sizing/mtow_sizing.py) is authoritative.
+    """
+
+    mtow:         float = 2000.0  # [kg]
+    oew:          float = None    # [kg]
+    payload_mass: float = 400.0   # [kg] fixed payload (4 pax + luggage)
+
+    x_cg_min:     float = None  # [m]
+    x_cg_max:     float = None  # [m]
+    x_cg_opt:     float = 3.311   # [m] - Optimal CG location during cruise
+    z_cg:         float = -0.162  # [m] - vertical CG (datum), used by moment arms
+
+    I_xx:         float = 11458.0  # [kg m^2]
+    I_yy:         float = 9707.0  # [kg m^2]
+    I_zz:         float = 18196.0  # [kg m^2]
+    I_xz:         float = 1949.0  # [kg m^2]
+
+
+@dataclass
+class AerodynamicCoefficients:
+    """
+    Aerodynamic characteristics required by the Vehicle Dynamics model.
+    """
+    # Airfoil curve
+    cl_alpha_fw:                        float = 0.107  # [1/deg.]
+    cl_alpha_aw:                        float = 0.107  # [1/deg.]
+    cl_alpha_vert_tail:                 float = None  # [1/deg.]
+    cl_alpha_winglet:                   float = None  # [1/deg.]
+
+    # Lift curve
+    CL_alpha_fw:                        float = 5.02484  # [1/rad.]
+    CL_alpha_aw:                        float = 5.02484  # [1/rad.]
+    CL_alpha_vert_tail:                 float = None  # [1/rad.]
+    CL_alpha_winglet:                   float = None  # [1/rad.]
+
+    # Maximum lift coefficients
+    CL_max_clean:                       float = None  # [-]
+    CL_max_hld:                         float = None  # [-]
+
+    # Zero-lift drag coefficients
+    CD0_fw_clean:                       float = None  # [-]
+    CD0_aw_clean:                       float = None  # [-]
+
+    CD0_fw_HLD:                         float = None  # [-]
+    CD0_aw_HLD:                         float = None  # [-]
+
+    CD0_vert_tail:                      float = None  # [-]
+    CD0_winglet:                        float = None  # [-]
+    CD0_fuselage:                       float = None  # [-]
+
+    # Oswald efficiency factors
+    e_hor_wings:                         float = 1.34  # [-] (updated 11-06-2026) (DOES THE VALIDITY CHANGE WHEN HLDs ARE DEPLOYED?)
+    e_vert_tail:                         float = None  # [-]
+    e_winglet:                           float = None  # [-]
+
+    # Aerodynamic moments
+    C_M_ac_fw:                           float = -0.118  # [-]
+    C_M_ac_aw:                           float = -0.118  # [-]
+    C_M_ac_fuselage:                     float = None  # [-]
+
+    # Downwash gradients
+    downwash_gradient_fw_to_aw:         float = None  # [-]
+    sidewash_gradient_fuselage_to_tail: float = None  # [-]
+
+    # Dynamic pressure ratios
+    dyn_pres_ratio_fw_to_aw:            float = 0.9  # [-]
+    dyn_pres_ratio_fuselage_to_tail:    float = 0.95  # [-]
+
+    # Flow speed ratios
+    flow_speed_ratio_fw_to_aw:          float = None  # [-]
+    flow_speed_ratio_fuselage_to_tail:  float = None  # [-]
+
+    # Interference coefficients
+    I_v:                                float = -1.75 # [-] - Vortex interference factor
+
+    # Long. positions of aerodynamic centres
+    x_ac_fw_cruise:                     float = 0.313 # [m] as seen from the LEMAC of the front wing
+    x_ac_aw_cruise:                     float = 0.313 # [m] as seen from the LEMAC of the aft wing
+
+    x_ac_fw:                            float = 1.60  # [m]
+    x_ac_aw:                            float = 6.65  # [m]
+
+    x_ac_fw_approach:                   float = None  # [m]
+    x_ac_aw_approach:                   float = None  # [m]
+
+    # Vert. positions of aerodynamic centres
+    z_ac_fw_cruise:                     float = None  # [m]
+    z_ac_aw_cruise:                     float = None  # [m]
+    z_ac_fw_approach:                   float = None  # [m]
+    z_ac_aw_approach:                   float = None  # [m]
+
+
+@dataclass
+class StabilityDerivatives:
+    """
+    Stability derivatives used in the Vehicle Dynamics model.
+    """
+
+    # AoA
+    C_L_alpha: float = None  # [1/rad]
+    C_M_alpha: float = None  # [1/rad]
+
+    # AoA-rate (lag of downwash)
+    C_L_alpha_dot: float = None  # [1/rad]
+    C_M_alpha_dot: float = None  # [1/rad]
+
+    # Pitch rate
+    C_L_q:     float = None  # [1/rad]
+    C_M_q:     float = None  # [1/rad]
+
+    # Sideslip
+    C_Y_beta:  float = None  # [1/rad]
+    C_L_beta:  float = None  # [1/rad]
+    C_N_beta:  float = None  # [1/rad]
+
+    # Sideslip rate
+    C_Y_beta_dot: float = None  # [1/rad]
+    C_N_beta_dot: float = None  # [1/rad]
+
+    # Roll rate
+    C_Y_p:     float = None  # [1/rad]
+    C_L_p:     float = None  # [1/rad]
+    C_N_p:     float = None  # [1/rad]
+
+    # Yaw rate
+    C_Y_r:     float = None  # [1/rad]
+    C_L_r:     float = None  # [1/rad]
+    C_N_r:     float = None  # [1/rad]
+
+    # X/Z force bridge (symmetric EOM)
+    C_X_0:        float = None  # [-]
+    C_Z_0:        float = None  # [-]
+    C_X_u:        float = None  # [-]
+    C_Z_u:        float = None  # [-]
+    C_X_alpha:    float = None  # [1/rad]
+    C_Z_alpha:    float = None  # [1/rad]
+    C_Z_alpha_dot: float = None  # [1/rad]
+    C_Z_q:        float = None  # [1/rad]
+
+
+@dataclass
+class ControlDerivatives:
+    """
+    Control-surface deflection derivatives.
+
+    These represent control effectiveness in terms of force or moment
+    coefficient change per control-surface deflection.
+    """
+
+    C_L_delta_e: float = None  # [1/rad]
+    C_M_delta_e: float = None  # [1/rad]
+    C_Z_delta_e: float = None  # [1/rad]
+    C_X_delta_e: float = None  # [1/rad]
+
+    C_Y_delta_r: float = None  # [1/rad]
+    C_N_delta_r: float = None  # [1/rad]
+    C_L_delta_r: float = None  # [1/rad]
+
+    C_L_delta_a: float = None  # [1/rad]
+    C_N_delta_a: float = None  # [1/rad]
+
+
+@dataclass
+class Propulsion:
+    """
+    Propulsion parameters relevant to Vehicle Dynamics.
+
+    Power-required quantities should not be placed here, because they are
+    dependent outputs of the aircraft performance model.
+    """
+
+    P_max_SL:               float = None  # [W]
+    propulsive_efficiency:  float = None  # [-]
+
+    n_engines:              int   = 6  # [-] - Number of engines / rotors
+    max_thrust_per_engine:  float = None  # [N]
+
+    # Engine locations in CRUISE CONFIGURATION
+    x_cr_1:               float = None  # [m]
+    y_cr_1:               float = None  # [m]
+    z_cr_1:               float = None  # [m]
+
+    x_cr_2:               float = None  # [m]
+    y_cr_2:               float = None  # [m]
+    z_cr_2:               float = None  # [m]
+
+    x_cr_3:               float = None  # [m]
+    y_cr_3:               float = None  # [m]
+    z_cr_3:               float = None  # [m]
+
+    x_cr_4:               float = None  # [m]
+    y_cr_4:               float = None  # [m]
+    z_cr_4:               float = None  # [m]
+
+    x_cr_5:               float = None  # [m]
+    y_cr_5:               float = None  # [m]
+    z_cr_5:               float = None  # [m]
+
+    x_cr_6:               float = None  # [m]
+    y_cr_6:               float = None  # [m]
+    z_cr_6:               float = None  # [m]
+
+    # Engine locations in VTOL CONFIGURATION
+    x_vtol_1:               float = None  # [m]
+    y_vtol_1:               float = None  # [m]
+    z_vtol_1:               float = None  # [m]
+
+    x_vtol_2:               float = None  # [m]
+    y_vtol_2:               float = None  # [m]
+    z_vtol_2:               float = None  # [m]
+
+    x_vtol_3:               float = None  # [m]
+    y_vtol_3:               float = None  # [m]
+    z_vtol_3:               float = None  # [m]
+
+    x_vtol_4:               float = None  # [m]
+    y_vtol_4:               float = None  # [m]
+    z_vtol_4:               float = None  # [m]
+
+    x_vtol_5:               float = None  # [m]
+    y_vtol_5:               float = None  # [m]
+    z_vtol_5:               float = None  # [m]
+
+    x_vtol_6:               float = None  # [m]
+    y_vtol_6:               float = None  # [m]
+    z_vtol_6:               float = None  # [m]
+
+    # Mass
+    propulsion_system_mass: float = None  # [kg] - MASS PER ENGINE
+
+
+@dataclass
+class StructuralLimits:
+    """
+    Structural limits relevant to Vehicle Dynamics.
+    """
+    ultimate_load_factor: float = None  # [-]
+
+
+@dataclass
+class AircraftParameters:
+    """
+    Complete independent parameter sheet for the Vehicle Dynamics aircraft model.
+    """
+
+    mission:           Mission                   = field(default_factory=Mission)
+    wing_geometry:     WingGeometry              = field(default_factory=WingGeometry)
+    tail_geometry:     TailGeometry              = field(default_factory=TailGeometry)
+    winglet_geometry:  WingletGeometry           = field(default_factory=WingletGeometry)
+    fuselage_geometry: FuselageGeometry          = field(default_factory=FuselageGeometry)
+    control_surfaces:  ControlSurfaceGeometry    = field(default_factory=ControlSurfaceGeometry)
+    mass:              MassProperties            = field(default_factory=MassProperties)
+    aerodynamics:      AerodynamicCoefficients   = field(default_factory=AerodynamicCoefficients)
+    stability:         StabilityDerivatives      = field(default_factory=StabilityDerivatives)
+    controls:          ControlDerivatives        = field(default_factory=ControlDerivatives)
+    propulsion:        Propulsion                = field(default_factory=Propulsion)
+    structures:        StructuralLimits          = field(default_factory=StructuralLimits)
+
+
+# ============================================================================
+# Part 2 - MODULE-LEVEL DESIGN CONSTANTS
+#
+# Quantities shared with the VD sheet are assigned from the Part 1 dataclass
+# fields; edit those there. Everything else is owned by this part.
+# ============================================================================
+
 # Physical constants
 
-G          = 9.81          # [m/s^2]  gravitational acceleration
-RHO_ORIGIN = 1.225         # [kg/m^3] ISA sea-level air density
+G          = 9.81             # [m/s^2]  gravitational acceleration
+RHO_ORIGIN = Mission.rho_SL   # [kg/m^3] ISA sea-level air density
 
 # Mission parameters
 
-M_PAYLOAD        = 400.0      # [kg]  fixed payload (4 pax + luggage)
+M_PAYLOAD        = MassProperties.payload_mass  # [kg]  fixed payload (4 pax + luggage)
 W_CREW           = 0.0        # [kg]  0 for autonomous; 85 if piloted
-RANGE_M          = 200000.0   # [m]   design range
+RANGE_M          = Mission.minimum_range   # [m]   design range
 D_VERT_DESCENT   = 1676.0     # [m]   vertical descent distance
-V_CRUISE         = 200 / 3.6  # [m/s] cruise speed
+V_CRUISE         = Mission.cruise_speed    # [m/s] cruise speed
+H_CRUISE         = Mission.cruise_altitude # [m]   cruise altitude
+H_TRANSITION     = Mission.transition_altitude  # [m] transition altitude
+RHO_CRUISE       = Mission.rho_cr          # [kg/m^3] ISA density at H_CRUISE
+T_CR_ISA         = Mission.T_cr            # [K]   ISA temperature at H_CRUISE
+T_SL_ISA         = Mission.T_SL            # [K]   ISA sea-level temperature
+M_CR             = Mission.M_cr            # [-]   cruise Mach number
 T_CRUISE         = 2194.7     # [s]   cruise segment
 T_TAKEOFF        = 5.0        # [s]   takeoff segment
 T_CLIMB          = 1221.7     # [s]   climb segment
@@ -21,7 +512,7 @@ T_ELAPSED_VC     = 5.0        # [s]   vertical climb elapsed time
 V_AVG_TO         = 2.0        # [m/s] average takeoff vertical speed
 V_HOVER          = 3.0        # [m/s] hover climb speed
 V_I               = 20.0       # [m/s] initial climbing speed
-VS_0             = D_VERT_DESCENT / T_DESCENT # [m/s] 
+VS_0             = D_VERT_DESCENT / T_DESCENT # [m/s]
 
 # Material parameters
 
@@ -41,67 +532,143 @@ ETA_CLIMB            = 0.90   # [-]   climb powertrain efficiency
 FM                   = 0.73   # [-]   rotor figure of merit
 POWER_SAFETY_FACTOR  = 1.4    # [-]   power safety factor
 PM                   = 0.5    # [-]   power margin
-CL_MAX_OPERATIONAL   = 2.0    # [-]   operational upper lift coefficient limit 
+CL_MAX_OPERATIONAL   = 2.0    # [-]   operational upper lift coefficient limit
 CL_PLOT_MIN          = -0.5   # [-]   lower bound for drag-polar plotting
 CL_PLOT_MAX          = 2.20   # [-]   upper bound for drag-polar plotting
 DRAG_POLAR_N_POINTS  = 100    # [-]   number of points used for drag-polar plots
 #   Preliminary values
 LD_CRUISE            = 14.7   # [-]   box-wing cruise L/D (preliminary)
 CD0                  = 0.0205 # [-]   zero-lift drag coefficient (preliminary)
-OSWALD_EFFICIENCY    = 1.26   # [-]   Oswald efficiency factor (preliminary)
+OSWALD_EFFICIENCY    = AerodynamicCoefficients.e_hor_wings  # [-] Oswald efficiency factor
 
 # Wing structural parameters
 
 NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing
-AREA_SPLIT          = 0.5     # [-]     fraction of total area assigned to one wing
-WING_SPAN           = 13      # [-]     span from the footprint constraint
-WING_LOADING_N      = 760.0   # [N/m^2] selected design-point wing loading from matching diagram
-TAPER_W             = 0.45    # [-]     wing chord taper ratio (c_tip / c_root)
-TIP_TO_CHORD_W      = 0.12    # [-]     wing thickness-to-chord ratio
-LE_SWEEP_W          = 0       # [rad]   wing leading edge sweep angle
-DIHEDRAL            = 0       # [rad]   wing digedral angle
-TWIST               = 0.05236 # [rad]   wing twist angle (3 deg) NOT FINAL
-
+AREA_SPLIT          = WingGeometry.S_fw / WingGeometry.S_tot  # [-] fraction of total area assigned to one wing
+WING_SPAN           = WingGeometry.b_fw          # [m]     span from the footprint constraint
+WING_LOADING_N      = WingGeometry.design_point  # [N/m^2] selected design-point wing loading from matching diagram
+TAPER_W             = WingGeometry.taper_fw      # [-]     wing chord taper ratio (c_tip / c_root)
+TIP_TO_CHORD_W      = WingGeometry.t_c_fw        # [-]     wing thickness-to-chord ratio
+LE_SWEEP_W          = math.radians(WingGeometry.LE_sweep_fw)         # [rad] wing leading edge sweep angle
+DIHEDRAL            = math.radians(WingGeometry.dihedral_front_wing) # [rad] wing dihedral angle
+TWIST               = math.radians(WingGeometry.twist_fw)            # [rad] wing twist angle NOT FINAL
 #    Class I parameters (OUTDATED - CLASS II AVAILABLE)
-S_W         = 30.0            # [m^2]   class I total wing reference area 
-AR_W        = 5.63            # [-]     class I wing aspect ratio 
+S_W         = 30.0            # [m^2]   class I total wing reference area
+AR_W        = 5.63            # [-]     class I wing aspect ratio
 #    Wing material: CFRP (standard for modern eVTOL primary structure)
 T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prepreg (MIL-HDBK-17-3F)
 
+# Vtail structural parameters
+WINGLET_SKIN_THICKNESS = 0.001
+
 # V-tail structural parameters
+# (planform values derived from TailGeometry; V_ANGLE and X_TAIL are the
+#  V-tail-specific quantities with no VD counterpart)
 
 V_ANGLE        = 25.0    # [deg]  V-tail dihedral from horizontal
-TAPER_TAIL     = 0.40    # [-]    chord taper ratio (c_tip / c_root)
-TIP_TO_CHORD   = 0.10    # [-]    thickness-to-chord ratio
+TAPER_TAIL     = TailGeometry.taper_vert_tail  # [-]  chord taper ratio (c_tip / c_root)
+TIP_TO_CHORD   = TailGeometry.t_c_vert_tail    # [-]  thickness-to-chord ratio
 F_REAR_WING    = 0.50    # [-]    rear Prandtl-wing lift fraction
 N_W            = 3.5     # [-]    design limit load factor
 T_SKIN_MIN_AL  = 2.0e-3  # [m]    minimum skin gauge (Niu 1988)
 STRUCT_SF      = 1.5     # [-]    ultimate safety factor (FAR/CS 25.303)
 C_N_TAIL_MAX   = 1.2     # [-]    peak normal force coefficient at max deflection
 V_DIVE_FACTOR  = 1.25    # [-]    V_dive / V_cruise (FAR/CS 25.335 lower bound)
-S_TAIL      = 3.25   # [m^2]  V-tail total panel area (both panels)
-AR_T        = 1.23   # [-]   V-tail aspect ratio
+S_TAIL      = TailGeometry.S_vert_tail   # [m^2]  tail panel area (per panel, see mass_components.tail_mass)
+AR_T        = TailGeometry.AR_vert_tail  # [-]    tail panel aspect ratio
 
 # Propulsion geometry
 
-N_PROP   = 6      # [-]  number of rotors
+N_PROP   = Propulsion.n_engines  # [-]  number of rotors
 N_MOTOR  = 6      # [-]  number of motors
-N_BLADES = 5      # [-]  blades per rotor
+N_BLADES = 8      # [-]  blades per rotor
 D_PROP   = 1.9    # [m]  rotor diameter
 A_DISK   = 2.84   # [m^2] rotor disk area per rotor
 
-# Battery
+# Battery -- Amprius SA504 cell-count basis (see battery_cells.py)
+# The 20% energy reserve is the sole margin
+# allowance is superseded by the reserve + whole-string layout round-up.
 
-E_PACK_WH_KG = 300.0   # [Wh/kg] pack-level specific energy
-SOC_USABLE   = 0.80    # [-]     usable state-of-charge fraction
-CONTINGENCY  = 1.05    # [-]     energy contingency factor
+E_CELL_WH    = 37.57    # [Wh]  energy per cell (SA504 datasheet)
+M_CELL_KG    = 0.0973   # [kg]  cell mass (SA504 datasheet, 97.3 g)
+CELL_TO_PACK = 0.72     # [-]   pack mass fraction that is cells
+E_AUX_KWH    = 2.79     # [kWh] auxiliary energy (aux_loads.py build-up)
+RESERVE_FRAC = 0.20     # [-]   20% energy reserve on (mission + aux)
+S_SERIES     = 235      # [-]   cells in series for the 800 V bus
+E_CELL_DENS_WH_KG = E_CELL_WH / M_CELL_KG   # = 386 Wh/kg (derived, do not edit)
 
 # Airframe geometry
 
-L_FUS       = 7.0    # [m]   fuselage length
-FUSE_WIDTH  = 2.0    # [m]   fuselage width (front view; placeholder)
+L_FUS       = FuselageGeometry.fuselage_length  # [m]  fuselage length
+FUSE_WIDTH  = FuselageGeometry.d_fw             # [m]  fuselage width (front view; placeholder)
 PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
+FAT_CYLINDER_SECTION = 0.4 #this is for mmoi calculations on what we assume is the cylinder (rest of fus is neglected)
+
+# MMOI component layout (class_II_sizing/MMOI.py)
+#
+# Datum: nose tip. x positive aft, y positive starboard, z positive up, origin on the
+# fuselage centreline. Seeds taken from the Vehicle Dynamics parameter sheet
+# (Part 1 above) where available. All coordinates are component-CG
+# locations pending a real layout drawing.
+
+# -- Fuselage equivalent cylinder --
+D_FUS    = FUSE_WIDTH     # [m]   equivalent-cylinder diameter (circular section assumed)
+X_CG_FUS = 0.45 * L_FUS   # [m]   shell CG slightly fwd of mid-length (light tailcone)  PLACEHOLDER
+Z_CG_FUS = 0.0            # [m]   shell CG on the centreline
+
+# -- Wings (Prandtl pair) --
+X_WING_F     = AerodynamicCoefficients.x_ac_fw                       # [m]  front-wing CG ~ x_LEMAC (vd: 1.0) + 0.4*MAC  PLACEHOLDER
+Z_WING_F     = WingGeometry.z_w_fw       # [m]  low-mounted front wing
+WING_STAGGER = WingGeometry.stagger      # [m]  longitudinal distance front -> rear wing
+H_GAP_WINGS  = WingGeometry.gap          # [m]  vertical gap between wing planes; tip-plate height
+X_WING_R     = AerodynamicCoefficients.x_ac_aw   # [m]  rear-wing CG station (derived)
+Z_WING_R     = WingGeometry.z_w_aw       # [m]  high rear wing (= z_w_fw + gap)
+WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out for the two
+                                         #      vertical tip joiners                      PLACEHOLDER
+
+# -- V-tail --
+X_TAIL      = TailGeometry.x_vert_tail   # [m]  panel-pair CG station (kept separate from TailGeometry.x_vert_tail,
+                    #      which is the fin a.c. station)                                PLACEHOLDER
+Z_TAIL_ROOT = TailGeometry.z_vert_tail   # [m]  panel root height above centreline                            PLACEHOLDER
+
+# -- Rotor / motor stations (4 on the front wing, 2 on the rear wing, symmetric) --
+ETA_ROTOR_FW_IN  = 0.30  # [-]  inboard front rotor, fraction of semi-span (tip clears fuselage)  PLACEHOLDER
+ETA_ROTOR_FW_OUT = 0.70  # [-]  outboard front rotor (2.6 m spacing > D_PROP, no disc overlap)    PLACEHOLDER
+ETA_ROTOR_RW     = 0.50  # [-]  rear rotor, one per side                                          PLACEHOLDER
+X_ROTOR_OFFSET   = 0.8   # [m]  pod CG ahead of the wing CG station (pylon + spinner)             PLACEHOLDER
+X_ROTOR_FW = X_WING_F - X_ROTOR_OFFSET  # [m]  front-rotor station (derived)
+X_ROTOR_RW = X_WING_R - X_ROTOR_OFFSET  # [m]  rear-rotor station (derived)
+Z_ROTOR_FW = Z_WING_F                   # [m]  rotors carried at front-wing height
+Z_ROTOR_RW = Z_WING_R                   # [m]  rotors carried at rear-wing height
+
+# -- Optimal cruise CG (from the VD sheet) --
+X_CG_OPT = MassProperties.x_cg_opt  # [m]  optimal CG location during cruise
+
+# -- Battery (underfloor box) --
+L_BATT = 3.0    # [m]  box length ~ cabin floor length                                  PLACEHOLDER
+W_BATT = 1.2    # [m]  box width between cabin floor beams                              PLACEHOLDER
+H_BATT = 0.25   # [m]  underfloor bay depth                                             PLACEHOLDER
+X_BATT = 2.7  # [m]  box mid-length at the cruise-optimal CG so the
+                   #      heaviest item is CG-neutral
+Z_BATT = -0.7   # [m]  below the cabin floor (floor ~ -0.5 m for the 2.0 m section)
+
+# -- Payload (pax + luggage cabin box) --
+X_PAYLOAD     = 2.7  # [m]  pax + luggage centred on the target CG
+Z_PAYLOAD     = -0.2   # [m]  seated-occupant CG slightly below centreline
+L_PAYLOAD_BOX = 2.0    # [m]  two seat rows                                             PLACEHOLDER
+W_PAYLOAD_BOX = 1.4    # [m]  cabin width                                               PLACEHOLDER
+H_PAYLOAD_BOX = 1.2    # [m]  seated height                                             PLACEHOLDER
+
+# -- Landing gear (skid rails) --
+X_GEAR      = 0.5 * L_FUS                  # [m]  rail mid-length under the cabin
+Z_GEAR      = -(FUSE_WIDTH / 2 + 0.30)     # [m]  belly radius + 0.30 m static clearance
+# Y_GEAR_RAIL (half-track) is derived from L_ARM further down, after the landing-gear
+# trade-study constants that define it.
+
+# -- Misc systems (20% MTOW: wiring, ECS, avionics, furnishings) --
+X_MISC = X_CG_FUS   # [m]  smeared through the fuselage -> fuselage CG
+Z_MISC = 0.0        # [m]  on the centreline
 
 
 # Landing-gear drop trade study (CS-27.725 limit + 27.727 reserve)
@@ -162,6 +729,9 @@ ELASTO_MASS_PER_N = 1.0e-4 # [kg/N] mount mass vs peak load
 D_FRAME_TUBE      = 0.060  # [m]   cross-tube / arm outer diameter
 T_FRAME_TUBE      = 0.003  # [m]   cross-tube / arm wall thickness
 L_ARM             = 0.45   # [m]   arm length, mount/hinge down to skid
+
+# -- MMOI layout, gear half-track (see "MMOI component layout" section above) --
+Y_GEAR_RAIL = (FUSE_WIDTH + 2 * L_ARM) / 2  # [m]  matches the whole_gear track FUSE_WIDTH + 2*L
 
 # -- Trade-off scoring: qualitative scores 0..1 by engineering judgement (PLACEHOLDERS) --
 QUAL = {
@@ -230,8 +800,6 @@ GEAR_OPT_BOUNDS = {
 
 # Miscellaneous design constants
 
-hcruise                  = 0      # [m]    cruise altitude
-htransition              = 0      # [m]    transition altitude
 gust_speed               = 0      # [m/s]  design gust speed
 cabin_noise_req          = 0      # [dB]   cabin noise requirement
 propulsion_type          = 0      # [-]    propulsion type flag
@@ -241,6 +809,3 @@ aircraft_person_proximity  = 0    # [m]
 aircraft_building_proximity = 0   # [m]
 rho_propeller_hub        = 2700.0 # [kg/m^3] hub material density (aluminium)
 rho_propeller_blade      = 1550.0 # [kg/m^3] blade material density (CFRP)
-
-
-

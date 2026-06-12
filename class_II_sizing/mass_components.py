@@ -663,7 +663,8 @@ def tail_mass(mtow_kg):
 
 def motor_mass(max_power_kw):
     """Total mass of all motors [kg]."""
-    m_single = 0.165 * ((max_power_kw * (1 + PM)) / N_MOTOR)
+    #m_single = 0.165 * ((max_power_kw * (1 + PM)) / N_MOTOR)
+    m_single = 21.4 + 6.8 + 4 #24 is actual kg of motor where 4 is the variable pitch controller estimate plus the 6.8 for inverter
     return m_single * N_MOTOR
 
 
@@ -686,7 +687,7 @@ def hub_mass(use_fusion=False, m_hub_fusion=None):
 # Miscellaneous & hinge
 
 def misc_mass(mtow_kg):
-    return 0.20 * mtow_kg
+    return 0.10 * mtow_kg + 32 #kg of the thermal battery management system 
 
 
 def hinge_mass(mtow_kg):

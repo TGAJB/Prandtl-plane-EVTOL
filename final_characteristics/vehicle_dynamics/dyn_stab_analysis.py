@@ -16,6 +16,12 @@ TU Delft flight-dynamics formulation (same as the Citation 550 template):
 
 Run:  python dynamic_stability.py
 """
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 import numpy as np
 
@@ -26,8 +32,14 @@ except ImportError:                      # fall back to scipy if control is abse
     from scipy import signal
     HAVE_CONTROL = False
 
-from vd_parameters import AircraftParameters
-from aircraft import Aircraft, Physical, FlightCondition, DatcomChartInputs
+from parameters import AircraftParameters
+from final_characteristics.vehicle_dynamics.aircraft import (
+    Aircraft,
+    Physical,
+    FlightCondition,
+    DatcomChartInputs,
+    main_aircraft,
+)
 
 
 # ===========================================================================
@@ -76,9 +88,9 @@ class CruiseModel:
     Cnda   = 0.0      # ADVERSE YAW — placeholder! matters for Dutch-roll/
                       # aileron coordination; estimate ~ -k*CL*Clda, k=0.1-0.3
 
-    def __init__(self, aircraft: Aircraft):
+    def __init__(self, aircraft: Aircraft, solved):
         self.ac = aircraft
-        p = aircraft.solve()                    # populates p.stability / p.controls
+        p = solved                  # populates p.stability / p.controls
         s, c = p.stability, p.controls
         fc = aircraft.fc
 
@@ -325,9 +337,10 @@ def simulate_eigenmotions(model, As, Bs, Aa, Ba, save_dir="./final_characteristi
 # MAIN
 # ===========================================================================
 def main(plot=True, save_dir="./final_characteristics/vehicle_dynamics/plots/dyn_stab"):
-    params = fill_inertia_placeholders(AircraftParameters())
-    ac = Aircraft(params, Physical(), FlightCondition(), DatcomChartInputs())
-    model = CruiseModel(ac)
+    solved, aircraft = main_aircraft()
+
+    model = CruiseModel(aircraft, solved)
+
     As, Bs, Aa, Ba = model.state_space()
     eig_s, eig_a, modes = identify_modes(As, Aa)
 
@@ -376,4 +389,4 @@ def main(plot=True, save_dir="./final_characteristics/vehicle_dynamics/plots/dyn
 
 
 if __name__ == "__main__":
-    main(plot=True)
+    main(plot=False)

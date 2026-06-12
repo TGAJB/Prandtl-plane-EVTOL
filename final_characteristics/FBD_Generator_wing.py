@@ -22,7 +22,7 @@ from class_II_sizing.mtow_sizing import converged_mass
 # Base Load Classes
 # ============================================================
 
-class Load:
+class Load:<<
     def plot(self, ax):
         raise NotImplementedError
 

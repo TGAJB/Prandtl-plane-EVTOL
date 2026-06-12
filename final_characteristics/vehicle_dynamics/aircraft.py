@@ -1,5 +1,14 @@
-from vd_parameters import AircraftParameters
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+from parameters import AircraftParameters, MassProperties
 from dataclasses import dataclass
+from class_II_sizing.mtow_sizing import converged_mass
+from class_II_sizing.MMOI import aircraft_inertia, as_mass_properties
 import numpy as np
 
 # ---------------------------------------------------------------------------
@@ -173,11 +182,11 @@ class Aircraft:
 
     def x_ac_fw(self):
         ac = self.params.aerodynamics
-        return self._require(self._cfg(ac.x_ac_fw_cruise, ac.x_ac_fw_approach), "x_ac_fw")
+        return self._require(self._cfg(ac.x_ac_fw, ac.x_ac_fw_approach), "x_ac_fw")
  
     def x_ac_aw(self):
         ac = self.params.aerodynamics
-        return self._require(self._cfg(ac.x_ac_aw_cruise, ac.x_ac_aw_approach), "x_ac_aw")
+        return self._require(self._cfg(ac.x_ac_aw, ac.x_ac_aw_approach), "x_ac_aw")
  
     def x_cg(self):
         return self._require(self.params.mass.x_cg_opt, "mass.x_cg_opt")
@@ -1304,38 +1313,35 @@ def print_results(obj):
     print("  C_l_beta<0, C_l_p<0, C_n_r<0. All derivatives per radian.".ljust(total))
     print(line + "\n")
 
-
-if __name__ == "__main__":
-
-    c2_sweep = Aircraft._le_to_c2(0, A= 5.63, taper=0.4)
-    c4_sweep = Aircraft._le_to_c4(0, A= 5.63, taper=0.4)
-    print("C2 Sweep:", np.degrees(c2_sweep))
-    print("C4 Sweep:", np.degrees(c4_sweep))
-
+def main_aircraft():
     params = AircraftParameters()
     charts = DatcomChartInputs()
     physical = Physical()
     fc = FlightCondition()
 
+    MMOI = as_mass_properties(aircraft_inertia(verbose=True))
+
+    params.mass.mtow = MMOI["mtow"]
+    params.mass.I_xx = MMOI["I_xx"]
+    params.mass.I_yy = MMOI["I_yy"]
+    params.mass.I_zz = MMOI["I_zz"]
+    params.mass.I_xz = MMOI["I_xz"]
+    params.mass.z_cg = MMOI["z_cg"]
+    params.mass.x_cg_opt = MMOI["x_cg"]
+
     aircraft = Aircraft(params, physical, fc, charts)
-    print("C_n_beta:", aircraft.Cn_beta())
-    print("C_L_alpha_fw:", aircraft.CL_alpha_front_wing())
 
-    M = FlightCondition.mach
-    beta = np.sqrt(1 - M**2)
-    lambda_beta = np.degrees(np.arctan(np.tan(c4_sweep)/beta))
-    print("Beta_sweep:", lambda_beta)
-
-    k = aircraft._kappa_from_section_slope(cl_alpha_per_deg=0.107)
-    factor = beta*5.63/k
-    print(factor)
-
-    aoa_cruise = FlightCondition.alpha
-    l_p = 6.9
-    z_p = 1.2
-    z_v = np.cos(aoa_cruise)*z_p - np.sin(aoa_cruise)*l_p
-    print(2*z_v/13)
-
-    # ---- full derivative summary ----
-    aircraft.solve()
+    solved = aircraft.solve()
+    assert solved is aircraft.params
+    print("MTOW used by aircraft:", aircraft.params.mass.mtow)
+    print("I_xx used by aircraft:", aircraft.params.mass.I_xx)
+    print("I_yy used by aircraft:", aircraft.params.mass.I_yy)
+    print("I_zz used by aircraft:", aircraft.params.mass.I_zz)
+    print("I_xz used by aircraft:", aircraft.params.mass.I_xz)
     print_results(aircraft)
+
+    return solved, aircraft
+
+
+if __name__ == "__main__":
+    main_aircraft()
