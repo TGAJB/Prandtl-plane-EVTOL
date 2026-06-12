@@ -1,4 +1,3 @@
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import quad, cumulative_trapezoid
@@ -144,8 +143,8 @@ def calc_winglet_mass(root_chord):
 
     # I_BEAM
     flange_length = 0.01
-    flange_thickness = 0.001  # This is what will impact the mmoi the most
-    beam_thickness = 0.001  # m
+    flange_thickness = 0.004  # This is what will impact the mmoi the most
+    beam_thickness = 0.004  # m
 
 
     # Material characteristics

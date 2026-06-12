@@ -559,7 +559,7 @@ AR_W        = 5.63            # [-]     class I wing aspect ratio
 T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prepreg (MIL-HDBK-17-3F)
 
 # Vtail structural parameters
-WINGLET_SKIN_THICKNESS = 0.001
+WINGLET_SKIN_THICKNESS = 0.005
 
 # V-tail structural parameters
 # (planform values derived from TailGeometry; V_ANGLE and X_TAIL are the
