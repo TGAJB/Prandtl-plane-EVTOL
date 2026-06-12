@@ -651,6 +651,13 @@ WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out fo
 # -- Winglets --
 WINGLET_TAPER_RATIO = 1
 
+# -- Hinge --
+HINGE_THETA = -45 # [deg]
+HINGE_PHI = 35.26438968 # [deg]
+HINGED_WING_LENGTH = 4 # [m] The length of the portion of the wing that is hinged
+FW_THRUSTER_POSITION_1 = (0.5, 0, 3) #The position of the thrusters in the forward wing w.r.t the wing axis (talk to Antonio if ur confused)
+FW_THRUSTER_POSITION_2 = (0.5, 0, 6)
+
 
 ETA_FOLD_HINGE_FW = WingGeometry.fold_hinge_eta_fw  # [-] update from spanwise hinge layout if needed
 ETA_FOLD_HINGE_RW = WingGeometry.fold_hinge_eta_aw  # [-] update from spanwise hinge layout if needed
