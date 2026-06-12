@@ -60,7 +60,7 @@ TAPER_W             = 0.45    # [-]     wing chord taper ratio (c_tip / c_root)
 TIP_TO_CHORD_W      = 0.12    # [-]     wing thickness-to-chord ratio
 LE_SWEEP_W          = 0       # [rad]   wing leading edge sweep angle
 DIHEDRAL            = 0       # [rad]   wing digedral angle
-TWIST               = 0.05236 # [rad]   wing twist angle (3 deg) NOT FINAL
+TWIST               = 0 # [rad]   wing twist angle 
 
 #    Class I parameters (OUTDATED - CLASS II AVAILABLE)
 S_W         = 30.0            # [m^2]   class I total wing reference area 
