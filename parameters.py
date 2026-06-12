@@ -558,6 +558,9 @@ AR_W        = 5.63            # [-]     class I wing aspect ratio
 #    Wing material: CFRP (standard for modern eVTOL primary structure)
 T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prepreg (MIL-HDBK-17-3F)
 
+# Vtail structural parameters
+WINGLET_SKIN_THICKNESS = 0.001
+
 # V-tail structural parameters
 # (planform values derived from TailGeometry; V_ANGLE and X_TAIL are the
 #  V-tail-specific quantities with no VD counterpart)
