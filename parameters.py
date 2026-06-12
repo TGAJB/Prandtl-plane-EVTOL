@@ -122,33 +122,15 @@ class WingGeometry:
     x_LEMAC_fw:           float = 1 # [m] - very rough estimate
 
     # ===== FOLDED-WING / VTOL LAYOUT ========================================
-    # Hinge locations are measured from the aircraft centreline as a fraction
-    # of the semi-span.  Example: 0.70 means the fixed centre section occupies
-    # 70% of the full span and the two folded outer sections together occupy
-    # the remaining 30%.  These values are used by MMOI.py to split the wing
-    # mass into fixed and folded components for the VTOL CG calculation.
     fold_hinge_eta_fw:    float = 0.70  # [-] front-wing hinge station / semi-span; update from spanwise hinge layout
     fold_hinge_eta_aw:    float = 0.70  # [-] aft-wing hinge station / semi-span; update from spanwise hinge layout
 
-    # Component-CG x-locations in the folded/VTOL configuration, from the
-    # folding-layout drawing supplied on 2026-06-12.  Datum is the nose tip,
-    # positive aft.  Left/right folded parts use the same x-location because
-    # the aircraft is assumed laterally symmetric.
-    #
-    # The UNFOLDED (fixed centre) wing sections stay at the cruise wing CG
-    # stations (AerodynamicCoefficients.x_ac_fw / x_ac_aw); set to None here
-    # so parameters Part 2 falls back to those stations.  Only the FOLDED
-    # outer sections and the winglet/tip-joiner move, per the drawing.  The
-    # fixed/folded mass split itself uses the spanwise eta fractions above.
     x_vtol_fw_fixed:      float = 1.6  # [m] front-wing fixed (unfolded) section CG -> cruise x_ac_fw
     x_vtol_fw_folded:     float = 4.70  # [m] front-wing FOLDED outer-section CG (drawing)
     x_vtol_aw_fixed:      float = 6.65  # [m] aft-wing fixed (unfolded) section CG -> cruise x_ac_aw
     x_vtol_aw_folded:     float = 8.72  # [m] aft-wing FOLDED outer-section CG (drawing)
     x_vtol_tip_plate:     float = 7.27  # [m] winglet / Prandtl tip-joiner CG in VTOL (drawing)
 
-    # Rotor/prop CG x-stations in the folded/VTOL configuration (drawing).
-    # "first/second/third prop" = front inboard pair, front outboard pair,
-    # rear pair; left/right share the same x by lateral symmetry.
     x_vtol_rotor_fw_in:   float = 2.80  # [m] front inboard rotor pair CG (first prop)
     x_vtol_rotor_fw_out:  float = 4.80  # [m] front outboard rotor pair CG (second prop)
     x_vtol_rotor_rw:      float = 8.00  # [m] rear rotor pair CG (third prop)
