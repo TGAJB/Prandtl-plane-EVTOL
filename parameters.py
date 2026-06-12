@@ -560,6 +560,11 @@ T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prep
 
 # Vtail structural parameters
 WINGLET_SKIN_THICKNESS = 0.005
+WINGLET_BEAM_NUMBER = 1 #The number of beams used for the stress calculations
+WINGLET_RIB_THICKNESS = 0.001
+WINGLET_SPAR_FLANGE_LENGTH = 0.01
+WINGLET_SPAR_FLANGE_THICKNESS = 0.004
+WINGLET_SPAR_BEAM_THICKNESS = 0.004
 
 # V-tail structural parameters
 # (planform values derived from TailGeometry; V_ANGLE and X_TAIL are the
@@ -626,6 +631,9 @@ X_WING_R     = AerodynamicCoefficients.x_ac_aw   # [m]  rear-wing CG station (de
 Z_WING_R     = WingGeometry.z_w_aw       # [m]  high rear wing (= z_w_fw + gap)
 WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out for the two
                                          #      vertical tip joiners                      PLACEHOLDER
+# -- Winglets --
+WINGLET_TAPER_RATIO = 1
+
 
 # -- V-tail --
 X_TAIL      = TailGeometry.x_vert_tail   # [m]  panel-pair CG station (kept separate from TailGeometry.x_vert_tail,
