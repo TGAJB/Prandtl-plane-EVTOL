@@ -403,10 +403,10 @@ class Propulsion:
     """
 
     P_max_SL:               float = None  # [W]
-    propulsive_efficiency:  float = None  # [-]
+    propulsive_efficiency:  float = 0.87  # [-]
 
     n_engines:              int   = 6  # [-] - Number of engines / rotors
-    max_thrust_per_engine:  float = None  # [N]
+    max_thrust_per_engine:  float = 5500  # [N]
 
     # Engine locations in CRUISE CONFIGURATION
     x_cr_1:               float = None  # [m]
