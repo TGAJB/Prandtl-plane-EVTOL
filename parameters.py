@@ -211,16 +211,30 @@ class ControlSurfaceGeometry:
     rudder_cf_c:         float = 0.2   # [-]
 
 
+def _converged_mtow_default():
+    """
+    Converged MTOW default for MassProperties.mtow.
+
+    Deferred import on purpose: parameters.py is imported BY
+    class_II_sizing/mtow_sizing.py, so importing the converger at module load
+    here would be circular. The import only runs when a MassProperties() is
+    actually instantiated, by which point mtow_sizing is fully imported and its
+    converged state is cached, so this is cheap and safe.
+    """
+    from class_II_sizing.mtow_sizing import load_final_design_state
+    return load_final_design_state()["mtow"]
+
+
 @dataclass
 class MassProperties:
     """
     Aircraft mass and inertia properties.
 
-    mtow here is a seed value for standalone VD runs; the converged class-II
-    design state (class_II_sizing/mtow_sizing.py) is authoritative.
+    mtow now defaults to the converged class-II design state
+    (class_II_sizing/mtow_sizing.py), which is authoritative.
     """
 
-    mtow:         float = 2000.0  # [kg]
+    mtow:         float = field(default_factory=_converged_mtow_default)  # [kg] converged value from mtow_sizing.py
     oew:          float = None    # [kg]
     payload_mass: float = 400.0   # [kg] fixed payload (4 pax + luggage)
 

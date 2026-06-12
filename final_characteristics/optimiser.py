@@ -2,53 +2,42 @@
 optimiser.py
 ============
 
-Two-phase MTOW / stability design driver.  TEMPLATE.
+Two-phase MTOW / stability design driver.
 
 WHY THIS FILE EXISTS
 --------------------
-Our MTOW is found by a fixed-point converger (class_II_sizing/mtow_sizing.py):
-it iterates the component mass build-up until the MTOW stops changing.  But a
-converged MTOW on its own does not mean the design is acceptable: the stability
-derivatives, the centre-of-gravity (c.g.) range, and the neutral point all stem
-from that MTOW, and they must each lie inside ranges we have decided are
-feasible.  This file ties those two ideas together.
+A converged MTOW on its own does not mean the design is acceptable: the stability
+& control derivatives, the centre-of-gravity (c.g.) range, and the neutral point
+all stem from that MTOW and the geometry, and they must each lie inside the ranges
+the team has set. This file ties those together.
 
 THE TWO-PHASE METHOD
 --------------------
 Phase 1 -- Acceptance check.
-    Run the existing converger, compute the derivatives / c.g. range / neutral
-    point for the converged MTOW, and check every one against its allowed range.
-    If ALL constraints pass  -> the design is ACCEPTED, we are done.
-    If ANY constraint fails  -> go to Phase 2.
+    Evaluate the current design against every stability requirement.
+    All requirements pass  -> ACCEPTED, done.
+    Any requirement fails  -> go to Phase 2.
 
 Phase 2 -- Optimisation (only if Phase 1 fails).
-    Run an NSGA-II optimiser (multi-objective genetic algorithm, gradient-free).
-    For each candidate set of tunable design variables it re-runs the converger,
-    recomputes the derivatives / c.g. / neutral point, and checks the same
-    constraints.  NSGA-II searches the design space until it finds variable
-    values that give a converged MTOW AND satisfy every constraint.
+    Run an NSGA-II optimiser (gradient-free GA). For each candidate set of design
+    variables it (re)converges the MTOW, recomputes the derivatives / c.g.
+    envelopes, and checks the same requirements, searching the design space until
+    a converged design satisfies every requirement.
 
-WHAT IS STILL A PLACEHOLDER (clearly marked "DUMMY" throughout)
----------------------------------------------------------------
-  * The exact tunable design variables and their bounds  (see DESIGN_VARIABLES).
-  * The exact constraint ranges                          (see CONSTRAINTS).
-  * The two analysis routines that turn (mtow, design vars) into derivatives and
-    neutral-point / c.g. numbers.  Here they are dummy stand-ins
-    (compute_all_derivatives, compute_neutral_point_and_cg) that return made-up
-    numbers so the whole pipeline runs today.  They will be replaced by the real
-    routines (cf. vehicle_dynamics/aircraft.py and stat_long_stab_anal.py).
-  * The optimiser currently has ONE objective (minimise MTOW).  The hook for a
-    second objective (true multi-objective Pareto search) is marked in
-    DesignProblem._evaluate.
-  * Feeding the tuned geometry back INTO the converger is also a marked TODO:
-    the converger currently reads geometry from parameters.py / Fusion, not from
-    the optimiser's design vector.
+WHERE THE PHYSICS LIVES
+-----------------------
+All the evaluation and the GOAL definitions live in `stability_eval.py` (shared,
+pymoo-free). This file holds ONLY:
+  * the design-variable registry (which knobs the optimiser may turn),
+  * the converger-with-geometry wiring (so the converged MTOW responds to the
+    geometry design variables), and
+  * the NSGA-II machinery.
 
-The code favours readability over efficiency on purpose: simple, explicit,
-easy to follow and easy to fill in later.
+The design-variable set below is informed by `stability_sensitivity.py` (the
+standalone Sobol consult); edit it freely as the team decides what to tune.
 
-Run with:  python final_characteristics/optimiser.py
-Requires:  pip install pymoo
+Run:      python final_characteristics/optimiser.py
+Requires: pip install pymoo
 """
 
 import sys
@@ -57,17 +46,26 @@ from pathlib import Path
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Path bootstrap.
-# optimiser.py lives in final_characteristics/, so the project root is one level
-# up.  We add it to sys.path so "class_II_sizing" resolves regardless of the
-# current working directory.  This is the ONLY real cross-module wiring: we pull
-# the converged MTOW from the existing converger, exactly like ppe.py does.
+# Path bootstrap (project root + vehicle_dynamics, same as stability_eval).
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.append(str(PROJECT_ROOT))
+VEHICLE_DYNAMICS_DIR = PROJECT_ROOT / "final_characteristics" / "vehicle_dynamics"
+for _path in (PROJECT_ROOT, VEHICLE_DYNAMICS_DIR):
+    if str(_path) not in sys.path:
+        sys.path.append(str(_path))
 
+# Shared evaluation core + the single goal registry.
+from final_characteristics.stability_eval import (
+    REQUIREMENT_NAMES,
+    evaluate_stability,
+)
+
+# Converger pieces. We call the PRIVATE _solve_converged_mass directly when a
+# geometry design var is active so the global converger cache is NOT polluted
+# with the overridden geometry; the cached baseline is used otherwise.
 from class_II_sizing.mtow_sizing import load_final_design_state
+from class_II_sizing import mtow_sizing
+import class_II_sizing.mass_components as mass_components
 
 # pymoo: the NSGA-II implementation used in Phase 2.
 from pymoo.core.problem import Problem
@@ -79,291 +77,154 @@ from pymoo.operators.mutation.pm import PM
 
 
 # ===========================================================================
-# 1. DESIGN-VARIABLE REGISTRY  (DUMMY -- confirm the real tunable set + bounds)
+# 1. DESIGN-VARIABLE REGISTRY
 # ===========================================================================
-# These are the variables the optimiser is allowed to change in Phase 2.
-# Each entry is a name mapped to its (low, high) search bounds.  The order of
-# this dictionary defines the order of the design vector "x" that pymoo passes
-# around, so keep it stable.
+# Each entry maps a design-variable name to:
+#   bounds    -- (low, high) search range
+#   route     -- where the value goes when evaluating a design:
+#                  "design_var:<key>"  -> stability_eval design_vars[<key>]
+#                                         (recognised keys: x_cg, s_aft_to_s_total)
+#                  "override:<dotted>"  -> stability_eval param_overrides[<dotted>]
+#   converger -- name of a class_II_sizing.mass_components module global to
+#                override before reconverging the MTOW (None = does not affect the
+#                converged mass). Only "wing_loading" does today.
 #
-# The values below are PLACEHOLDERS seeded from what already lives in the
-# parameter sheet (vehicle_dynamics/vd_parameters.py) and stat_long_stab_anal.py.
-# Replace the set and the bounds once the team has decided what we actually tune.
+# The set + bounds below are SUGGESTIONS grounded in the Sobol consult
+# (stability_sensitivity.py). Edit to match the team's chosen tunables.
 DESIGN_VARIABLES = {
-    "S_aw_over_S_tot": (0.25, 0.75),   # DUMMY -- aft/total wing-area split (cf. stat_long_stab_anal.py)
-    "stagger_m":       (3.0, 6.0),     # DUMMY -- wing stagger [m] (sheet default 5.0)
-    "x_cg_opt_m":      (2.0, 3.5),     # DUMMY -- cruise c.g. location [m] (sheet default 2.8)
-    "wing_loading":    (600.0, 900.0), # DUMMY -- design-point wing loading [N/m^2] (sheet default 760)
+    "x_cg":             {"bounds": (2.8, 3.6),   "route": "design_var:x_cg",                           "converger": None},
+    "s_aft_to_s_total": {"bounds": (0.30, 0.70), "route": "override:s_aft_to_s_total",                 "converger": None},
+    "dihedral_fw":      {"bounds": (0.0, 6.0),   "route": "override:wing_geometry.dihedral_front_wing","converger": None},
+    "dihedral_aw":      {"bounds": (0.0, 6.0),   "route": "override:wing_geometry.dihedral_aft_wing",  "converger": None},
+    "x_LEMAC_fw":       {"bounds": (0.5, 2.0),   "route": "override:wing_geometry.x_LEMAC_fw",         "converger": None},
+    "b_vert_tail":      {"bounds": (1.2, 2.4),   "route": "override:tail_geometry.b_vert_tail",        "converger": None},
+    # wing_loading feeds BOTH the stability geometry (design_point) AND the MTOW
+    # converger (WING_LOADING_N). Including it makes each evaluation reconverge
+    # the MTOW (~25 s) -- see the performance note in converged_mtow().
+    "wing_loading":     {"bounds": (650.0, 880.0), "route": "override:wing_geometry.design_point",     "converger": "WING_LOADING_N"},
 }
-
-# Convenience: the variable names in a fixed order (= the order of vector x).
 DESIGN_VARIABLE_NAMES = list(DESIGN_VARIABLES.keys())
 
 
 def design_vector_to_dict(x):
-    """Turn a plain pymoo design vector x (a list/array) into a named dict.
-
-    This keeps the rest of the code readable: instead of x[2] we write
-    design_vars["x_cg_opt_m"].
-    """
-    named = {}
-    for index, name in enumerate(DESIGN_VARIABLE_NAMES):
-        named[name] = float(x[index])
-    return named
+    """Turn a pymoo design vector x into a named {var_name: value} dict."""
+    return {name: float(x[index]) for index, name in enumerate(DESIGN_VARIABLE_NAMES)}
 
 
 def default_design_vector():
-    """A reasonable starting design vector (DUMMY values).
-
-    Used by Phase 1, which evaluates the current/default design once.  These are
-    just sensible mid-range numbers; replace with the true current design point.
-    """
+    """Nominal starting design (mid-range-ish, near the current sheet values)."""
     return {
-        "S_aw_over_S_tot": 0.50,  # DUMMY
-        "stagger_m":       5.0,   # DUMMY
-        "x_cg_opt_m":      2.8,   # DUMMY
-        "wing_loading":    760.0, # DUMMY
+        "x_cg":             3.311,  # current sheet x_cg_opt
+        "s_aft_to_s_total": 0.50,
+        "dihedral_fw":      0.0,
+        "dihedral_aw":      0.0,
+        "x_LEMAC_fw":       1.0,
+        "b_vert_tail":      1.6,
+        "wing_loading":     760.0,
     }
 
 
 # ===========================================================================
-# 2. CONSTRAINT REGISTRY  (DUMMY ranges -- confirm with the stability/control budget)
+# 2. CONVERGER WITH GEOMETRY OVERRIDES  (so MTOW responds to the design vars)
 # ===========================================================================
-# A constraint says: "this computed quantity must lie between low and high".
-# Each entry is (name, getter, low, high) where:
-#   name   -- a human-readable label
-#   getter -- a function(results) that pulls the quantity out of the analysis
-#             results dict (built in evaluate_design below)
-#   low    -- minimum allowed value (use -np.inf for "no lower bound")
-#   high   -- maximum allowed value (use +np.inf for "no upper bound")
-#
-# The bounds below are PLACEHOLDERS.  They are seeded from the sign conventions
-# and values already present in the code:
-#   * C_M_alpha < 0          -> stable (aircraft.py print_results sign note)
-#   * static margin >= 0.05  -> stat_long_stab_anal.py:  SM = 0.05
-#   * c.g. ahead of allowable aft c.g. (= x_np - SM*MAC)
-#   * C_n_beta > 0, C_l_beta < 0, C_n_r < 0  -> lateral/directional stability
-CONSTRAINTS = [
-    # name                       getter                                    low        high
-    ("C_M_alpha_stable",         lambda r: r["derivatives"]["C_M_alpha"],  -np.inf,   0.0),     # DUMMY: must be negative (stable)
-    ("static_margin_min",        lambda r: r["np_cg"]["static_margin"],     0.05,     np.inf),  # DUMMY: SM >= 5%
-    ("cg_aft_of_fwd_limit",      lambda r: r["np_cg"]["x_cg_aft"],         -np.inf,   np.inf),  # DUMMY: placeholder, see note below
-    ("C_n_beta_stable",          lambda r: r["derivatives"]["C_n_beta"],    0.0,      np.inf),  # DUMMY: weathercock stability
-    ("C_l_beta_stable",          lambda r: r["derivatives"]["C_l_beta"],   -np.inf,   0.0),     # DUMMY: dihedral effect
-    ("C_n_r_damping",            lambda r: r["derivatives"]["C_n_r"],      -np.inf,   0.0),     # DUMMY: yaw damping
-    # NOTE: a proper c.g.-range constraint compares the loading-diagram c.g.
-    # extremes against the allowable aft c.g. (= x_np - SM*MAC).  Wire that in
-    # once the real c.g. range is available; the placeholder above just keeps
-    # the slot.
-]
+# Memoise on the rounded geometry tuple so identical geometries are not
+# reconverged. A fresh converge runs the internal landing-gear SLSQP sizing and
+# costs ~25 s, so this is the dominant cost of Phase 2 whenever a converger-
+# coupled design var (wing_loading) is active. Keep pop_size/n_gen small, or
+# build a coarse MTOW(geometry) surrogate, for serious runs.
+_MTOW_CACHE = {}
 
 
-def check_all_constraints(results):
-    """Check every constraint against the analysis results.
+def converged_mtow(geometry_overrides):
+    """Return the converged MTOW [kg] for the given converger-geometry overrides.
 
-    Returns a dict:
-        {
-          "per_constraint": { name: True/False, ... },
-          "all_passed":     True/False,
-        }
-    A constraint passes when its value lies within [low, high].
+    geometry_overrides maps a mass_components module-global name to its value
+    (e.g. {"WING_LOADING_N": 820.0}). Empty -> the cached baseline MTOW.
+
+    We temporarily set the mass_components globals and call the converger's
+    private _solve_converged_mass(), which does NOT touch the module-level cache
+    that stability_eval reads, then restore the globals.
     """
-    per_constraint = {}
-    for name, getter, low, high in CONSTRAINTS:
-        value = getter(results)
-        passed = (low <= value <= high)
-        per_constraint[name] = passed
+    if not geometry_overrides:
+        return load_final_design_state(force_recompute=False)["mtow"]
 
-    all_passed = all(per_constraint.values())
-    return {"per_constraint": per_constraint, "all_passed": all_passed}
+    key = tuple(sorted((name, round(value, 3)) for name, value in geometry_overrides.items()))
+    if key in _MTOW_CACHE:
+        return _MTOW_CACHE[key]
 
+    saved = {name: getattr(mass_components, name) for name in geometry_overrides}
+    try:
+        for name, value in geometry_overrides.items():
+            setattr(mass_components, name, value)
+        state = mtow_sizing._solve_converged_mass(verbose=False)
+        mtow = state["mtow"]
+    finally:
+        for name, value in saved.items():
+            setattr(mass_components, name, value)
 
-def constraint_margins(results):
-    """Constraint values expressed as pymoo "g(x) <= 0" margins.
-
-    pymoo treats a constraint as satisfied when its value is <= 0.  For a
-    quantity q that must satisfy low <= q <= high we produce two margins:
-        low  - q   (<= 0 means q >= low  : OK)
-        q - high   (<= 0 means q <= high : OK)
-    Unbounded sides (-inf / +inf) are skipped.  The returned list lines up with
-    n_constr in DesignProblem.
-    """
-    margins = []
-    for name, getter, low, high in CONSTRAINTS:
-        value = getter(results)
-        if low != -np.inf:
-            margins.append(low - value)   # want low - value <= 0
-        if high != np.inf:
-            margins.append(value - high)  # want value - high <= 0
-    return margins
-
-
-def number_of_margins():
-    """How many g(x) margins constraint_margins() will produce (for n_constr)."""
-    count = 0
-    for name, getter, low, high in CONSTRAINTS:
-        if low != -np.inf:
-            count += 1
-        if high != np.inf:
-            count += 1
-    return count
+    _MTOW_CACHE[key] = mtow
+    return mtow
 
 
 # ===========================================================================
-# 3a. DUMMY ANALYSIS FUNCTIONS  (stand-ins for the real, not-yet-final routines)
-# ===========================================================================
-# These two functions are the ONLY pieces of physics the optimiser needs.  They
-# are deliberately fake right now: they return plausible-looking numbers built
-# from the inputs so the full Phase-1 / Phase-2 pipeline runs end-to-end today.
-#
-# WHEN THE REAL CODE IS READY:
-#   * Replace compute_all_derivatives    with the single routine that computes
-#     ALL stability & control derivatives  (cf. aircraft.Aircraft.solve, which
-#     populates params.stability / params.controls).
-#   * Replace compute_neutral_point_and_cg with the routine that computes the
-#     neutral point and c.g. range         (cf. stat_long_stab_anal.py, which
-#     computes x_np and the allowable aft c.g. = x_np - SM*MAC).
-# Keep the SAME return-dict keys so the constraint registry above keeps working.
-
-def compute_all_derivatives(mtow, design_vars):
-    """DUMMY: return all stability & control derivatives for this design.
-
-    Replace with the real single derivative-computing routine.  The real version
-    will build an Aircraft from the parameter sheet, apply `design_vars`, set its
-    mass to `mtow`, run .solve(), and read params.stability / params.controls.
-
-    Returns a flat dict of derivative-name -> value.
-    """
-    # --- DUMMY model: tie a few derivatives loosely to the design vars so the
-    # --- optimiser has a non-flat landscape to move around in. NOT PHYSICAL.
-    s_aw_ratio = design_vars["S_aw_over_S_tot"]
-    x_cg = design_vars["x_cg_opt_m"]
-
-    derivatives = {
-        # Longitudinal
-        "C_L_alpha":   5.0,                          # DUMMY [1/rad]
-        "C_M_alpha":  -0.8 + 0.5 * (x_cg - 2.8),     # DUMMY: more aft c.g. -> less stable
-        "C_M_q":      -12.0,                         # DUMMY
-        # Lateral / directional
-        "C_n_beta":    0.10 - 0.05 * (s_aw_ratio - 0.5),  # DUMMY
-        "C_l_beta":   -0.08,                         # DUMMY
-        "C_n_r":      -0.20,                         # DUMMY
-    }
-    return derivatives
-
-
-def compute_neutral_point_and_cg(mtow, design_vars):
-    """DUMMY: return neutral-point and c.g.-range quantities for this design.
-
-    Replace with the real neutral-point / c.g.-range routine (cf.
-    stat_long_stab_anal.py, which computes x_np from the wing-area distribution
-    and the allowable aft c.g. = x_np - SM*MAC).
-
-    Returns a dict of named quantities used by the constraint registry.
-    """
-    # --- DUMMY model. NOT PHYSICAL. ---
-    static_margin_target = 0.05
-    s_aw_ratio = design_vars["S_aw_over_S_tot"]
-    x_cg = design_vars["x_cg_opt_m"]
-
-    x_np = 3.0 + 0.5 * s_aw_ratio   # DUMMY: neutral point drifts aft with aft-wing area
-    mac = 1.262                     # DUMMY: mean aerodynamic chord [m] (sheet value)
-
-    static_margin = (x_np - x_cg) / mac          # DUMMY normalised static margin
-    allowable_aft_cg = x_np - static_margin_target * mac
-
-    np_cg = {
-        "x_np":             x_np,               # [m] neutral point from nose
-        "mac":              mac,                # [m]
-        "static_margin":    static_margin,      # [-]
-        "x_cg_fwd":         x_cg - 0.2,          # DUMMY forward c.g. extreme [m]
-        "x_cg_aft":         x_cg + 0.2,          # DUMMY aft c.g. extreme [m]
-        "allowable_aft_cg": allowable_aft_cg,   # [m]
-    }
-    return np_cg
-
-
-# ===========================================================================
-# 3b. CORE EVALUATION  (shared by Phase 1 and Phase 2)
+# 3. CORE EVALUATION  (shared by Phase 1 and Phase 2)
 # ===========================================================================
 def evaluate_design(design_vars=None):
-    """Evaluate one design: converge MTOW, run analysis, check constraints.
+    """Evaluate one design: converge MTOW (geometry-aware), check all requirements.
 
-    Steps:
-      1. Run the MTOW converger and read the converged mass.
-      2. Compute all derivatives and the neutral-point / c.g. quantities for
-         that mass and the candidate design variables.
-      3. Check every constraint.
-
-    Returns a results dict with the converged mtow, the analysis outputs, and
-    the constraint verdict (including the overall "accepted" boolean).
+    Routes each design variable to the converger and/or the stability evaluation,
+    then returns the stability_eval results dict augmented with the design vector.
     """
     if design_vars is None:
         design_vars = default_design_vector()
 
-    # --- Step 1: converge the MTOW. ---------------------------------------
-    # IMPORTANT (performance + correctness, marked TODO):
-    #   To make the converger actually respond to `design_vars`, the tuned
-    #   geometry (wing-area split, wing loading, ...) must be pushed into the
-    #   converger's inputs here BEFORE calling it.  Today the converger reads its
-    #   geometry from parameters.py / Fusion, so changing design_vars does NOT
-    #   yet change the converged MTOW.
-    #
-    #   Because of that, we use the CACHED converged mass here
-    #   (force_recompute=False).  A full reconverge costs ~25 s (it runs an
-    #   internal landing-gear optimisation), and since the result is identical
-    #   for every candidate right now, recomputing it 100s of times would only
-    #   make Phase 2 take hours for no benefit.
-    #
-    #   WHEN GEOMETRY FEEDBACK IS WIRED IN: set the design_vars on the converger
-    #   inputs above and switch this to force_recompute=True so each candidate
-    #   gets its own fresh convergence.
-    design_state = load_final_design_state(force_recompute=False)
-    mtow = design_state["mtow"]
+    # Split the design vars by where they go.
+    param_overrides = {}
+    stability_design_vars = {}
+    geometry_overrides = {}
+    for name, value in design_vars.items():
+        spec = DESIGN_VARIABLES[name]
+        kind, key = spec["route"].split(":", 1)
+        if kind == "design_var":
+            stability_design_vars[key] = value
+        else:  # "override"
+            param_overrides[key] = value
+        if spec["converger"]:
+            geometry_overrides[spec["converger"]] = value
 
-    # --- Step 2: run the (dummy) analysis. --------------------------------
-    derivatives = compute_all_derivatives(mtow, design_vars)
-    np_cg = compute_neutral_point_and_cg(mtow, design_vars)
+    # 1) Converged MTOW (responds to converger-coupled geometry vars).
+    mtow = converged_mtow(geometry_overrides)
 
-    results = {
-        "design_vars": design_vars,
-        "mtow":        mtow,
-        "derivatives": derivatives,
-        "np_cg":       np_cg,
-    }
-
-    # --- Step 3: check the constraints. -----------------------------------
-    verdict = check_all_constraints(results)
-    results["constraints"] = verdict["per_constraint"]
-    results["accepted"]    = verdict["all_passed"]
-
+    # 2) Stability requirements at that MTOW with the overrides applied.
+    results = evaluate_stability(
+        param_overrides=param_overrides,
+        design_vars=stability_design_vars,
+        mtow=mtow,
+    )
+    results["design_vars"] = design_vars
     return results
 
 
 def print_design_report(results):
     """Print a readable summary of one evaluated design."""
-    print("-" * 60)
+    print("-" * 64)
     print(f"  Converged MTOW : {results['mtow']:.2f} kg")
     print("  Design variables:")
     for name, value in results["design_vars"].items():
         print(f"    {name:18s}: {value:.4f}")
-    print("  Constraint checks (PASS / FAIL):")
-    for name, passed in results["constraints"].items():
-        status = "PASS" if passed else "FAIL"
-        print(f"    {name:22s}: {status}")
-    overall = "ACCEPTED" if results["accepted"] else "REJECTED"
-    print(f"  Overall: {overall}")
-    print("-" * 60)
+    print("  Requirement checks (PASS / FAIL):")
+    for name in REQUIREMENT_NAMES:
+        status = "PASS" if results["requirements"][name] else "FAIL"
+        print(f"    {name:18s}: {status}   (margin {results['margins'][name]:+.4f})")
+    print(f"  Overall: {'ACCEPTED' if results['accepted'] else 'REJECTED'}")
+    print("-" * 64)
 
 
 # ===========================================================================
 # 4. PHASE 1 -- single acceptance check
 # ===========================================================================
 def run_phase_1():
-    """Evaluate the current/default design once and report accept/reject.
-
-    Returns True if every constraint passes, False otherwise.
-    """
+    """Evaluate the current/default design once and report accept/reject."""
     print("\n=== PHASE 1: acceptance check on the current design ===")
     results = evaluate_design(default_design_vector())
     print_design_report(results)
@@ -376,103 +237,81 @@ def run_phase_1():
 class DesignProblem(Problem):
     """pymoo problem wrapper around evaluate_design().
 
-    n_var    = number of tunable design variables (DESIGN_VARIABLES)
-    n_obj    = 1  -> minimise MTOW (single objective for now)
-    n_constr = number of g(x) <= 0 margins (number_of_margins())
-    xl / xu  = lower / upper bounds, taken from DESIGN_VARIABLES
+    n_var    = number of design variables
+    n_obj    = 1  -> minimise the converged MTOW
+    n_constr = number of stability requirements (their signed margins; <= 0 = OK)
+    xl / xu  = bounds from DESIGN_VARIABLES
     """
 
     def __init__(self):
-        lower_bounds = [DESIGN_VARIABLES[name][0] for name in DESIGN_VARIABLE_NAMES]
-        upper_bounds = [DESIGN_VARIABLES[name][1] for name in DESIGN_VARIABLE_NAMES]
-
+        lower = [DESIGN_VARIABLES[name]["bounds"][0] for name in DESIGN_VARIABLE_NAMES]
+        upper = [DESIGN_VARIABLES[name]["bounds"][1] for name in DESIGN_VARIABLE_NAMES]
         super().__init__(
             n_var=len(DESIGN_VARIABLE_NAMES),
-            n_obj=1,                      # <-- bump to 2 to add a second objective (see below)
-            n_constr=number_of_margins(),
-            xl=np.array(lower_bounds),
-            xu=np.array(upper_bounds),
+            n_obj=1,                          # <-- bump to 2 + add a 2nd F below for true Pareto
+            n_constr=len(REQUIREMENT_NAMES),
+            xl=np.array(lower),
+            xu=np.array(upper),
         )
 
     def _evaluate(self, X, out, *args, **kwargs):
-        # pymoo hands us a whole population X (one row per candidate). We loop
-        # row by row for clarity rather than vectorising.
         objective_rows = []
         constraint_rows = []
-
         for x in X:
-            design_vars = design_vector_to_dict(x)
-            results = evaluate_design(design_vars)
+            results = evaluate_design(design_vector_to_dict(x))
 
-            # ----- OBJECTIVE(S) -----------------------------------------
-            # Single objective for now: minimise the converged MTOW.
-            objectives = [results["mtow"]]
-            #
-            # TO ADD A SECOND OBJECTIVE (true multi-objective Pareto search):
-            #   1. compute the extra objective, e.g.
-            #        second = results["derivatives"]["some_quantity"]
-            #   2. append it:  objectives = [results["mtow"], second]
-            #   3. set n_obj=2 in __init__ above.
-            # NSGA-II will then return a Pareto front instead of a single best.
-            objective_rows.append(objectives)
+            # OBJECTIVE: minimise the converged MTOW.
+            # To add a 2nd objective (true multi-objective Pareto): append it here,
+            # e.g. objectives = [results["mtow"], results["total_violation"]], and
+            # set n_obj=2 above.
+            objective_rows.append([results["mtow"]])
 
-            # ----- CONSTRAINTS (g(x) <= 0) ------------------------------
-            constraint_rows.append(constraint_margins(results))
+            # CONSTRAINTS: each requirement's signed margin is already in pymoo's
+            # "g(x) <= 0 means satisfied" convention.
+            constraint_rows.append([results["margins"][name] for name in REQUIREMENT_NAMES])
 
         out["F"] = np.array(objective_rows)
         out["G"] = np.array(constraint_rows)
 
 
 def run_phase_2():
-    """Run NSGA-II until it finds a converged, constraint-satisfying design."""
+    """Run NSGA-II until it finds a converged, requirement-satisfying design."""
     print("\n=== PHASE 2: NSGA-II optimisation (design rejected in Phase 1) ===")
 
     problem = DesignProblem()
 
-    # NSGA-II configuration. pop_size and n_gen are DUMMY -- tune for the real
-    # problem (bigger = more thorough but slower).
+    # pop_size / n_gen are intentionally small: when wing_loading is active each
+    # evaluation reconverges the MTOW (~25 s). Raise these only with a surrogate
+    # or after dropping the converger-coupled design var.
     algorithm = NSGA2(
-        pop_size=20,                                  # DUMMY
+        pop_size=12,
         sampling=FloatRandomSampling(),
-        crossover=SBX(prob=0.9, eta=15),              # DUMMY operator settings
-        mutation=PM(eta=20),                          # DUMMY
+        crossover=SBX(prob=0.9, eta=15),
+        mutation=PM(eta=20),
         eliminate_duplicates=True,
     )
 
-    result = minimize(
-        problem,
-        algorithm,
-        termination=("n_gen", 20),                    # DUMMY: 20 generations
-        seed=1,
-        verbose=True,
-    )
+    result = minimize(problem, algorithm, termination=("n_gen", 10), seed=1, verbose=True)
 
-    # `result.X` is the best design vector (single objective) or the Pareto set
-    # (multi objective). Re-evaluate the chosen design to print a full report.
     best_x = result.X
     if best_x is None:
-        print("NSGA-II did not return a feasible design. "
-              "Loosen the constraints or widen the design-variable bounds.")
+        print("NSGA-II did not return a feasible design. Some requirements may not be "
+              "reachable with the current design-variable set (e.g. the VTOL OEI "
+              "envelope, which needs a propulsion change, not geometry).")
         return None
 
-    # For a single-objective run pymoo returns one vector; for multi-objective it
-    # returns several. Handle both by taking the first row if it is 2-D.
     best_x = np.atleast_2d(best_x)[0]
-    best_design_vars = design_vector_to_dict(best_x)
-
     print("\nBest design found by NSGA-II:")
-    best_results = evaluate_design(best_design_vars)
-    print_design_report(best_results)
-    return best_results
+    best = evaluate_design(design_vector_to_dict(best_x))
+    print_design_report(best)
+    return best
 
 
 # ===========================================================================
 # 6. ORCHESTRATION
 # ===========================================================================
 def main():
-    accepted = run_phase_1()
-
-    if accepted:
+    if run_phase_1():
         print("\nDesign accepted in Phase 1 -- no optimisation needed.")
     else:
         run_phase_2()
