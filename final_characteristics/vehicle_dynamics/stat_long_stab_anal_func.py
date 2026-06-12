@@ -14,6 +14,7 @@ from VTOL_cg_envelope_det import (
     cg_envelope_with_static_margin,
     default_failed_cases,
     derivation_coordinates,
+    load_design_parameters,
     normalized_by_front_wing_mac,
     propeller_coordinates,
     solve_failure_case,
@@ -109,7 +110,7 @@ def _vtol_oei_envelope_for_params(params, failed_cases=None, check_all=False):
     x_nose, y_nominal = propeller_coordinates(params)
     x_deriv, y_deriv, origin_x, _ = derivation_coordinates(x_nose, y_nominal)
     weight = params.mass.mtow * G
-    t_max = params.propulsion.T_max_SL
+    t_max = params.propulsion.max_thrust_per_engine
 
     if check_all:
         selected_failed_cases = list(range(len(x_deriv)))
@@ -203,7 +204,7 @@ def analyse_configuration(
 
     Returns only the requested stability and CG-envelope values.
     """
-    params = aircraft.AircraftParameters()
+    params = load_design_parameters()
     physical = aircraft.Physical()
     fc = aircraft.FlightCondition()
     charts = aircraft.DatcomChartInputs()
@@ -290,13 +291,23 @@ def analyse_configuration(
 
 def main():
     """Run a small example when this file is executed directly."""
-    params = aircraft.AircraftParameters()
-    result = analyse_configuration(
-        cg_vtol_nose=3.35,
-        cg_cruise_nose=3.35,
-        mtow=params.mass.mtow,
-        s_aft_to_s_total=DEFAULT_S_AFT_TO_S_TOTAL,
-    )
+    params = load_design_parameters()
+    try:
+        result = analyse_configuration(
+            cg_vtol_nose=3.35,
+            cg_cruise_nose=3.35,
+            mtow=params.mass.mtow,
+            s_aft_to_s_total=DEFAULT_S_AFT_TO_S_TOTAL,
+        )
+    except ValueError as error:
+        print(f"Configuration rejected: {error}")
+        print(
+            "Design-state inputs: "
+            f"MTOW = {params.mass.mtow:.1f} kg, "
+            f"T_max per propeller = {params.propulsion.max_thrust_per_engine:.1f} N "
+            f"(from P_max = {params.propulsion.P_max_SL / 1000:.1f} kW installed)"
+        )
+        return
     print(result)
 
 

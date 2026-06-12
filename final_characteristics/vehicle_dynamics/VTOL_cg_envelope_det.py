@@ -7,15 +7,91 @@ maximum longitudinal CG location for which the remaining propellers can carry
 the aircraft weight while balancing lateral moment.
 """
 
+import sys
 from itertools import combinations, product
+from pathlib import Path
 
 import numpy as np
 
-from vd_parameters import AircraftParameters
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+from parameters import (
+    A_DISK,
+    ETA_ROTOR_FW_IN,
+    ETA_ROTOR_FW_OUT,
+    ETA_ROTOR_RW,
+    FM,
+    N_PROP,
+    RHO_ORIGIN,
+    X_ROTOR_FW,
+    X_ROTOR_RW,
+    Z_ROTOR_FW,
+    Z_ROTOR_RW,
+    AircraftParameters,
+)
+from class_II_sizing.mtow_sizing import converged_mass
 
 
 G = 9.80665  # [m/s^2]
 LP_TOL = 1e-8
+
+
+def max_thrust_per_engine_from_power(p_max_total_w):
+    """
+    Convert the installed power limit to a per-propeller static-thrust limit.
+
+    Inverts the static-hover momentum-theory relation used by the class-II
+    power sizing (energy.py / mtow_sizing.py): P = T^(3/2) / (FM sqrt(2 rho A)),
+    evaluated at sea level. No engine max-thrust figure exists anywhere else in
+    the code, so the installed power (design_state["max_power_kw"], which
+    already carries POWER_SAFETY_FACTOR) is the authoritative capability limit.
+    """
+    p_per_prop = p_max_total_w / N_PROP
+    return (p_per_prop * FM) ** (2.0 / 3.0) * (2.0 * RHO_ORIGIN * A_DISK) ** (1.0 / 3.0)
+
+
+def load_design_parameters():
+    """
+    Return an AircraftParameters sheet synced to the converged design state.
+
+    Fills the fields that the VD parameter sheet leaves as None from their
+    authoritative sources elsewhere in the code:
+      - mass.mtow            <- class-II converged MTOW (class_II_sizing/mtow_sizing.py)
+      - propulsion x/y/z     <- the 4+2 rotor stations used by class_II_sizing/MMOI.py
+                                (parameters.py Part 2: X_ROTOR_*, ETA_ROTOR_*, nose datum)
+      - propulsion.P_max_SL  <- installed power from the class-II sizing
+      - max_thrust_per_engine<- P_max_SL inverted through hover momentum theory
+
+    Propeller numbering (1-based, matches the --failed-cases CLI):
+      1 fw inboard stbd, 2 fw inboard port, 3 fw outboard stbd,
+      4 fw outboard port, 5 rw stbd, 6 rw port.
+    """
+    params = AircraftParameters()
+    design_state = converged_mass()
+
+    params.mass.mtow = design_state["mtow"]
+
+    span = design_state["wing_geom"]["span_m"]
+    stations = [
+        (X_ROTOR_FW, +ETA_ROTOR_FW_IN * span / 2.0, Z_ROTOR_FW),
+        (X_ROTOR_FW, -ETA_ROTOR_FW_IN * span / 2.0, Z_ROTOR_FW),
+        (X_ROTOR_FW, +ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
+        (X_ROTOR_FW, -ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
+        (X_ROTOR_RW, +ETA_ROTOR_RW * span / 2.0, Z_ROTOR_RW),
+        (X_ROTOR_RW, -ETA_ROTOR_RW * span / 2.0, Z_ROTOR_RW),
+    ]
+    prop = params.propulsion
+    for idx, (x, y, z) in enumerate(stations, start=1):
+        setattr(prop, f"x_vtol_{idx}", x)
+        setattr(prop, f"y_vtol_{idx}", y)
+        setattr(prop, f"z_vtol_{idx}", z)
+
+    prop.P_max_SL = design_state["max_power_kw"] * 1000.0
+    prop.max_thrust_per_engine = max_thrust_per_engine_from_power(prop.P_max_SL)
+
+    return params
 
 # Tweak this value manually to change the VTOL OEI allowable CG envelope.
 # The margin is applied inward from both feasible CG limits using the global MAC.
@@ -289,12 +365,12 @@ def get_vtol_oei_cg_envelope(failed_cases=None, check_all=False):
     failed_cases uses 1-based propeller numbers, matching the command-line
     interface. The default checks one forward and one aft representative case.
     """
-    params = AircraftParameters()
+    params = load_design_parameters()
     x_nose, y_nominal = propeller_coordinates(params)
     x_deriv, y_deriv, origin_x, _ = derivation_coordinates(x_nose, y_nominal)
 
     weight = params.mass.mtow * G
-    t_max = params.propulsion.T_max_SL
+    t_max = params.propulsion.max_thrust_per_engine
 
     if check_all:
         selected_failed_cases = list(range(len(x_deriv)))
@@ -348,12 +424,12 @@ def get_vtol_oei_cg_envelope(failed_cases=None, check_all=False):
 
 def analyse_cg_envelope(failed_cases=None, check_all=False):
     """Run the OEI CG-envelope calculation and print the results."""
-    params = AircraftParameters()
+    params = load_design_parameters()
     x_nose, y_nominal = propeller_coordinates(params)
     x_deriv, y_deriv, origin_x, origin_y = derivation_coordinates(x_nose, y_nominal)
 
     weight = params.mass.mtow * G
-    t_max = params.propulsion.T_max_SL
+    t_max = params.propulsion.max_thrust_per_engine
 
     if check_all:
         failed_cases = list(range(len(x_deriv)))
