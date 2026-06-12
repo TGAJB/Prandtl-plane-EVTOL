@@ -121,6 +121,38 @@ class WingGeometry:
 
     x_LEMAC_fw:           float = 1 # [m] - very rough estimate
 
+    # ===== FOLDED-WING / VTOL LAYOUT ========================================
+    # Hinge locations are measured from the aircraft centreline as a fraction
+    # of the semi-span.  Example: 0.70 means the fixed centre section occupies
+    # 70% of the full span and the two folded outer sections together occupy
+    # the remaining 30%.  These values are used by MMOI.py to split the wing
+    # mass into fixed and folded components for the VTOL CG calculation.
+    fold_hinge_eta_fw:    float = 0.70  # [-] front-wing hinge station / semi-span; update from spanwise hinge layout
+    fold_hinge_eta_aw:    float = 0.70  # [-] aft-wing hinge station / semi-span; update from spanwise hinge layout
+
+    # Component-CG x-locations in the folded/VTOL configuration, from the
+    # folding-layout drawing supplied on 2026-06-12.  Datum is the nose tip,
+    # positive aft.  Left/right folded parts use the same x-location because
+    # the aircraft is assumed laterally symmetric.
+    #
+    # The UNFOLDED (fixed centre) wing sections stay at the cruise wing CG
+    # stations (AerodynamicCoefficients.x_ac_fw / x_ac_aw); set to None here
+    # so parameters Part 2 falls back to those stations.  Only the FOLDED
+    # outer sections and the winglet/tip-joiner move, per the drawing.  The
+    # fixed/folded mass split itself uses the spanwise eta fractions above.
+    x_vtol_fw_fixed:      float = 1.6  # [m] front-wing fixed (unfolded) section CG -> cruise x_ac_fw
+    x_vtol_fw_folded:     float = 4.70  # [m] front-wing FOLDED outer-section CG (drawing)
+    x_vtol_aw_fixed:      float = 6.65  # [m] aft-wing fixed (unfolded) section CG -> cruise x_ac_aw
+    x_vtol_aw_folded:     float = 8.72  # [m] aft-wing FOLDED outer-section CG (drawing)
+    x_vtol_tip_plate:     float = 7.27  # [m] winglet / Prandtl tip-joiner CG in VTOL (drawing)
+
+    # Rotor/prop CG x-stations in the folded/VTOL configuration (drawing).
+    # "first/second/third prop" = front inboard pair, front outboard pair,
+    # rear pair; left/right share the same x by lateral symmetry.
+    x_vtol_rotor_fw_in:   float = 2.80  # [m] front inboard rotor pair CG (first prop)
+    x_vtol_rotor_fw_out:  float = 4.80  # [m] front outboard rotor pair CG (second prop)
+    x_vtol_rotor_rw:      float = 8.00  # [m] rear rotor pair CG (third prop)
+
 
 @dataclass
 class TailGeometry:
@@ -420,27 +452,30 @@ class Propulsion:
     z_cr_6:               float = None  # [m]
 
     # Engine locations in VTOL CONFIGURATION
-    x_vtol_1:               float = None  # [m]
+    # x-stations from the folding-layout drawing via WingGeometry:
+    # engines 1-2 = front inboard pair, 3-4 = front outboard pair, 5-6 = rear
+    # pair. y/z remain to be filled from the layout (unchanged arms for now).
+    x_vtol_1:               float = WingGeometry.x_vtol_rotor_fw_in   # [m]
     y_vtol_1:               float = None  # [m]
     z_vtol_1:               float = None  # [m]
 
-    x_vtol_2:               float = None  # [m]
+    x_vtol_2:               float = WingGeometry.x_vtol_rotor_fw_in   # [m]
     y_vtol_2:               float = None  # [m]
     z_vtol_2:               float = None  # [m]
 
-    x_vtol_3:               float = None  # [m]
+    x_vtol_3:               float = WingGeometry.x_vtol_rotor_fw_out  # [m]
     y_vtol_3:               float = None  # [m]
     z_vtol_3:               float = None  # [m]
 
-    x_vtol_4:               float = None  # [m]
+    x_vtol_4:               float = WingGeometry.x_vtol_rotor_fw_out  # [m]
     y_vtol_4:               float = None  # [m]
     z_vtol_4:               float = None  # [m]
 
-    x_vtol_5:               float = None  # [m]
+    x_vtol_5:               float = WingGeometry.x_vtol_rotor_rw      # [m]
     y_vtol_5:               float = None  # [m]
     z_vtol_5:               float = None  # [m]
 
-    x_vtol_6:               float = None  # [m]
+    x_vtol_6:               float = WingGeometry.x_vtol_rotor_rw      # [m]
     y_vtol_6:               float = None  # [m]
     z_vtol_6:               float = None  # [m]
 
@@ -626,6 +661,19 @@ X_WING_R     = AerodynamicCoefficients.x_ac_aw   # [m]  rear-wing CG station (de
 Z_WING_R     = WingGeometry.z_w_aw       # [m]  high rear wing (= z_w_fw + gap)
 WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out for the two
                                          #      vertical tip joiners                      PLACEHOLDER
+
+ETA_FOLD_HINGE_FW = WingGeometry.fold_hinge_eta_fw  # [-] update from spanwise hinge layout if needed
+ETA_FOLD_HINGE_RW = WingGeometry.fold_hinge_eta_aw  # [-] update from spanwise hinge layout if needed
+
+X_WING_F_FIXED_VTOL  = WingGeometry.x_vtol_fw_fixed
+X_WING_R_FIXED_VTOL  = WingGeometry.x_vtol_aw_fixed
+X_WING_F_FOLDED_VTOL = WingGeometry.x_vtol_fw_folded
+X_WING_R_FOLDED_VTOL = WingGeometry.x_vtol_aw_folded
+X_TIP_PLATE_VTOL     = WingGeometry.x_vtol_tip_plate
+
+X_ROTOR_FW_IN_VTOL  = WingGeometry.x_vtol_rotor_fw_in   # [m]  front inboard pair (first prop)
+X_ROTOR_FW_OUT_VTOL = WingGeometry.x_vtol_rotor_fw_out  # [m]  front outboard pair (second prop)
+X_ROTOR_RW_VTOL     = WingGeometry.x_vtol_rotor_rw      # [m]  rear pair (third prop)
 
 # -- V-tail --
 X_TAIL      = TailGeometry.x_vert_tail   # [m]  panel-pair CG station (kept separate from TailGeometry.x_vert_tail,

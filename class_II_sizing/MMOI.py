@@ -87,9 +87,14 @@ from parameters import (
     N_PROP, N_MOTOR, D_PROP,
     L_FUS, D_FUS, X_CG_FUS, Z_CG_FUS,
     X_WING_F, Z_WING_F, X_WING_R, Z_WING_R, H_GAP_WINGS, WINGLET_MASS_FRAC,
+    ETA_FOLD_HINGE_FW, ETA_FOLD_HINGE_RW,
+    X_WING_F_FIXED_VTOL, X_WING_R_FIXED_VTOL,
+    X_WING_F_FOLDED_VTOL, X_WING_R_FOLDED_VTOL,
+    X_TIP_PLATE_VTOL,
     X_TAIL, Z_TAIL_ROOT,
     ETA_ROTOR_FW_IN, ETA_ROTOR_FW_OUT, ETA_ROTOR_RW,
     X_ROTOR_FW, X_ROTOR_RW, Z_ROTOR_FW, Z_ROTOR_RW,
+    X_ROTOR_FW_IN_VTOL, X_ROTOR_FW_OUT_VTOL, X_ROTOR_RW_VTOL,
     L_BATT, W_BATT, H_BATT, X_BATT, Z_BATT,
     X_PAYLOAD, Z_PAYLOAD, L_PAYLOAD_BOX, W_PAYLOAD_BOX, H_PAYLOAD_BOX,
     X_GEAR, Y_GEAR_RAIL, Z_GEAR, L_SKID_RAIL,
@@ -143,7 +148,60 @@ def rotate_about_x(inertia, angle_rad):
 # Component table
 # ---------------------------------------------------------------------------
 
-def build_components(breakdown):
+def _check_hinge_eta(name, eta):
+    """Validate hinge station given as fraction of semi-span."""
+    eta = float(eta)
+    if not 0.0 < eta <= 1.0:
+        raise ValueError(f"{name} must be in the interval (0, 1], got {eta}")
+    return eta
+
+
+def _add_split_wing_vtol(add, name, total_mass, mac, span, z_pos, eta_hinge,
+                         x_fixed, x_folded):
+    """
+    Split one wing into a fixed centre section plus two folded outer sections.
+
+    Assumption: mass per unit span is uniform. Therefore, if the hinge is at
+    eta_hinge of the semi-span, the fixed centre section carries eta_hinge of
+    the wing mass and the two folded sections together carry (1 - eta_hinge).
+    This directly supports the VTOL x_CG calculation without changing the
+    existing cruise buildup.
+    """
+    eta_hinge = _check_hinge_eta(f"ETA_FOLD_HINGE_{name.upper()}", eta_hinge)
+
+    m_fixed = eta_hinge * total_mass
+    m_folded_each = 0.5 * (1.0 - eta_hinge) * total_mass
+
+    span_fixed = eta_hinge * span
+    span_folded = 0.5 * (1.0 - eta_hinge) * span
+
+    # x positions come from parameters.py. y positions are approximate here;
+    # they do not affect x_CG but keep the inertia report usable.
+    y_folded_cg = 0.5 * (1.0 + eta_hinge) * span / 2.0
+
+    add(f"wing_{name}_fixed_vtol", m_fixed, (x_fixed, 0.0, z_pos),
+        inertia_solid_box(m_fixed, mac, span_fixed, TIP_TO_CHORD_W * mac))
+
+    if m_folded_each > 0.0:
+        folded_local = inertia_solid_box(m_folded_each, mac, span_folded, TIP_TO_CHORD_W * mac)
+        add(f"wing_{name}_folded_stbd_vtol", m_folded_each,
+            (x_folded, y_folded_cg, z_pos), folded_local)
+        add(f"wing_{name}_folded_port_vtol", m_folded_each,
+            (x_folded, -y_folded_cg, z_pos), folded_local)
+
+
+def _add_wings_vtol(add, breakdown, mac, span):
+    """VTOL/folded wing representation used for x_CG in VTOL configuration."""
+    m_wing_each = (1.0 - WINGLET_MASS_FRAC) * breakdown["wing"] / 2.0
+    _add_split_wing_vtol(add, "front", m_wing_each, mac, span, Z_WING_F,
+                         ETA_FOLD_HINGE_FW,
+                         X_WING_F_FIXED_VTOL, X_WING_F_FOLDED_VTOL)
+    _add_split_wing_vtol(add, "rear", m_wing_each, mac, span, Z_WING_R,
+                         ETA_FOLD_HINGE_RW,
+                         X_WING_R_FIXED_VTOL, X_WING_R_FOLDED_VTOL)
+
+
+def build_components(breakdown, configuration="cruise"):
     """
     Assemble the per-piece component list from a converged_mass()/compute_mtow()
     breakdown dict. Every breakdown mass key is used exactly once, so the
@@ -177,16 +235,31 @@ def build_components(breakdown):
     add("fuselage", m_fus, (X_CG_FUS, 0.0, Z_CG_FUS),
         inertia_cylinder_shell(m_fus, D_FUS / 2.0, L_FUS*FAT_CYLINDER_SECTION))
 
-    # -- Wings: rectangular prisms, tip-joiner fraction carved out first --
-    m_wing_each = (1.0 - WINGLET_MASS_FRAC) * breakdown["wing"] / 2.0
-    wing_local = inertia_solid_box(m_wing_each, mac, span, TIP_TO_CHORD_W * mac)
-    add("wing_front", m_wing_each, (X_WING_F, 0.0, Z_WING_F), wing_local)
-    add("wing_rear", m_wing_each, (X_WING_R, 0.0, Z_WING_R), wing_local)
+    # -- Wings: rectangular prisms, tip-joiner fraction carved out first.
+    #    Cruise is the original two-box model, unchanged. VTOL keeps the fixed
+    #    (unfolded) centre sections at the cruise CG stations and moves only
+    #    the folded outer sections to the drawing stations, split by the
+    #    spanwise fold-hinge eta fractions. --
+    config = configuration.lower().strip()
+    if config in ("cruise", "cr"):
+        m_wing_each = (1.0 - WINGLET_MASS_FRAC) * breakdown["wing"] / 2.0
+        wing_local = inertia_solid_box(m_wing_each, mac, span, TIP_TO_CHORD_W * mac)
+        add("wing_front", m_wing_each, (X_WING_F, 0.0, Z_WING_F), wing_local)
+        add("wing_rear", m_wing_each, (X_WING_R, 0.0, Z_WING_R), wing_local)
+    elif config in ("vtol", "folded"):
+        _add_wings_vtol(add, breakdown, mac, span)
+    else:
+        raise ValueError("configuration must be 'cruise' or 'vtol'")
 
     # -- Tip plates: vertical flat plates at mid-stagger, y = +/- span/2 --
     m_plate = WINGLET_MASS_FRAC * breakdown["wing"] / 2.0
     plate_local = inertia_solid_box(m_plate, c_tip, 0.0, H_GAP_WINGS)
-    x_plate = (X_WING_F + X_WING_R) / 2.0
+    if config in ("vtol", "folded"):
+        # Winglet / Prandtl tip-joiner CG station in the folded configuration,
+        # taken directly from the folding-layout drawing.
+        x_plate = X_TIP_PLATE_VTOL
+    else:
+        x_plate = (X_WING_F + X_WING_R) / 2.0
     z_plate = (Z_WING_F + Z_WING_R) / 2.0
     add("tip_plate_stbd", m_plate, (x_plate, span / 2.0, z_plate), plate_local)
     add("tip_plate_port", m_plate, (x_plate, -span / 2.0, z_plate), plate_local)
@@ -206,14 +279,21 @@ def build_components(breakdown):
             rotate_about_x(panel_flat, sign * v_rad))
 
     # -- Rotor stations: 4 front (2/side) + 2 rear (1/side). Motors, hubs and
-    #    hinge hardware as point masses; props as thin discs (hover normal). --
+    #    hinge hardware as point masses; props as thin discs (hover normal).
+    #    In the VTOL/folded configuration the rotors move with the folded
+    #    wings to the drawing stations (front inboard / front outboard / rear);
+    #    in cruise the inboard and outboard front rotors share X_ROTOR_FW. --
+    if config in ("vtol", "folded"):
+        x_fw_in, x_fw_out, x_rw = X_ROTOR_FW_IN_VTOL, X_ROTOR_FW_OUT_VTOL, X_ROTOR_RW_VTOL
+    else:
+        x_fw_in, x_fw_out, x_rw = X_ROTOR_FW, X_ROTOR_FW, X_ROTOR_RW
     stations = [
-        ("fw_in_stbd", X_ROTOR_FW, ETA_ROTOR_FW_IN * span / 2.0, Z_ROTOR_FW),
-        ("fw_in_port", X_ROTOR_FW, -ETA_ROTOR_FW_IN * span / 2.0, Z_ROTOR_FW),
-        ("fw_out_stbd", X_ROTOR_FW, ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
-        ("fw_out_port", X_ROTOR_FW, -ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
-        ("rw_stbd", X_ROTOR_RW, ETA_ROTOR_RW * span / 2.0, Z_ROTOR_RW),
-        ("rw_port", X_ROTOR_RW, -ETA_ROTOR_RW * span / 2.0, Z_ROTOR_RW),
+        ("fw_in_stbd", x_fw_in, ETA_ROTOR_FW_IN * span / 2.0, Z_ROTOR_FW),
+        ("fw_in_port", x_fw_in, -ETA_ROTOR_FW_IN * span / 2.0, Z_ROTOR_FW),
+        ("fw_out_stbd", x_fw_out, ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
+        ("fw_out_port", x_fw_out, -ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
+        ("rw_stbd", x_rw, ETA_ROTOR_RW * span / 2.0, Z_ROTOR_RW),
+        ("rw_port", x_rw, -ETA_ROTOR_RW * span / 2.0, Z_ROTOR_RW),
     ]
     m_pod = (breakdown["motors"] + breakdown["hubs"] + breakdown["hinge"]) / N_PROP
     m_prop = breakdown["props"] / N_PROP
@@ -288,19 +368,34 @@ def compute_inertia(components, about=None):
     }
 
 
-def aircraft_inertia(breakdown=None, verbose=False):
+def aircraft_inertia(breakdown=None, verbose=False, configuration="cruise"):
     """
     Top-level entry point: inertia of the converged design about its own CG.
     Pass a compute_mtow()/converged_mass() breakdown to evaluate a specific
     design point; defaults to the cached converged design.
+
+    The default configuration="cruise" reproduces the original behaviour
+    exactly. configuration="vtol" splits each wing at the fold hinges and
+    uses the folded stations from parameters.py, so result["cg"][0] is the
+    VTOL x_CG.
     """
     if breakdown is None:
         breakdown = converged_mass()
-    components = build_components(breakdown)
+    components = build_components(breakdown, configuration=configuration)
     result = compute_inertia(components)
     if verbose:
         _print_breakdown(components, result)
     return result
+
+
+def aircraft_inertia_vtol(breakdown=None, verbose=False):
+    """Convenience wrapper for the folded/VTOL configuration."""
+    return aircraft_inertia(breakdown=breakdown, verbose=verbose, configuration="vtol")
+
+
+def aircraft_cg_vtol(breakdown=None):
+    """Return only the VTOL CG vector [x, y, z] in the MMOI coordinate system."""
+    return aircraft_inertia_vtol(breakdown=breakdown, verbose=False)["cg"]
 
 
 def as_mass_properties(result):
@@ -357,5 +452,8 @@ def _print_breakdown(components, result):
 
 
 if __name__ == "__main__":
+    print("\n===== CRUISE CONFIGURATION =====")
     aircraft_inertia(verbose=True)
-    
+
+    print("\n===== VTOL / FOLDED CONFIGURATION =====")
+    aircraft_inertia(verbose=True, configuration="vtol")
