@@ -55,6 +55,7 @@ OSWALD_EFFICIENCY    = 1.34   # [-]   Oswald efficiency factor (updated 11-06-20
 
 # Wing structural parameters
 
+WINGLET_SKIN_THICKNESS = 0.004        # [m]     Skin thickness for winglets
 NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing
 AREA_SPLIT          = 0.5     # [-]     fraction of total area assigned to one wing
 WING_SPAN           = 13      # [-]     span from the footprint constraint
@@ -315,10 +316,6 @@ aircraft_person_proximity  = 0    # [m]
 aircraft_building_proximity = 0   # [m]
 rho_propeller_hub        = 2700.0 # [kg/m^3] hub material density (aluminium)
 rho_propeller_blade      = 1550.0 # [kg/m^3] blade material density (CFRP)
-
-
-
-
 
 def project_vector(v1, v2, return_perpendicular=False):
     """
