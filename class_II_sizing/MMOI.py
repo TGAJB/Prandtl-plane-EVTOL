@@ -13,7 +13,7 @@ Datum at the nose tip: x positive aft, y positive starboard, z positive up, orig
 on the fuselage centreline (right-handed). This frame is related to the standard
 flight-dynamics body frame (x forward, z down) by a 180 deg rotation about y, under
 which I_xx, I_yy, I_zz AND I_xz are numerically invariant - the values returned here
-feed vd_parameters.MassProperties directly. Products of inertia are reported in the
+feed parameters.MassProperties (VD sheet) directly. Products of inertia are reported in the
 flight-dynamics convention I_xz = sum(m * dx * dz) (= -I_tensor[0, 2]); for a
 laterally symmetric layout I_xy = I_yz = 0.
 
@@ -63,8 +63,9 @@ misc          solid cylinder filling the fuselage (20%-MTOW systems/wiring/ECS
 
 Known inconsistencies flagged (parameters.py is authoritative)
 --------------------------------------------------------------
-- vd_parameters.py assumes a 10 m fuselage vs L_FUS = 10.0 m; vd-derived seed
-  coordinates in parameters.py were rescaled accordingly.
+- The VD parameter sheet now lives in parameters.py (Part 2); shared geometry
+  defaults to the Part 1 constants, so the old 10 m vs 7 m fuselage rescaling
+  note no longer applies.
 - All layout coordinates are PLACEHOLDER pending a real layout drawing.
 
 Run standalone for the per-component breakdown table:
@@ -95,7 +96,6 @@ from parameters import (
     X_MISC, Z_MISC, FAT_CYLINDER_SECTION
 )
 from class_II_sizing.mtow_sizing import converged_mass
-
 
 # ---------------------------------------------------------------------------
 # Shape helpers - all return the 3x3 inertia tensor [kg m^2] about the shape's
@@ -265,7 +265,7 @@ def compute_inertia(components, about=None):
     `about` defaults to the composite CG. Returns a dict with the total mass,
     cg, the 3x3 tensor I, the diagonal moments and the products of inertia in
     the flight-dynamics convention Iab = sum(m da db) (= -I_tensor off-diagonal),
-    so Ixz feeds vd_parameters.MassProperties.I_xz directly.
+    so Ixz feeds parameters.MassProperties.I_xz directly.
     """
     cg = compute_cg(components)
     ref = cg if about is None else np.asarray(about, dtype=float)
@@ -305,7 +305,7 @@ def aircraft_inertia(breakdown=None, verbose=False):
 
 def as_mass_properties(result):
     """
-    Map an aircraft_inertia() result onto vd_parameters.MassProperties field
+    Map an aircraft_inertia() result onto parameters.MassProperties field
     names. I_xx/I_yy/I_zz/I_xz are frame-invariant under the x-aft/z-up ->
     x-fwd/z-down flip, so they transfer directly. z_cg is given in THIS module's
     convention (nose datum, z up) - flip its sign for a z-down consumer.
@@ -315,11 +315,13 @@ def as_mass_properties(result):
         params.mass = replace(params.mass, **as_mass_properties(res))
     """
     return {
+        "mtow": float(result["mass"]),
         "I_xx": float(result["Ixx"]),
         "I_yy": float(result["Iyy"]),
         "I_zz": float(result["Izz"]),
         "I_xz": float(result["Ixz"]),
         "z_cg": float(result["cg"][2]),
+        "x_cg": float(result["cg"][0]),
     }
 
 
@@ -356,3 +358,4 @@ def _print_breakdown(components, result):
 
 if __name__ == "__main__":
     aircraft_inertia(verbose=True)
+    

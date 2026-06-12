@@ -1,18 +1,21 @@
-import numpy as np
-
-# ── Physical constants ─────────────────────────────────────────────────────────
 # Physical constants
 
-G          = 9.81          # [m/s^2]  gravitational acceleration
-RHO_ORIGIN = 1.225         # [kg/m^3] ISA sea-level air density
+G          = 9.81             # [m/s^2]  gravitational acceleration
+RHO_ORIGIN = Mission.rho_SL   # [kg/m^3] ISA sea-level air density
 
 # Mission parameters
 
-M_PAYLOAD        = 400.0      # [kg]  fixed payload (4 pax + luggage)
+M_PAYLOAD        = MassProperties.payload_mass  # [kg]  fixed payload (4 pax + luggage)
 W_CREW           = 0.0        # [kg]  0 for autonomous; 85 if piloted
-RANGE_M          = 200000.0   # [m]   design range
+RANGE_M          = Mission.minimum_range   # [m]   design range
 D_VERT_DESCENT   = 1676.0     # [m]   vertical descent distance
-V_CRUISE         = 200 / 3.6  # [m/s] cruise speed
+V_CRUISE         = Mission.cruise_speed    # [m/s] cruise speed
+H_CRUISE         = Mission.cruise_altitude # [m]   cruise altitude
+H_TRANSITION     = Mission.transition_altitude  # [m] transition altitude
+RHO_CRUISE       = Mission.rho_cr          # [kg/m^3] ISA density at H_CRUISE
+T_CR_ISA         = Mission.T_cr            # [K]   ISA temperature at H_CRUISE
+T_SL_ISA         = Mission.T_SL            # [K]   ISA sea-level temperature
+M_CR             = Mission.M_cr            # [-]   cruise Mach number
 T_CRUISE         = 2194.7     # [s]   cruise segment
 T_TAKEOFF        = 5.0        # [s]   takeoff segment
 T_CLIMB          = 1221.7     # [s]   climb segment
@@ -51,20 +54,20 @@ DRAG_POLAR_N_POINTS  = 100    # [-]   number of points used for drag-polar plots
 #   Preliminary values
 LD_CRUISE            = 14.7   # [-]   box-wing cruise L/D (preliminary)
 CD0                  = 0.0205 # [-]   zero-lift drag coefficient (preliminary)
-OSWALD_EFFICIENCY    = 1.34   # [-]   Oswald efficiency factor (updated 11-06-2026)
+OSWALD_EFFICIENCY    = AerodynamicCoefficients.e_hor_wings  # [-] Oswald efficiency factor
 
 # Wing structural parameters
 
 WINGLET_SKIN_THICKNESS = 0.004        # [m]     Skin thickness for winglets
 NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing
-AREA_SPLIT          = 0.5     # [-]     fraction of total area assigned to one wing
-WING_SPAN           = 13      # [-]     span from the footprint constraint
-WING_LOADING_N      = 760.0   # [N/m^2] selected design-point wing loading from matching diagram
-TAPER_W             = 0.45    # [-]     wing chord taper ratio (c_tip / c_root)
-TIP_TO_CHORD_W      = 0.17    # [-]     wing thickness-to-chord ratio
-LE_SWEEP_W          = 0       # [rad]   wing leading edge sweep angle
-DIHEDRAL            = 0       # [rad]   wing digedral angle
-TWIST               = 0.05236 # [rad]   wing twist angle (3 deg) NOT FINAL
+AREA_SPLIT          = WingGeometry.S_fw / WingGeometry.S_tot  # [-] fraction of total area assigned to one wing
+WING_SPAN           = WingGeometry.b_fw          # [m]     span from the footprint constraint
+WING_LOADING_N      = WingGeometry.design_point  # [N/m^2] selected design-point wing loading from matching diagram
+TAPER_W             = WingGeometry.taper_fw      # [-]     wing chord taper ratio (c_tip / c_root)
+TIP_TO_CHORD_W      = WingGeometry.t_c_fw        # [-]     wing thickness-to-chord ratio
+LE_SWEEP_W          = math.radians(WingGeometry.LE_sweep_fw)         # [rad] wing leading edge sweep angle
+DIHEDRAL            = math.radians(WingGeometry.dihedral_front_wing) # [rad] wing dihedral angle
+TWIST               = math.radians(WingGeometry.twist_fw)            # [rad] wing twist angle NOT FINAL
 #    Class I parameters (OUTDATED - CLASS II AVAILABLE)
 S_W         = 30.0            # [m^2]   class I total wing reference area
 AR_W        = 5.63            # [-]     class I wing aspect ratio
@@ -72,22 +75,24 @@ AR_W        = 5.63            # [-]     class I wing aspect ratio
 T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prepreg (MIL-HDBK-17-3F)
 
 # V-tail structural parameters
+# (planform values derived from TailGeometry; V_ANGLE and X_TAIL are the
+#  V-tail-specific quantities with no VD counterpart)
 
 V_ANGLE        = 25.0    # [deg]  V-tail dihedral from horizontal
-TAPER_TAIL     = 0.40    # [-]    chord taper ratio (c_tip / c_root)
-TIP_TO_CHORD   = 0.10    # [-]    thickness-to-chord ratio
+TAPER_TAIL     = TailGeometry.taper_vert_tail  # [-]  chord taper ratio (c_tip / c_root)
+TIP_TO_CHORD   = TailGeometry.t_c_vert_tail    # [-]  thickness-to-chord ratio
 F_REAR_WING    = 0.50    # [-]    rear Prandtl-wing lift fraction
 N_W            = 3.5     # [-]    design limit load factor
 T_SKIN_MIN_AL  = 2.0e-3  # [m]    minimum skin gauge (Niu 1988)
 STRUCT_SF      = 1.5     # [-]    ultimate safety factor (FAR/CS 25.303)
 C_N_TAIL_MAX   = 1.2     # [-]    peak normal force coefficient at max deflection
 V_DIVE_FACTOR  = 1.25    # [-]    V_dive / V_cruise (FAR/CS 25.335 lower bound)
-S_TAIL      = 3.25   # [m^2]  V-tail total panel area (both panels)
-AR_T        = 1.23   # [-]   V-tail aspect ratio
+S_TAIL      = TailGeometry.S_vert_tail   # [m^2]  tail panel area (per panel, see mass_components.tail_mass)
+AR_T        = TailGeometry.AR_vert_tail  # [-]    tail panel aspect ratio
 
 # Propulsion geometry
 
-N_PROP   = 6      # [-]  number of rotors
+N_PROP   = Propulsion.n_engines  # [-]  number of rotors
 N_MOTOR  = 6      # [-]  number of motors
 N_BLADES = 8      # [-]  blades per rotor
 D_PROP   = 1.9    # [m]  rotor diameter
@@ -107,8 +112,8 @@ E_CELL_DENS_WH_KG = E_CELL_WH / M_CELL_KG   # = 386 Wh/kg (derived, do not edit)
 
 # Airframe geometry
 
-L_FUS       = 10.0    # [m]   fuselage length
-FUSE_WIDTH  = 2.0    # [m]   fuselage width (front view; placeholder)
+L_FUS       = FuselageGeometry.fuselage_length  # [m]  fuselage length
+FUSE_WIDTH  = FuselageGeometry.d_fw             # [m]  fuselage width (front view; placeholder)
 PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
 FAT_CYLINDER_SECTION = 0.4 #this is for mmoi calculations on what we assume is the cylinder (rest of fus is neglected)
@@ -116,9 +121,8 @@ FAT_CYLINDER_SECTION = 0.4 #this is for mmoi calculations on what we assume is t
 # MMOI component layout (class_II_sizing/MMOI.py)
 #
 # Datum: nose tip. x positive aft, y positive starboard, z positive up, origin on the
-# fuselage centreline. Seeds taken from final_characteristics/vehicle_dynamics/
-# vd_parameters.py where available, rescaled to L_FUS = 7.0 m (vd assumes a 10 m
-# fuselage - parameters.py is authoritative). All coordinates are component-CG
+# fuselage centreline. Seeds taken from the Vehicle Dynamics parameter sheet
+# (Part 1 above) where available. All coordinates are component-CG
 # locations pending a real layout drawing.
 
 # -- Fuselage equivalent cylinder --
@@ -127,18 +131,19 @@ X_CG_FUS = 0.45 * L_FUS   # [m]   shell CG slightly fwd of mid-length (light tai
 Z_CG_FUS = 0.0            # [m]   shell CG on the centreline
 
 # -- Wings (Prandtl pair) --
-X_WING_F     = 1.5                       # [m]  front-wing CG ~ x_LEMAC (vd: 1.0) + 0.4*MAC  PLACEHOLDER
-Z_WING_F     = -0.5                      # [m]  low-mounted front wing (vd z_w_fw)
-WING_STAGGER = 5.0                       # [m]  longitudinal distance front -> rear wing (vd stagger)
-H_GAP_WINGS  = 2.1                       # [m]  vertical gap between wing planes (vd gap); tip-plate height
-X_WING_R     = X_WING_F + WING_STAGGER   # [m]  rear-wing CG station (derived)
-Z_WING_R     = Z_WING_F + H_GAP_WINGS    # [m]  high rear wing (derived)
+X_WING_F     = AerodynamicCoefficients.x_ac_fw                       # [m]  front-wing CG ~ x_LEMAC (vd: 1.0) + 0.4*MAC  PLACEHOLDER
+Z_WING_F     = WingGeometry.z_w_fw       # [m]  low-mounted front wing
+WING_STAGGER = WingGeometry.stagger      # [m]  longitudinal distance front -> rear wing
+H_GAP_WINGS  = WingGeometry.gap          # [m]  vertical gap between wing planes; tip-plate height
+X_WING_R     = AerodynamicCoefficients.x_ac_aw   # [m]  rear-wing CG station (derived)
+Z_WING_R     = WingGeometry.z_w_aw       # [m]  high rear wing (= z_w_fw + gap)
 WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out for the two
                                          #      vertical tip joiners                      PLACEHOLDER
 
 # -- V-tail --
-X_TAIL      = 6.3   # [m]  panel-pair CG station (vd x_vert_tail = 8.5 scaled x 7/10)   PLACEHOLDER
-Z_TAIL_ROOT = 0.5   # [m]  panel root height above centreline                           PLACEHOLDER
+X_TAIL      = TailGeometry.x_vert_tail   # [m]  panel-pair CG station (kept separate from TailGeometry.x_vert_tail,
+                    #      which is the fin a.c. station)                                PLACEHOLDER
+Z_TAIL_ROOT = TailGeometry.z_vert_tail   # [m]  panel root height above centreline                            PLACEHOLDER
 
 # -- Rotor / motor stations (4 on the front wing, 2 on the rear wing, symmetric) --
 ETA_ROTOR_FW_IN  = 0.30  # [-]  inboard front rotor, fraction of semi-span (tip clears fuselage)  PLACEHOLDER
@@ -150,16 +155,19 @@ X_ROTOR_RW = X_WING_R - X_ROTOR_OFFSET  # [m]  rear-rotor station (derived)
 Z_ROTOR_FW = Z_WING_F                   # [m]  rotors carried at front-wing height
 Z_ROTOR_RW = Z_WING_R                   # [m]  rotors carried at rear-wing height
 
+# -- Optimal cruise CG (from the VD sheet) --
+X_CG_OPT = MassProperties.x_cg_opt  # [m]  optimal CG location during cruise
+
 # -- Battery (underfloor box) --
 L_BATT = 3.0    # [m]  box length ~ cabin floor length                                  PLACEHOLDER
 W_BATT = 1.2    # [m]  box width between cabin floor beams                              PLACEHOLDER
 H_BATT = 0.25   # [m]  underfloor bay depth                                             PLACEHOLDER
-X_BATT = 2.8    # [m]  box mid-length at the cruise-optimal CG (vd x_cg_opt) so the
-                #      heaviest item is CG-neutral
+X_BATT = 2.7  # [m]  box mid-length at the cruise-optimal CG so the
+                   #      heaviest item is CG-neutral
 Z_BATT = -0.7   # [m]  below the cabin floor (floor ~ -0.5 m for the 2.0 m section)
 
 # -- Payload (pax + luggage cabin box) --
-X_PAYLOAD     = 2.8    # [m]  pax + luggage centred on the target CG
+X_PAYLOAD     = 2.7  # [m]  pax + luggage centred on the target CG
 Z_PAYLOAD     = -0.2   # [m]  seated-occupant CG slightly below centreline
 L_PAYLOAD_BOX = 2.0    # [m]  two seat rows                                             PLACEHOLDER
 W_PAYLOAD_BOX = 1.4    # [m]  cabin width                                               PLACEHOLDER
@@ -317,36 +325,5 @@ aircraft_building_proximity = 0   # [m]
 rho_propeller_hub        = 2700.0 # [kg/m^3] hub material density (aluminium)
 rho_propeller_blade      = 1550.0 # [kg/m^3] blade material density (CFRP)
 
-def project_vector(v1, v2, return_perpendicular=False):
-    """
-    Projects vector v1 onto vector v2.
 
-    Parameters:
-    v1 (array-like): The vector being projected.
-    v2 (array-like): The vector being projected onto.
-    return_perpendicular (bool): If True, also returns the perpendicular component.
 
-    Returns:
-    v1_parallel (np.ndarray): Component of v1 parallel to v2.
-    v1_perpendicular (np.ndarray): Component of v1 perpendicular to v2 (if requested).
-    """
-    # Convert inputs to numpy arrays just in case they are passed as lists
-    v1 = np.asarray(v1)
-    v2 = np.asarray(v2)
-
-    # Formula: v1_parallel = (np.dot(v1, v2) / np.dot(v2, v2)) * v2
-    # Note: np.dot(v2, v2) is equivalent to ||v2||^2
-    v2_squared_mag = np.dot(v2, v2)
-
-    # Handle the edge case where v2 is a zero vector to avoid division by zero
-    if v2_squared_mag == 0:
-        raise ValueError("Cannot project onto a zero vector.")
-
-    scalar_factor = np.dot(v1, v2) / v2_squared_mag
-    v1_parallel = scalar_factor * v2
-
-    if return_perpendicular:
-        v1_perpendicular = v1 - v1_parallel
-        return v1_parallel, v1_perpendicular
-
-    return v1_parallel

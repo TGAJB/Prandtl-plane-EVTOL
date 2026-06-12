@@ -1,5 +1,14 @@
-from vd_parameters import AircraftParameters
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+from parameters import AircraftParameters, MassProperties
 from dataclasses import dataclass
+from class_II_sizing.mtow_sizing import converged_mass
+from class_II_sizing.MMOI import aircraft_inertia, as_mass_properties
 import numpy as np
 
 # ---------------------------------------------------------------------------
@@ -51,7 +60,7 @@ class DatcomChartInputs:
     # Vertical-tail effective aspect ratio and other ratios (Figs 5.3.1.1-22a/b)
     vtail_Aeff_A:             float = 1.5
     cyb_v_over_cyb_v_eff:     float = 0.9
-    cyb_v_eff:                float = 4.0
+    cyb_v_eff:                float = 3.75
  
     # CY_beta body interference K_i (Fig 5.2.1.1-7)
     cyb_Ki:                   float = 1.4
@@ -173,11 +182,11 @@ class Aircraft:
 
     def x_ac_fw(self):
         ac = self.params.aerodynamics
-        return self._require(self._cfg(ac.x_ac_fw_cruise, ac.x_ac_fw_approach), "x_ac_fw")
+        return self._require(self._cfg(ac.x_ac_fw, ac.x_ac_fw_approach), "x_ac_fw")
  
     def x_ac_aw(self):
         ac = self.params.aerodynamics
-        return self._require(self._cfg(ac.x_ac_aw_cruise, ac.x_ac_aw_approach), "x_ac_aw")
+        return self._require(self._cfg(ac.x_ac_aw, ac.x_ac_aw_approach), "x_ac_aw")
  
     def x_cg(self):
         return self._require(self.params.mass.x_cg_opt, "mass.x_cg_opt")
@@ -370,7 +379,7 @@ class Aircraft:
         CL_alpha_fw = self.CL_alpha_front_wing()
         CL_alpha_aft = self.CL_alpha_aft_wing()
 
-        front_term = -CL_alpha_fw * ((x_cg - x_ac_fw)/c_ref) * (S_fw/S_ref)
+        front_term = +CL_alpha_fw * ((x_cg - x_ac_fw)/c_ref) * (S_fw/S_ref)
         aft_term = +CL_alpha_aft * ((x_cg - x_ac_aw)/c_ref) * (1 - downwash)*eta*(S_aw/S_ref)
 
         return front_term + aft_term
@@ -559,26 +568,34 @@ class Aircraft:
         M = self.fc.mach
         return -self.CL_trim() * (2 - M**2)/(1 - M**2)
  
-    def section_flap_effectiveness(self, ad_theory, ad_ratio): # Placeholders for now
+    def section_flap_effectiveness(self, ad_theory, ad_ratio, cl_alpha_section):
         """
-        alpha_delta = (a_d/(a_d)theory)(a_d)theory  (§6.1.1.1).
+        Dimensionless section flap effectiveness alpha_delta = cl_delta / cl_alpha
+        (Secs 6.1.1.1 and 6.1.4.1). ad_theory and ad_ratio are the chart values
+        (cl_delta)_theory [1/rad] and cl_delta/(cl_delta)_theory [-];
+        cl_alpha_section [1/rad] must be on the same incompressible basis.
         """
-        return self._require(ad_ratio, "charts.ad_ratio") * self._require(ad_theory, "charts.ad_theory")
- 
+        cl_delta = self._require(ad_ratio, "charts.ad_ratio") * self._require(ad_theory, "charts.ad_theory")
+        return cl_delta / self._require(cl_alpha_section, "section cl_alpha for flap effectiveness")
+    
     def CL_delta_e(self):
         """
-        Elevator lift power referenced to aircraft: (CL_a)_aw eta_aw (S_aw/S_ref) a_d3D K_b.
+        Elevator lift power referenced to the aircraft (Sec 6.1.4.1):
+            CL_delta_e = CL_alpha_surface * alpha_delta_3D * K_b * eta * (S_surface/S_ref)
+        where alpha_delta_3D = (cl_delta/cl_alpha) * [(alpha_delta)_CL/(alpha_delta)_cl].
         """
         wg, ac, cs, ch = (self.params.wing_geometry, self.params.aerodynamics,
-                          self.params.control_surfaces, self.charts)
+                        self.params.control_surfaces, self.charts)
         S_ref, _, _ = self._ref()
         on = cs.elevator_on_surface
         if on == "aw":
             CLa, S, eta = self.CL_alpha_aft_wing(), wg.S_aw, ac.dyn_pres_ratio_fw_to_aw
+            cla_sec = self._require(ac.cl_alpha_aw, "aerodynamics.cl_alpha_aw") * self.physical.deg_per_rad
         else:
             CLa, S, eta = self.CL_alpha_front_wing(), wg.S_fw, 1.0
+            cla_sec = self._require(ac.cl_alpha_fw, "aerodynamics.cl_alpha_fw") * self.physical.deg_per_rad
         eta = self._require(eta, "elevator surface eta")
-        a_d = self.section_flap_effectiveness(ch.elev_ad_theory, ch.elev_ad_ratio)
+        a_d = self.section_flap_effectiveness(ch.elev_ad_theory, ch.elev_ad_ratio, cla_sec)
         a_d3D = a_d * ch.elev_ad_3D_over_2D
         Kb = self._require(cs.elevator_Kb, "control_surfaces.elevator_Kb")
         return CLa * a_d3D * Kb * eta * (self._require(S, "elevator surface area")/S_ref)
@@ -647,14 +664,13 @@ class Aircraft:
  
     def dCY_beta_vtail(self):
         """
-        (Delta C_Y_beta)_V = -k (CL_a)_V (1+ds/db)(q_v/q_inf)(S_v/S_ref)  (Eq 5.3.1.1-b, per rad).
+        (Delta C_Y_beta)_V = -k (CL_a)_V_eff (n_fins S_v / S_ref)  (Eq 5.3.1.1-b, per rad).
         """
-        tg, wg, ch = self.params.tail_geometry, self.params.wing_geometry, self.charts
-
-        S_v = self._require(tg.S_vert_tail, "tail_geometry.S_vert_tail")
-        S_w = (self._require(wg.S_e_fw, "wing_geometry.S_e_fw") + self._require(wg.S_e_aw, "wing_geometry.S_e_aw"))
-
-        return -ch.cyb_v_over_cyb_v_eff*ch.cyb_v_eff*((2*S_v)/S_w)
+        tg, ch = self.params.tail_geometry, self.charts
+        S_v = self._require(tg.S_vert_tail, "tail_geometry.S_vert_tail")   # area of ONE fin
+        S_ref, _, _ = self._ref()
+        n = self._require(tg.n_fins, "tail_geometry.n_fins")
+        return -ch.cyb_v_over_cyb_v_eff*ch.cyb_v_eff*(n*S_v/S_ref)
 
     # =======================================================================
     # LATERAL — Prandtl-plane winglet / vertical-joiner prerequisites
@@ -880,8 +896,8 @@ class Aircraft:
         (CYp/CL)_CL0,M with compressibility (Eq 7.1.2.1-b).
         """
         B = np.sqrt(1 - self.fc.mach**2*np.cos(sweep_c4)**2)
-        f = ((A + 4*np.cos(sweep_c4))/(A*B + 4*np.cos(sweep_c4))
-             - (A*B + np.cos(sweep_c4))/(A + np.cos(sweep_c4)))
+        f = ((A + 4*np.cos(sweep_c4))/(A*B + 4*np.cos(sweep_c4)) \
+             * (A*B + np.cos(sweep_c4))/(A + np.cos(sweep_c4)))
         return f * base
  
     def CY_p(self):
@@ -916,8 +932,8 @@ class Aircraft:
         L = sweep_c4
         base = -(1/6)*(A + 6*(A + np.cos(L))*((x_bar_over_c)*(np.tan(L)/A) + np.tan(L)**2/12))/(A + 4*np.cos(L))
         B = np.sqrt(1 - self.fc.mach**2*np.cos(L)**2)
-        f = ((A + 4*np.cos(L))/(A*B + 4*np.cos(L))
-             - (A*B + 0.5*(A*B + np.cos(L))*np.tan(L)**2)/(A + 0.5*(A + np.cos(L))*np.tan(L)**2))
+        f = ((A + 4*np.cos(L))/(A*B + 4*np.cos(L)) \
+             * (A*B + 0.5*(A*B + np.cos(L))*np.tan(L)**2)/(A + 0.5*(A + np.cos(L))*np.tan(L)**2))
         return f * base
  
     def Cn_p(self):
@@ -1071,7 +1087,7 @@ class Aircraft:
         kappa = self._kappa_from_section_slope(ac.cl_alpha_fw)
         beta = self.beta()
         Cld_prime = self._require(ch.aileron_param, "charts.aileron_param") * (kappa/beta)
-        a_d = self.section_flap_effectiveness(ch.aileron_ad_theory, ch.aileron_ad_ratio)
+        a_d = self.section_flap_effectiveness(ch.aileron_ad_theory, ch.aileron_ad_ratio, ac.cl_alpha_aw)
         a_d_full = self._require(ch.aileron_ad_full_chord, "charts.aileron_ad_full_chord")
         return Cld_prime * (a_d/a_d_full)
  
@@ -1084,16 +1100,25 @@ class Aircraft:
     # =======================================================================
     # LATERAL — rudder
     # =======================================================================
+    def _vtail_section_cl_alpha(self):
+        """Incompressible section lift slope of the vertical-tail airfoil [1/rad]."""
+        tg, ch = self.params.tail_geometry, self.charts
+        cla_theory = 6.28 + 4.7*self._require(tg.t_c_vert_tail, "tail_geometry.t_c_vert_tail") \
+                    * (1 + 0.00375*self._require(tg.te_angle_vert_tail, "tail_geometry.te_angle_vert_tail"))
+        return cla_theory * self._require(ch.section_slope_ratio_vt, "charts.section_slope_ratio_vt")
+
     def _rudder_effectiveness(self):
         ch = self.charts
-        return self.section_flap_effectiveness(ch.rudder_ad_theory, ch.rudder_ad_ratio)
+        return self.section_flap_effectiveness(ch.rudder_ad_theory, ch.rudder_ad_ratio,
+                                           self._vtail_section_cl_alpha())
  
     def CY_delta_r(self):
         tg, ac = self.params.tail_geometry, self.params.aerodynamics
         S_ref, _, _ = self._ref()
         Sv = self._require(tg.S_vert_tail, "tail_geometry.S_vert_tail")
+        n = self._require(tg.n_fins, "tail_geometry.n_fins")
         eta_v = self._require(ac.dyn_pres_ratio_fuselage_to_tail, "aerodynamics.dyn_pres_ratio_fuselage_to_tail")
-        return self.CL_alpha_vtail() * eta_v * (Sv/S_ref) * self._rudder_effectiveness()
+        return self.CL_alpha_vtail() * eta_v * (n*Sv/S_ref) * self._rudder_effectiveness()
  
     def Cn_delta_r(self):
         _, b_ref, _ = self._ref()
@@ -1288,38 +1313,35 @@ def print_results(obj):
     print("  C_l_beta<0, C_l_p<0, C_n_r<0. All derivatives per radian.".ljust(total))
     print(line + "\n")
 
-
-if __name__ == "__main__":
-
-    c2_sweep = Aircraft._le_to_c2(0, A= 5.63, taper=0.4)
-    c4_sweep = Aircraft._le_to_c4(0, A= 5.63, taper=0.4)
-    print("C2 Sweep:", np.degrees(c2_sweep))
-    print("C4 Sweep:", np.degrees(c4_sweep))
-
+def main_aircraft():
     params = AircraftParameters()
     charts = DatcomChartInputs()
     physical = Physical()
     fc = FlightCondition()
 
+    MMOI = as_mass_properties(aircraft_inertia(verbose=True))
+
+    params.mass.mtow = MMOI["mtow"]
+    params.mass.I_xx = MMOI["I_xx"]
+    params.mass.I_yy = MMOI["I_yy"]
+    params.mass.I_zz = MMOI["I_zz"]
+    params.mass.I_xz = MMOI["I_xz"]
+    params.mass.z_cg = MMOI["z_cg"]
+    params.mass.x_cg_opt = MMOI["x_cg"]
+
     aircraft = Aircraft(params, physical, fc, charts)
-    print("C_n_beta:", aircraft.Cn_beta())
-    print("C_L_alpha_fw:", aircraft.CL_alpha_front_wing())
 
-    M = FlightCondition.mach
-    beta = np.sqrt(1 - M**2)
-    lambda_beta = np.degrees(np.arctan(np.tan(c4_sweep)/beta))
-    print("Beta_sweep:", lambda_beta)
-
-    k = aircraft._kappa_from_section_slope(cl_alpha_per_deg=0.107)
-    factor = beta*5.63/k
-    print(factor)
-
-    aoa_cruise = FlightCondition.alpha
-    l_p = 6.9
-    z_p = 1.2
-    z_v = np.cos(aoa_cruise)*z_p - np.sin(aoa_cruise)*l_p
-    print(2*z_v/13)
-
-    # ---- full derivative summary ----
-    aircraft.solve()
+    solved = aircraft.solve()
+    assert solved is aircraft.params
+    print("MTOW used by aircraft:", aircraft.params.mass.mtow)
+    print("I_xx used by aircraft:", aircraft.params.mass.I_xx)
+    print("I_yy used by aircraft:", aircraft.params.mass.I_yy)
+    print("I_zz used by aircraft:", aircraft.params.mass.I_zz)
+    print("I_xz used by aircraft:", aircraft.params.mass.I_xz)
     print_results(aircraft)
+
+    return solved, aircraft
+
+
+if __name__ == "__main__":
+    main_aircraft()
