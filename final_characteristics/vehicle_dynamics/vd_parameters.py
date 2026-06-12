@@ -56,8 +56,8 @@ class WingGeometry:
     MAC_fw:               float = 1.262  # [m]
     MAC_aw:               float = 1.262  # [m]
 
-    taper_fw:             float = 0.4  # [-]
-    taper_aw:             float = 0.4  # [-]
+    taper_fw:             float = 0.45  # [-]
+    taper_aw:             float = 0.45  # [-]
 
     chord_fw_root:        float = 1.66  # [m]
     chord_fw_tip:         float = 0.75  # [m]
@@ -248,6 +248,9 @@ class AerodynamicCoefficients:
     C_M_ac_aw:                           float = -0.118  # [-]
     C_M_ac_fuselage:                     float = None  # [-]
 
+    # Zero-lift AoA
+    alpha_zero_lift_fw:                 float = -0.077 # [rad.]
+
     # Downwash gradients
     downwash_gradient_fw_to_aw:         float = None  # [-]
     sidewash_gradient_fuselage_to_tail: float = None  # [-]
@@ -388,29 +391,55 @@ class Propulsion:
     z_cr_6:               float = None  # [m]
 
     # Engine locations in VTOL CONFIGURATION
-    x_vtol_1:               float = 1.15  # [m]
+    # x_vtol_1:               float = 1.15  # [m]
+    # y_vtol_1:               float = 2.0  # [m]
+    # z_vtol_1:               float = None  # [m]
+
+    # x_vtol_2:               float = 3.3  # [m]
+    # y_vtol_2:               float = 2.0  # [m]
+    # z_vtol_2:               float = None  # [m]
+
+    # x_vtol_3:               float = 5.75  # [m]
+    # y_vtol_3:               float = 2.0  # [m]
+    # z_vtol_3:               float = None  # [m]
+
+    # x_vtol_4:               float = 1.15  # [m]
+    # y_vtol_4:               float = -2.0  # [m]
+    # z_vtol_4:               float = None  # [m]
+
+    # x_vtol_5:               float = 3.3  # [m]
+    # y_vtol_5:               float = -2.0  # [m]
+    # z_vtol_5:               float = None  # [m]
+
+    # x_vtol_6:               float = 5.75  # [m]
+    # y_vtol_6:               float = -2.0  # [m]
+    # z_vtol_6:               float = None  # [m]
+
+    x_vtol_1:               float = 3.43  # [m]
     y_vtol_1:               float = 2.0  # [m]
     z_vtol_1:               float = None  # [m]
 
-    x_vtol_2:               float = 3.3  # [m]
+    x_vtol_2:               float = 5.43  # [m]
     y_vtol_2:               float = 2.0  # [m]
     z_vtol_2:               float = None  # [m]
 
-    x_vtol_3:               float = 5.75  # [m]
+    x_vtol_3:               float = 7.76  # [m]
     y_vtol_3:               float = 2.0  # [m]
     z_vtol_3:               float = None  # [m]
 
-    x_vtol_4:               float = 1.15  # [m]
+    x_vtol_4:               float = 3.43  # [m]
     y_vtol_4:               float = -2.0  # [m]
     z_vtol_4:               float = None  # [m]
 
-    x_vtol_5:               float = 3.3  # [m]
+    x_vtol_5:               float = 5.43  # [m]
     y_vtol_5:               float = -2.0  # [m]
     z_vtol_5:               float = None  # [m]
 
-    x_vtol_6:               float = 5.75  # [m]
+    x_vtol_6:               float = 7.76  # [m]
     y_vtol_6:               float = -2.0  # [m]
     z_vtol_6:               float = None  # [m]
+
+
 
     # Mass
     propulsion_system_mass: float = None  # [kg] - MASS PER ENGINE

@@ -21,7 +21,7 @@ class Physical:
 class FlightCondition:
     mach:               float = (200/3.6)/(np.sqrt(Physical.gamma*Physical.R*263.385))
     rho:                float = 0.835679
-    tas:                float = 200/3.6       # true airspeed [m/s]
+    tas:                float = 200/3.6    # true airspeed [m/s] - assume no wind
     alpha:              float = 0.0        # [rad]
     gamma0:             float = 0.0        # [rad]
     config:             str = "cruise"     # selects x_ac_*_cruise vs *_approach
@@ -270,7 +270,7 @@ class Aircraft:
 
         beta = self.beta()
 
-        return 4.44*(K_A*K_lambda*K_H*(np.sqrt(np.cos(sweep_c4_fw))))**(1.19) * (1/beta)
+        return 4.44*(K_A*K_lambda*K_H*(np.sqrt(np.cos(sweep_c4_fw))))**(1.19) * (1/beta) 
     
 
     def CL_alpha_aircraft(self):  
