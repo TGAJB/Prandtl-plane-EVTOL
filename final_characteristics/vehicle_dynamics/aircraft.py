@@ -46,8 +46,8 @@ class DatcomChartInputs:
     # fw/aw are no longer used: the wing section slopes come straight from the
     # aero department (cl_alpha_fw / cl_alpha_aw). Only _vt is still consumed,
     # for the vertical tail whose airfoil is not yet selected.
-    section_slope_ratio_vt:   float = 0.107
-    section_slope_ratio_winglet: float = 0.107
+    section_slope_ratio_vt:   float = 0.9
+    section_slope_ratio_winglet: float = 0.9
 
     # Winglet / Prandtl-plane vertical-joiner corrections.
     # These are kept separate from the vertical-tail DATCOM sidewash method because
@@ -806,13 +806,13 @@ class Aircraft:
         Gam = self._require(dih, "dihedral")           
         th = tw if tw is not None else 0.0             
         dClb_dG = -0.0005*np.sqrt(A)*(d/b_ref)**2                                  
-        dClb_zw = (1.2*np.sqrt(A)/57.3)*(self._require(zw, "z_w")/b_ref)*(2*d/b_ref)  
+        dClb_zw = -(1.2*np.sqrt(A)/57.3)*(self._require(zw, "z_w")/b_ref)*(2*d/b_ref)  
         term_CL = CL*((self._require(clCL_s, "clb_over_CL_sweep")*self._require(KML, "clb_KM_Lambda")*self._require(Kf, "clb_Kf"))
                       + self._require(clCL_A, "clb_over_CL_AR"))
         term_G = Gam*(self._require(clG, "clb_over_dihedral")*self._require(KMG, "clb_KM_Gamma") + dClb_dG)
         term_tw = th*np.tan(sweep_c4)*self._require(tw_term, "clb_twist")
 
-        return term_CL + term_G + dClb_zw + term_tw
+        return (term_CL + term_G + dClb_zw + term_tw) * (S/self._ref()[0]) * (b/b_ref)
  
     def Cl_beta(self):
         """
@@ -1083,7 +1083,7 @@ class Aircraft:
         kappa = self._kappa_from_section_slope(ac.cl_alpha_fw)
         beta = self.beta()
         Cld_prime = self._require(ch.aileron_param, "charts.aileron_param") * (kappa/beta)
-        a_d = self.section_flap_effectiveness(ch.aileron_ad_theory, ch.aileron_ad_ratio, ac.cl_alpha_aw)
+        a_d = self.section_flap_effectiveness(ch.aileron_ad_theory, ch.aileron_ad_ratio, ac.cl_alpha_fw*self.physical.deg_per_rad)
         a_d_full = self._require(ch.aileron_ad_full_chord, "charts.aileron_ad_full_chord")
         return Cld_prime * (a_d/a_d_full)
  

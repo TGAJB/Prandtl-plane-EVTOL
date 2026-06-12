@@ -389,4 +389,4 @@ def main(plot=True, save_dir="./final_characteristics/vehicle_dynamics/plots/dyn
 
 
 if __name__ == "__main__":
-    main(plot=False)
+    main(plot=True)

@@ -188,8 +188,8 @@ class FuselageGeometry:
     d_aw:              float = 0     # [m]
     x_ac_fuselage:     float = None  # [m]
 
-    side_area:           float = 20.0 + TailGeometry.S_vert_tail  # [m^2] projected side area S_Bs (Cn_beta)
-    base_area:           float = 20.0  # [m^2] reference/base area S_B0 (CY_beta body)
+    base_area:           float = 12.8  # [m^2] reference/base area S_B0 (CY_beta body)
+    side_area:           float = base_area + TailGeometry.S_vert_tail  # [m^2] projected side area S_Bs (Cn_beta)
     body_depth_at_wing:  float = d_fw  # [m]   d at the wing (sidewash); ~ diameter
 
 
@@ -571,6 +571,9 @@ S_W         = 30.0            # [m^2]   class I total wing reference area
 AR_W        = 5.63            # [-]     class I wing aspect ratio
 #    Wing material: CFRP (standard for modern eVTOL primary structure)
 T_SKIN_MIN_CFRP  = 1.0e-3  # [m]    minimum CFRP skin - 8 plies ?- 0.125 mm prepreg (MIL-HDBK-17-3F)
+
+# Vtail structural parameters
+WINGLET_SKIN_THICKNESS = 0.001
 
 # V-tail structural parameters
 # (planform values derived from TailGeometry; V_ANGLE and X_TAIL are the
