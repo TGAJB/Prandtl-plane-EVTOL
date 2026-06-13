@@ -77,11 +77,11 @@ override. `b_aw`/`taper_aw` already mirror via `_resolve_dependents`. Add the
 
 | Root | loc | MTOW-coupled | Primarily drives | Leverage |
 |---|---|---|---|---|
-| `tail_geometry.b_vert_tail` (span) | :139 | no³ | `C_Y_beta`, `C_N_beta`, `C_Y_r`, `C_N_r` (weathercock / yaw damping) | **high** (directional) |
-| `tail_geometry.x_vert_tail` (arm) | :136 | no | `C_N_beta`, `C_N_r`, `C_Y_r`, `C_N_p` (moment arm); cg | **high** (directional) |
-| `tail_geometry.c_r_vert_tail` | :137 | no³ | `S_vert_tail` → all directional derivs | med |
-| `tail_geometry.c_t_vert_tail` | :138 | no³ | `S_vert_tail`, tail taper | med |
-| `tail_geometry.z_vert_tail` | :149 | no | roll/yaw coupling (vertical arm `z_p`) | low-med |
+| `tail_geometry.b_vert_tail` (span) | :153 | no³ | `C_Y_beta`, `C_N_beta`, `C_Y_r`, `C_N_r` (weathercock / yaw damping) | **high** (directional) |
+| `tail_geometry.x_vert_tail` (arm) | :150 | no | `C_N_beta`, `C_N_r`, `C_Y_r`, `C_N_p` (moment arm); cg | **high** (directional) |
+| `tail_geometry.c_r_vert_tail` | :151 | no³ | `S_vert_tail` → all directional derivs | med |
+| `tail_geometry.c_t_vert_tail` | :152 | no³ | `S_vert_tail`, tail taper | med |
+| `tail_geometry.z_vert_tail` | :163 | no | roll/yaw coupling (vertical arm `z_p`) | low-med |
 
 ³ Tail size currently does not feed the converger (`S_TAIL` mass uses its own
 sheet value). If tail mass should respond, wire `b/c_r/c_t_vert_tail` →
@@ -91,16 +91,16 @@ sheet value). If tail mass should respond, wire `b/c_r/c_t_vert_tail` →
 
 | Root | loc | MTOW-coupled | Primarily drives | Leverage |
 |---|---|---|---|---|
-| `winglet_geometry.S_winglet` | :166 | no | winglet contribution to `C_Y_beta`, `C_L_beta`, `C_N_beta` | med |
-| `winglet_geometry.b_winglet` | :167 | no | `AR_winglet`; lateral contributions | low-med |
-| `winglet_geometry.x_ac_winglet` / `z_ac_winglet` | :172 / :173 | no | winglet moment arms (roll/yaw) | low-med |
+| `winglet_geometry.S_winglet` | :180 | no | winglet contribution to `C_Y_beta`, `C_L_beta`, `C_N_beta` | med |
+| `winglet_geometry.b_winglet` | :181 | no | `AR_winglet`; lateral contributions | low-med |
+| `winglet_geometry.x_ac_winglet` / `z_ac_winglet` | :186 / :187 | no | winglet moment arms (roll/yaw) | low-med |
 
 ## E. Fuselage
 
 | Root | loc | MTOW-coupled | Primarily drives | Leverage |
 |---|---|---|---|---|
-| `fuselage_geometry.fuselage_length` | :186 | **yes** `L_FUS` | fuselage mass (Raymer) → MTOW; cg | **high (MTOW)** — top MTOW driver in the sweep (±~25 kg) |
-| `fuselage_geometry.d_fw` (width) | :187 | yes⁴ `FUSE_WIDTH` | `C_L_beta` body term, side-area / `C_Y_p`, `C_N_beta`; landing-gear track | med (aero); **MTOW ≈ 0** |
+| `fuselage_geometry.fuselage_length` | :200 | **yes** `L_FUS` | fuselage mass (Raymer) → MTOW; cg | **high (MTOW)** — top MTOW driver in the sweep (±~25 kg) |
+| `fuselage_geometry.d_fw` (width) | :201 | yes⁴ `FUSE_WIDTH` | `C_L_beta` body term, side-area / `C_Y_p`, `C_N_beta`; landing-gear track | med (aero); **MTOW ≈ 0** |
 
 ⁴ `FUSE_WIDTH` feeds the landing-gear *track* (→ gear mass in the trade study),
 not the fuselage-mass regression; over [1.6, 2.4] m its measured MTOW effect is
