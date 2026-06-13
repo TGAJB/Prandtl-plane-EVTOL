@@ -8,8 +8,8 @@ other scripts while varying MTOW, wing-area split, and the VTOL/cruise CGs.
 import aircraft
 import numpy as np
 
+from parameters import CRUISE_STATIC_MARGIN, G, WingGeometry
 from VTOL_cg_envelope_det import (
-    G,
     LP_TOL,
     cg_envelope_with_static_margin,
     default_failed_cases,
@@ -21,8 +21,11 @@ from VTOL_cg_envelope_det import (
 )
 
 
-DEFAULT_CRUISE_STATIC_MARGIN = 0.05
-DEFAULT_S_AFT_TO_S_TOTAL = 0.50
+# Defaults sourced from parameters.py (the master sheet) so the analysis stays
+# in sync with the design: the cruise static margin and the aft/total wing-area
+# split both come from there rather than being hardcoded here.
+DEFAULT_CRUISE_STATIC_MARGIN = CRUISE_STATIC_MARGIN
+DEFAULT_S_AFT_TO_S_TOTAL = WingGeometry.S_aw / WingGeometry.S_tot
 
 
 def calc_wing_geom(ac, S, wing):
@@ -34,15 +37,15 @@ def calc_wing_geom(ac, S, wing):
     else:
         b = ac.params.wing_geometry.b_aw
         taper = ac.params.wing_geometry.taper_aw
-        d = 0.0
-        S_e = S
+        d = ac.params.fuselage_geometry.d_aw
 
     c_r = (2*S)/(b*(1 + taper))
     MAC = (2/3)*c_r*((1 + taper + taper**2)/(1 + taper))
     A = b**2/S
 
-    if wing == 1:
-        S_e = ((b - d)/2) * (c_r*(1 - (1 - taper)*(d/b)) + taper*c_r)
+    # Trapezoidal exposed area; reduces exactly to S when the carry-through
+    # width d = 0 (the current aft-wing case, d_aw = 0), so it is valid for both.
+    S_e = ((b - d)/2) * (c_r*(1 - (1 - taper)*(d/b)) + taper*c_r)
 
     return MAC, A, S_e
 

@@ -555,6 +555,12 @@ LD_CRUISE            = 14.7   # [-]   box-wing cruise L/D (preliminary)
 CD0                  = 0.0205 # [-]   zero-lift drag coefficient (preliminary)
 OSWALD_EFFICIENCY    = AerodynamicCoefficients.e_hor_wings  # [-] Oswald efficiency factor
 
+# Longitudinal static-stability margins (fraction of the global MAC)
+# Master values for the two CG-envelope analyses in final_characteristics/
+# vehicle_dynamics; edit them here, not in those modules.
+CRUISE_STATIC_MARGIN   = 0.05  # [-] cruise aft-CG static margin (stat_long_stab_anal_func.py)
+VTOL_OEI_STATIC_MARGIN = 0.05  # [-] VTOL OEI CG-envelope static margin (VTOL_cg_envelope_det.py)
+
 # Wing structural parameters
 
 NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing

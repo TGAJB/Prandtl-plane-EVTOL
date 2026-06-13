@@ -23,8 +23,10 @@ from parameters import (
     ETA_ROTOR_FW_OUT,
     ETA_ROTOR_RW,
     FM,
+    G,
     N_PROP,
     RHO_ORIGIN,
+    VTOL_OEI_STATIC_MARGIN,
     X_ROTOR_FW,
     X_ROTOR_RW,
     Z_ROTOR_FW,
@@ -34,7 +36,6 @@ from parameters import (
 from class_II_sizing.mtow_sizing import converged_mass
 
 
-G = 9.80665  # [m/s^2]
 LP_TOL = 1e-8
 
 
@@ -93,9 +94,9 @@ def load_design_parameters():
 
     return params
 
-# Tweak this value manually to change the VTOL OEI allowable CG envelope.
+# Master value lives in parameters.py (VTOL_OEI_STATIC_MARGIN); edit it there.
 # The margin is applied inward from both feasible CG limits using the global MAC.
-VTOL_STATIC_MARGIN_GLOBAL_MAC = 0.05
+VTOL_STATIC_MARGIN_GLOBAL_MAC = VTOL_OEI_STATIC_MARGIN
 
 
 def propeller_coordinates(params):
