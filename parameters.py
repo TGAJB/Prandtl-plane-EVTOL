@@ -652,6 +652,17 @@ RESERVE_FRAC = 0.20     # [-]   20% energy reserve on (mission + aux)
 S_SERIES     = 235      # [-]   cells in series for the 800 V bus
 E_CELL_DENS_WH_KG = E_CELL_WH / M_CELL_KG   # = 386 Wh/kg (derived, do not edit)
 
+# Cell physical envelope (one pouch cell; supplier figure, 126 x 43 x 9 mm,
+# 100 g packaged). These drive ONLY the pack-box GEOMETRY (battery_box_dimensions
+# below / MMOI inertia). The ENERGY-sizing cell mass stays M_CELL_KG (97.3 g
+# datasheet) so the validated 386 Wh/kg and the battery mass build-up are
+# unchanged; the 100 g packaged figure is recorded here for traceability only.
+CELL_L_M       = 0.126  # [m]  cell length
+CELL_W_M       = 0.043  # [m]  cell width
+CELL_H_M       = 0.009  # [m]  cell thickness
+CELL_MASS_PACKAGED_KG = 0.100  # [kg] packaged cell mass (image) -- NOT used in sizing
+CELL_VOLUME_M3 = CELL_L_M * CELL_W_M * CELL_H_M  # [m^3] per-cell envelope (derived)
+
 # Airframe geometry
 
 L_FUS       = FuselageGeometry.fuselage_length  # [m]  fuselage length
@@ -724,12 +735,35 @@ Z_ROTOR_RW = Z_WING_R                   # [m]  rotors carried at rear-wing heigh
 X_CG_OPT = MassProperties.x_cg_opt  # [m]  optimal CG location during cruise
 
 # -- Battery (underfloor box) --
-L_BATT = 3.0    # [m]  box length ~ cabin floor length                                  PLACEHOLDER
-W_BATT = 1.2    # [m]  box width between cabin floor beams                              PLACEHOLDER
-H_BATT = 0.25   # [m]  underfloor bay depth                                             PLACEHOLDER
+# The box L x W x H is NO LONGER a constant: it scales with the installed cells
+# via battery_box_dimensions(m_batt) below (consumed by class_II_sizing/MMOI.py).
+# Only the box POSITION stays fixed here.
 X_BATT = 2.7  # [m]  box mid-length at the cruise-optimal CG so the
                    #      heaviest item is CG-neutral
 Z_BATT = -0.7   # [m]  below the cabin floor (floor ~ -0.5 m for the 2.0 m section)
+
+# Volumetric packing efficiency = (summed cell volume) / (box volume).
+# Calibrated so the isometric pack box reproduces the previous underfloor-box
+# estimate (3.0 x 1.2 x 0.25 m = 0.90 m^3) at the current converged battery mass
+# (~476 kg -> ~3525 cells). Raise toward ~0.4-0.6 as the integrated-pack layout
+# (cooling, busbars, BMS, structure) firms up; the box shrinks accordingly.
+BATT_VOL_PACK_FRAC = 0.19  # [-]
+
+
+def battery_box_dimensions(m_batt_kg):
+    """Underfloor battery-box (L, W, H) in metres, scaled from the cells.
+
+    The box is an ISOMETRIC scale-up of one cell: it keeps the cell's
+    126:43:9 proportions (CELL_L_M:CELL_W_M:CELL_H_M) and is scaled by the cube
+    root of (cell count / BATT_VOL_PACK_FRAC), so the box volume tracks the
+    installed cells. The cell count is back-computed from the pack mass through
+    the cell-to-pack mass fraction using the 97.3 g energy-sizing cell mass
+    (M_CELL_KG), consistent with the battery mass build-up -- NOT the 100 g
+    packaged figure.
+    """
+    n_cells = m_batt_kg * CELL_TO_PACK / M_CELL_KG
+    scale = (n_cells / BATT_VOL_PACK_FRAC) ** (1.0 / 3.0)
+    return CELL_L_M * scale, CELL_W_M * scale, CELL_H_M * scale
 
 # -- Payload (pax + luggage cabin box) --
 X_PAYLOAD     = 2.7  # [m]  pax + luggage centred on the target CG

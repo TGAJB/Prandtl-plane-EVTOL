@@ -95,7 +95,7 @@ from parameters import (
     ETA_ROTOR_FW_IN, ETA_ROTOR_FW_OUT, ETA_ROTOR_RW,
     X_ROTOR_FW, X_ROTOR_RW, Z_ROTOR_FW, Z_ROTOR_RW,
     X_ROTOR_FW_IN_VTOL, X_ROTOR_FW_OUT_VTOL, X_ROTOR_RW_VTOL,
-    L_BATT, W_BATT, H_BATT, X_BATT, Z_BATT,
+    X_BATT, Z_BATT, battery_box_dimensions,
     X_PAYLOAD, Z_PAYLOAD, L_PAYLOAD_BOX, W_PAYLOAD_BOX, H_PAYLOAD_BOX,
     X_GEAR, Y_GEAR_RAIL, Z_GEAR, L_SKID_RAIL,
     X_MISC, Z_MISC, FAT_CYLINDER_SECTION
@@ -302,10 +302,12 @@ def build_components(breakdown, configuration="cruise"):
         add(f"pod_{name}", m_pod, (x, y, z), np.zeros((3, 3)))
         add(f"prop_{name}", m_prop, (x, y, z), prop_local)
 
-    # -- Battery: solid underfloor box --
+    # -- Battery: solid underfloor box; L x W x H scale isometrically from the
+    #    installed cells (126:43:9 proportions), so the box grows with m_batt. --
     m_batt = breakdown["battery"]
+    l_batt, w_batt, h_batt = battery_box_dimensions(m_batt)
     add("battery", m_batt, (X_BATT, 0.0, Z_BATT),
-        inertia_solid_box(m_batt, L_BATT, W_BATT, H_BATT))
+        inertia_solid_box(m_batt, l_batt, w_batt, h_batt))
 
     # -- Payload: solid cabin box --
     m_pay = breakdown["payload"]
