@@ -578,6 +578,19 @@ OSWALD_EFFICIENCY    = AerodynamicCoefficients.e_hor_wings  # [-] Oswald efficie
 CRUISE_STATIC_MARGIN   = 0.05  # [-] cruise aft-CG static margin (stat_long_stab_anal_func.py)
 VTOL_OEI_STATIC_MARGIN = 0.05  # [-] VTOL OEI CG-envelope static margin (VTOL_cg_envelope_det.py)
 
+# Penalty applied when the VTOL-OEI c.g. envelope is infeasible (no allowable c.g.
+# exists for a propeller-out case): the allowable limits are pushed out of reach
+# so both VTOL c.g. requirements fail with a big, finite violation.
+VTOL_INFEASIBLE_PENALTY = 1.0e6  # [m] (stability_eval.py)
+
+# Inertia-estimation placeholders (Roskam class-I radii-of-gyration method,
+# I = m*(Rbar*L_char/2)^2). Only used as a fallback when MMOI has not filled the
+# real inertias; the MMOI build-up (class_II_sizing/MMOI.py) supersedes these.
+INERTIA_RBAR_X        = 0.25  # [-] roll-inertia radius factor   (dyn_stab_analysis.py)
+INERTIA_RBAR_Y        = 0.35  # [-] pitch-inertia radius factor  (dyn_stab_analysis.py)
+INERTIA_RBAR_Z        = 0.40  # [-] yaw-inertia radius factor    (dyn_stab_analysis.py)
+INERTIA_XZ_TO_XX_RATIO = 0.05  # [-] I_xz as a fraction of I_xx   (dyn_stab_analysis.py)
+
 # Wing structural parameters
 
 NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing

@@ -80,16 +80,21 @@ from pymoo.operators.mutation.pm import PM
 #   bounds    -- (low, high) search range
 #   route     -- where the value goes when evaluating a design:
 #                  "design_var:<key>"  -> stability_eval design_vars[<key>]
-#                                         (recognised keys: x_cg, s_aft_to_s_total)
+#                                         (recognised keys: s_aft_to_s_total)
 #                  "override:<dotted>"  -> stability_eval param_overrides[<dotted>]
 #   converger -- name of a class_II_sizing.mass_components module global to
 #                override before reconverging the MTOW (None = does not affect the
 #                converged mass). Only "wing_loading" does today.
 #
+# NOTE: the c.g. is NOT a design variable. It is an EMERGENT output of the
+# component mass build-up, computed by MMOI (cruise + VTOL) inside
+# stability_eval.evaluate_stability. The c.g.-envelope requirements remain
+# constraints; promote the layout roots that MOVE the c.g. (e.g. x_LEMAC_fw,
+# x_vert_tail, battery/payload stations) rather than tuning the c.g. directly.
+#
 # The set + bounds below are SUGGESTIONS grounded in the Sobol consult
 # (stability_sensitivity.py). Edit to match the team's chosen tunables.
 DESIGN_VARIABLES = {
-    "x_cg":             {"bounds": (2.8, 3.6),   "route": "design_var:x_cg",                           "converger": None},
     "s_aft_to_s_total": {"bounds": (0.30, 0.70), "route": "override:s_aft_to_s_total",                 "converger": None},
     "dihedral_fw":      {"bounds": (0.0, 6.0),   "route": "override:wing_geometry.dihedral_front_wing","converger": None},
     "dihedral_aw":      {"bounds": (0.0, 6.0),   "route": "override:wing_geometry.dihedral_aft_wing",  "converger": None},
@@ -111,7 +116,6 @@ def design_vector_to_dict(x):
 def default_design_vector():
     """Nominal starting design (mid-range-ish, near the current sheet values)."""
     return {
-        "x_cg":             3.311,  # current sheet x_cg_opt
         "s_aft_to_s_total": 0.50,
         "dihedral_fw":      0.0,
         "dihedral_aw":      0.0,

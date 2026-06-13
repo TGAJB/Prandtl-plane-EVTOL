@@ -74,8 +74,9 @@ from VTOL_cg_envelope_det import load_design_parameters
 
 # Large penalty used when the VTOL OEI envelope cannot be computed (an OEI case
 # is infeasible). It pushes the allowable limits out of reach so both VTOL c.g.
-# requirements fail with a big, finite violation.
-_INFEASIBLE_PENALTY = 1.0e6  # [m]
+# requirements fail with a big, finite violation. Sourced from the parameter
+# sheet (single master value).
+from parameters import VTOL_INFEASIBLE_PENALTY as _INFEASIBLE_PENALTY  # [m]
 
 
 # ===========================================================================
@@ -218,8 +219,10 @@ def _resolve_dependents(params):
     wl.AR_winglet = wl.b_winglet ** 2 / wl.S_winglet
     wl.LE_sweep_winglet = np.arctan(wg.stagger / wg.gap)
 
-    # Fuselage projected side area carries the vertical-tail area.
-    fg.side_area = 20.0 + tg.S_vert_tail
+    # Fuselage projected side area carries the vertical-tail area. The base area
+    # is the sheet field (FuselageGeometry.base_area), matching the dataclass
+    # default and aircraft.main_aircraft() rather than a hardcoded constant.
+    fg.side_area = fg.base_area + tg.S_vert_tail
     fg.body_depth_at_wing = fg.d_fw
 
 
@@ -325,10 +328,13 @@ def evaluate_stability(param_overrides=None, design_vars=None, mtow=None):
         _set_dotted(params, charts, dotted_path, value)
     _resolve_dependents(params)
 
-    # c.g. positions: design_vars override the sheet default x_cg_opt.
-    default_cg = params.mass.x_cg_opt
-    cg_cruise_nose = design_vars.get("cg_cruise_nose", design_vars.get("x_cg", default_cg))
-    cg_vtol_nose = design_vars.get("cg_vtol_nose", design_vars.get("x_cg", default_cg))
+    # c.g. (and inertias) from the REAL MMOI component mass build-up, not a
+    # hand-set sheet value. The cruise build-up fills params.mass and feeds the
+    # cruise checks; the aft-shifted VTOL (wings-folded) build-up feeds the
+    # VTOL-OEI check. design_vars may still override for manual what-ifs.
+    mmoi_cruise_cg, mmoi_vtol_cg = aircraft.apply_mmoi_mass_properties(params)
+    cg_cruise_nose = design_vars.get("cg_cruise_nose", design_vars.get("x_cg", mmoi_cruise_cg))
+    cg_vtol_nose = design_vars.get("cg_vtol_nose", design_vars.get("x_cg", mmoi_vtol_cg))
     cruise_static_margin = design_vars.get("cruise_static_margin", DEFAULT_CRUISE_STATIC_MARGIN)
 
     # --- Build the aircraft and apply the wing-area split ------------------

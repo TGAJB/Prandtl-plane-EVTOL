@@ -1309,21 +1309,41 @@ def print_results(obj):
     print("  C_l_beta<0, C_l_p<0, C_n_r<0. All derivatives per radian.".ljust(total))
     print(line + "\n")
 
+def apply_mmoi_mass_properties(params, verbose=False):
+    """Source the mass properties (c.g., inertias, MTOW) from the real MMOI
+    component mass build-up and write them onto ``params.mass``.
+
+    This is THE single method every vehicle-dynamics entry point uses so the c.g.
+    and inertias come from the component layout (class_II_sizing/MMOI.py), never a
+    hand-set sheet value. MMOI is dual-mode: the CRUISE build-up fills
+    ``params.mass`` (x_cg_opt, z_cg, inertias, mtow) and drives the cruise
+    analysis, while the VTOL build-up (wings folded, rotors repositioned) gives an
+    aft-shifted c.g. used by the VTOL-OEI envelope check.
+
+    Returns:
+        (cruise_x_cg, vtol_x_cg): the longitudinal c.g. stations [m, nose datum]
+        for the cruise and VTOL configurations.
+    """
+    cruise = as_mass_properties(aircraft_inertia(verbose=verbose, configuration="cruise"))
+    params.mass.mtow = cruise["mtow"]
+    params.mass.I_xx = cruise["I_xx"]
+    params.mass.I_yy = cruise["I_yy"]
+    params.mass.I_zz = cruise["I_zz"]
+    params.mass.I_xz = cruise["I_xz"]
+    params.mass.z_cg = cruise["z_cg"]
+    params.mass.x_cg_opt = cruise["x_cg"]
+
+    vtol_x_cg = float(as_mass_properties(aircraft_inertia(configuration="vtol"))["x_cg"])
+    return float(cruise["x_cg"]), vtol_x_cg
+
+
 def main_aircraft():
     params = AircraftParameters()
     charts = DatcomChartInputs()
     physical = Physical()
     fc = FlightCondition()
 
-    MMOI = as_mass_properties(aircraft_inertia(verbose=True))
-
-    params.mass.mtow = MMOI["mtow"]
-    params.mass.I_xx = MMOI["I_xx"]
-    params.mass.I_yy = MMOI["I_yy"]
-    params.mass.I_zz = MMOI["I_zz"]
-    params.mass.I_xz = MMOI["I_xz"]
-    params.mass.z_cg = MMOI["z_cg"]
-    params.mass.x_cg_opt = MMOI["x_cg"]
+    apply_mmoi_mass_properties(params, verbose=True)
 
     aircraft = Aircraft(params, physical, fc, charts)
 

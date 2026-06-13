@@ -32,7 +32,13 @@ except ImportError:                      # fall back to scipy if control is abse
     from scipy import signal
     HAVE_CONTROL = False
 
-from parameters import AircraftParameters
+from parameters import (
+    AircraftParameters,
+    INERTIA_RBAR_X,
+    INERTIA_RBAR_Y,
+    INERTIA_RBAR_Z,
+    INERTIA_XZ_TO_XX_RATIO,
+)
 from final_characteristics.vehicle_dynamics.aircraft import (
     Aircraft,
     Physical,
@@ -46,10 +52,11 @@ from final_characteristics.vehicle_dynamics.aircraft import (
 # 1. INERTIA ESTIMATES (placeholders until the structures department delivers)
 # ===========================================================================
 # Roskam class-I radii-of-gyration method:  I = m * (Rbar * L_char / 2)^2
-# Rbar values typical of light twin / commuter configurations. REPLACE the
-# moments of inertia in MassProperties as soon as real numbers exist — every
-# frequency below scales with 1/sqrt(I).
-RBAR_X, RBAR_Y, RBAR_Z = 0.25, 0.35, 0.40
+# Rbar values typical of light twin / commuter configurations. Only used as a
+# FALLBACK: the MMOI build-up (via aircraft.apply_mmoi_mass_properties) normally
+# fills the real inertias, so this fires only if they are still None. The Rbar
+# factors and the I_xz ratio are sourced from parameters.py.
+RBAR_X, RBAR_Y, RBAR_Z = INERTIA_RBAR_X, INERTIA_RBAR_Y, INERTIA_RBAR_Z
 
 
 def fill_inertia_placeholders(params):
@@ -65,7 +72,7 @@ def fill_inertia_placeholders(params):
     if m.I_zz is None:
         m.I_zz = m.mtow * (RBAR_Z * e / 2) ** 2;  filled.append("I_zz")
     if m.I_xz is None:
-        m.I_xz = 0.05 * m.I_xx;                   filled.append("I_xz")
+        m.I_xz = INERTIA_XZ_TO_XX_RATIO * m.I_xx;  filled.append("I_xz")
     if filled:
         print(f"[WARN] Inertias estimated by radius-of-gyration placeholders: {filled}")
         print(f"       I_xx={m.I_xx:.0f}  I_yy={m.I_yy:.0f}  I_zz={m.I_zz:.0f}  "

@@ -13,15 +13,20 @@ when its roots move. In particular the following are **NOT roots** and must neve
 be put in the search space directly:
 
 - **c.g.** (`mass.x_cg_opt`, `x_cg`): an *emergent* output of the component
-  mass/position build-up (MMOI). It is governed by the layout roots below
-  (wing/tail/component positions) and the component sizing. In the sensitivity
-  tool the c.g. is held at its design value and the c.g.-*envelope* limits move
-  with the geometry roots. (The optimiser **currently still carries `x_cg` as a
-  convenience *proxy* design variable** for ballast/placement; the principled
-  follow-up is to drop it and let the layout roots above — `x_LEMAC_fw`,
-  `x_vert_tail`, component positions — move the c.g. instead, which additionally
-  needs the c.g. to be re-derived from those positions via MMOI in
-  `evaluate_stability`.)
+  mass/position build-up (MMOI). It is **now computed by MMOI inside
+  `evaluate_stability`** (via `aircraft.apply_mmoi_mass_properties`), not read
+  from a hand-set sheet value: the CRUISE build-up (x_cg ≈ 2.887 m) feeds the
+  cruise checks and the aft-shifted VTOL build-up (wings folded, rotors
+  repositioned; x_cg ≈ 3.564 m) feeds the VTOL-OEI check. The c.g. is therefore
+  **not** a design variable — it was removed from the optimiser search space; the
+  c.g.-envelope requirements stay as constraints and respond to the geometry
+  roots through both the moving envelope limits and (for mass changes) the
+  build-up. To *steer* the c.g., move the layout roots that set it
+  (`x_LEMAC_fw`, `x_vert_tail`, and the MMOI component stations `X_BATT`,
+  `X_PAYLOAD`, `X_ROTOR_OFFSET`). Caveat: the MMOI build-up uses the converged
+  baseline mass breakdown, so the c.g. does not yet re-track per-sample within a
+  geometry sweep (a future refinement is to thread the reconverged breakdown +
+  overridden layout stations through).
 - **Derived geometry**: tail `S/AR/MAC/taper`, winglet `AR`, `z_w_aw`, `b_aw`,
   `taper_aw`, wing areas computed from `W/S`, all `MAC`s. Recomputed in
   `stability_eval._resolve_dependents` / `_update_aircraft_for_wing_split`.
