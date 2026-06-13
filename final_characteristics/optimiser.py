@@ -54,18 +54,15 @@ for _path in (PROJECT_ROOT, VEHICLE_DYNAMICS_DIR):
     if str(_path) not in sys.path:
         sys.path.append(str(_path))
 
-# Shared evaluation core + the single goal registry.
+# Shared evaluation core + the single goal registry. converged_mtow lives in the
+# shared core so the converger-override path is defined once (it calls the
+# PRIVATE _solve_converged_mass directly when a geometry design var is active so
+# the global converger cache is NOT polluted with the overridden geometry).
 from final_characteristics.stability_eval import (
     REQUIREMENT_NAMES,
+    converged_mtow,
     evaluate_stability,
 )
-
-# Converger pieces. We call the PRIVATE _solve_converged_mass directly when a
-# geometry design var is active so the global converger cache is NOT polluted
-# with the overridden geometry; the cached baseline is used otherwise.
-from class_II_sizing.mtow_sizing import load_final_design_state
-from class_II_sizing import mtow_sizing
-import class_II_sizing.mass_components as mass_components
 
 # pymoo: the NSGA-II implementation used in Phase 2.
 from pymoo.core.problem import Problem
@@ -125,49 +122,7 @@ def default_design_vector():
 
 
 # ===========================================================================
-# 2. CONVERGER WITH GEOMETRY OVERRIDES  (so MTOW responds to the design vars)
-# ===========================================================================
-# Memoise on the rounded geometry tuple so identical geometries are not
-# reconverged. A fresh converge runs the internal landing-gear SLSQP sizing and
-# costs ~25 s, so this is the dominant cost of Phase 2 whenever a converger-
-# coupled design var (wing_loading) is active. Keep pop_size/n_gen small, or
-# build a coarse MTOW(geometry) surrogate, for serious runs.
-_MTOW_CACHE = {}
-
-
-def converged_mtow(geometry_overrides):
-    """Return the converged MTOW [kg] for the given converger-geometry overrides.
-
-    geometry_overrides maps a mass_components module-global name to its value
-    (e.g. {"WING_LOADING_N": 820.0}). Empty -> the cached baseline MTOW.
-
-    We temporarily set the mass_components globals and call the converger's
-    private _solve_converged_mass(), which does NOT touch the module-level cache
-    that stability_eval reads, then restore the globals.
-    """
-    if not geometry_overrides:
-        return load_final_design_state(force_recompute=False)["mtow"]
-
-    key = tuple(sorted((name, round(value, 3)) for name, value in geometry_overrides.items()))
-    if key in _MTOW_CACHE:
-        return _MTOW_CACHE[key]
-
-    saved = {name: getattr(mass_components, name) for name in geometry_overrides}
-    try:
-        for name, value in geometry_overrides.items():
-            setattr(mass_components, name, value)
-        state = mtow_sizing._solve_converged_mass(verbose=False)
-        mtow = state["mtow"]
-    finally:
-        for name, value in saved.items():
-            setattr(mass_components, name, value)
-
-    _MTOW_CACHE[key] = mtow
-    return mtow
-
-
-# ===========================================================================
-# 3. CORE EVALUATION  (shared by Phase 1 and Phase 2)
+# 2. CORE EVALUATION  (shared by Phase 1 and Phase 2)
 # ===========================================================================
 def evaluate_design(design_vars=None):
     """Evaluate one design: converge MTOW (geometry-aware), check all requirements.
@@ -221,7 +176,7 @@ def print_design_report(results):
 
 
 # ===========================================================================
-# 4. PHASE 1 -- single acceptance check
+# 3. PHASE 1 -- single acceptance check
 # ===========================================================================
 def run_phase_1():
     """Evaluate the current/default design once and report accept/reject."""
@@ -232,7 +187,7 @@ def run_phase_1():
 
 
 # ===========================================================================
-# 5. PHASE 2 -- NSGA-II optimisation (pymoo)
+# 4. PHASE 2 -- NSGA-II optimisation (pymoo)
 # ===========================================================================
 class DesignProblem(Problem):
     """pymoo problem wrapper around evaluate_design().
@@ -308,7 +263,7 @@ def run_phase_2():
 
 
 # ===========================================================================
-# 6. ORCHESTRATION
+# 5. ORCHESTRATION
 # ===========================================================================
 def main():
     if run_phase_1():

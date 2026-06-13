@@ -59,6 +59,8 @@ for _path in (PROJECT_ROOT, VEHICLE_DYNAMICS_DIR):
         sys.path.append(str(_path))
 
 from class_II_sizing.mtow_sizing import load_final_design_state
+from class_II_sizing import mtow_sizing
+import class_II_sizing.mass_components as mass_components
 
 import aircraft
 from stat_long_stab_anal_func import (
@@ -74,6 +76,52 @@ from VTOL_cg_envelope_det import load_design_parameters
 # is infeasible). It pushes the allowable limits out of reach so both VTOL c.g.
 # requirements fail with a big, finite violation.
 _INFEASIBLE_PENALTY = 1.0e6  # [m]
+
+
+# ===========================================================================
+# 0. CONVERGED MTOW WITH GEOMETRY OVERRIDES  (so MTOW responds to the roots)
+# ===========================================================================
+# Both consumers (optimiser.py and stability_sensitivity.py) need the converged
+# MTOW to RESPOND to converger-coupled geometry roots (wing loading, span,
+# taper, fuselage size, ...). This helper lives here, in the shared pymoo-free
+# core, so the converger-override path is defined ONCE.
+#
+# Memoise on the rounded geometry tuple so identical geometries are not
+# reconverged. A fresh converge runs the internal landing-gear SLSQP sizing and
+# costs ~25 s, so this dominates whenever a converger-coupled root is swept.
+_MTOW_CACHE = {}
+
+
+def converged_mtow(geometry_overrides):
+    """Return the converged MTOW [kg] for the given converger-geometry overrides.
+
+    geometry_overrides maps a class_II_sizing.mass_components module-global name
+    to its value (e.g. {"WING_LOADING_N": 820.0}). Empty -> the cached baseline
+    MTOW.
+
+    We temporarily set the mass_components globals and call the converger's
+    private _solve_converged_mass(), which does NOT touch the module-level cache
+    that load_final_design_state() reads, then restore the globals.
+    """
+    if not geometry_overrides:
+        return load_final_design_state(force_recompute=False)["mtow"]
+
+    key = tuple(sorted((name, round(value, 3)) for name, value in geometry_overrides.items()))
+    if key in _MTOW_CACHE:
+        return _MTOW_CACHE[key]
+
+    saved = {name: getattr(mass_components, name) for name in geometry_overrides}
+    try:
+        for name, value in geometry_overrides.items():
+            setattr(mass_components, name, value)
+        state = mtow_sizing._solve_converged_mass(verbose=False)
+        mtow = state["mtow"]
+    finally:
+        for name, value in saved.items():
+            setattr(mass_components, name, value)
+
+    _MTOW_CACHE[key] = mtow
+    return mtow
 
 
 # ===========================================================================
@@ -147,6 +195,13 @@ def _resolve_dependents(params):
     tg = params.tail_geometry
     wl = params.winglet_geometry
     fg = params.fuselage_geometry
+
+    # Wing: the box-wing aft panel mirrors the front panel's span and taper (the
+    # sheet defines b_aw = b_fw and taper_aw = taper_fw). calc_wing_geom() reads
+    # these aft fields, so a swept taper_fw / b_fw must propagate or the aft wing
+    # stays stale. (No-ops at the baseline where they already match.)
+    wg.b_aw = wg.b_fw
+    wg.taper_aw = wg.taper_fw
 
     # Wing: aft-wing vertical position tracks the front wing plus the gap.
     wg.z_w_aw = wg.z_w_fw + wg.gap

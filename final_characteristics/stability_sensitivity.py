@@ -2,41 +2,59 @@
 stability_sensitivity.py
 ========================
 
-STANDALONE sensitivity consult for the stability requirements.  NOT part of the
-optimiser loop -- run it, read the graphs, and manually decide which currently
-fixed parameters.py values are worth promoting to optimiser design variables.
+STANDALONE sensitivity consult for the stability requirements AND the converged
+MTOW.  NOT part of the optimiser loop -- run it, read the graphs, and manually
+decide which currently fixed parameters.py values are worth promoting to
+optimiser design variables.
 
 WHAT IT DOES
 ------------
-For a list of CORE DESIGN parameters (things the team sets that FEED the
-computation -- NOT another department's calculated results), it sweeps each over
-a plausible range and measures how the stability requirements respond, using two
-well-established global-sensitivity methods (mirroring the proven structure of
-class_II_sizing/landing_gear_sensitivity.py):
+For a list of ROOT DESIGN parameters -- the bare, non-interdependent ORIGIN
+inputs the team sets that cascade into the design (NOT another department's
+calculated results, and NOT emergent quantities) -- it sweeps each over a
+plausible range and measures how (a) every stability requirement and (b) the
+converged MTOW respond, using two well-established global-sensitivity methods
+(mirroring class_II_sizing/landing_gear_sensitivity.py):
 
-  1. TORNADO (local one-at-a-time) -- quick readable ranking of which parameter
-     moves the number of failing requirements most when swept low->high.
+  1. TORNADO (local one-at-a-time) -- quick readable ranking of which root moves
+     an output most when swept low->high.  Produced for the number of failing
+     requirements AND for the converged MTOW.
 
   2. SOBOL indices (variance-based GLOBAL sensitivity, Saltelli/Jansen) -- for
-     EACH requirement's signed margin AND for the aggregate "number of failing
-     requirements", decomposes the output variance into each parameter's
-     first-order and total-order contribution.  Scrambled Sobol' sampling.
+     EACH requirement's signed margin, for the converged MTOW, AND for the
+     aggregate "number of failing requirements", decomposes the output variance
+     into each root's first-order and total-order contribution.
 
 The headline output is a heatmap of the total-order index for every
-(parameter x requirement) pair: it shows at a glance which knob drives which
-requirement (e.g. dihedral -> C_L_beta).
+(root x output) pair -- it shows at a glance which knob drives which requirement
+(e.g. dihedral -> C_L_beta) and which knobs drive the MTOW.
 
-WHAT IS SWEPT  (edit the PARAMS list freely)
---------------------------------------------
-Only core design inputs.  Deliberately EXCLUDED (aero-department results, not
-design knobs): CL_alpha_fw/aw, downwash gradient, x_ac_*_cruise, dyn_pres_ratio,
-I_v, oswald e, C_M_ac_*, section cl_alpha.
+ROOTS ONLY  (edit the PARAMS list freely)
+-----------------------------------------
+Every swept entry is a true origin input.  Deliberately EXCLUDED:
+  * aero-department results (CL_alpha_fw/aw, downwash, x_ac_*_cruise,
+    dyn_pres_ratio, I_v, oswald e, C_M_ac_*, section cl_alpha), and
+  * EMERGENT quantities -- notably the c.g. (mass.x_cg_opt), which is an OUTPUT
+    of the component mass/position build-up (MMOI), not a root.  With the c.g.
+    removed as an input the c.g.-envelope requirements still vary: they respond
+    to the geometry roots through the moving envelope LIMITS, with the c.g. held
+    at its design value.  (Limitation: the c.g. itself is not re-derived from
+    component placement here -- envelope-only.  Recomputing it from the layout
+    roots via MMOI is a possible future enhancement.)
 
-The MTOW is held at the cached converged value: the sign requirements are
-essentially mass-independent and re-converging per sample would be far slower
-(same choice the landing-gear study makes by fixing the landing mass).
+MTOW IS NOW COUPLED  (single coupled sweep)
+-------------------------------------------
+Roots tagged with a converger global (the 7th tuple field) feed the MTOW
+converger.  Each sample reconverges the MTOW for those roots (via the shared
+stability_eval.converged_mtow, memoised on the converger sub-vector) and uses
+that MTOW in the stability evaluation, so the MTOW output and the area-dependent
+derivatives both respond.  A fresh converge runs the internal landing-gear SLSQP
+(~25 s); the memoisation means only the converger-coupled columns trigger it, so
+the cost is ~ (2 + n_converger_roots) * N_SOBOL reconverges.  Lower N_SOBOL (env
+var STAB_SENS_N_SOBOL) for a quick look.
 
 Run:    python final_characteristics/stability_sensitivity.py
+        STAB_SENS_N_SOBOL=4 python final_characteristics/stability_sensitivity.py   # quick
 Output: PNG figures + a CSV in  final_characteristics/sensitivity_plots/stability/
 """
 
@@ -61,57 +79,88 @@ OUT_DIR = Path(__file__).resolve().parent / "sensitivity_plots" / "stability"
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-N_SOBOL = 16    # Sobol base sample size (total evals ~ N_SOBOL*(D+2)); power of 2
+# Sobol base sample size (total evals ~ N_SOBOL*(D+2)); power of 2. The MTOW
+# coupling makes each converger-coupled sample cost ~25 s, so allow an env
+# override for a quick look.
+N_SOBOL = int(os.environ.get("STAB_SENS_N_SOBOL", "16"))
 SEED    = 12345
 
-# Core design parameters to sweep: (dotted_path, low, high, nominal, label, unit).
+# Root design parameters to sweep:
+#   (dotted_path, low, high, nominal, label, unit, converger_global)
 # dotted_path is fed straight to stability_eval.evaluate_stability(param_overrides).
 # The pseudo-key "s_aft_to_s_total" is the aft/total wing-area split.
-# Edit this list to add/remove candidates; ranges are plausible design bounds.
+# converger_global is the class_II_sizing.mass_components module global to
+#   override before reconverging the MTOW (None = MTOW-neutral root).
+#
+# Only ROOTS appear here; derived/emergent fields (tail S/AR/MAC, winglet AR,
+# z_w_aw, b_aw, taper_aw, areas from W/S, and the c.g.) are excluded.  Edit
+# freely; ROOT_DESIGN_VARIABLES.md lists further roots the team may toggle in
+# (e.g. wing span b_fw, twists, z_vert_tail).
 PARAMS = [
-    # ---- Longitudinal geometry ----
-    ("mass.x_cg_opt",                    2.8,   3.6,   3.311, "c.g. (cruise/VTOL)",      "m"),
-    ("s_aft_to_s_total",                 0.30,  0.70,  0.50,  "aft/total wing-area split","-"),
-    ("wing_geometry.stagger",            4.0,   6.0,   5.0,   "wing stagger",            "m"),
-    ("wing_geometry.gap",                1.5,   2.8,   2.1,   "wing gap",                "m"),
-    ("wing_geometry.x_LEMAC_fw",         0.5,   2.0,   1.0,   "front-wing LEMAC x",      "m"),
-    ("wing_geometry.design_point",       650.0, 880.0, 760.0, "wing loading W/S",        "N/m^2"),
-    ("wing_geometry.taper_fw",           0.30,  0.60,  0.45,  "front-wing taper",        "-"),
+    # ---- Longitudinal / planform ----
+    ("s_aft_to_s_total",                  0.30,  0.70,  0.50,  "aft/total wing-area split", "-",     None),
+    ("wing_geometry.design_point",        650.0, 880.0, 760.0, "wing loading W/S",          "N/m^2", "WING_LOADING_N"),
+    ("wing_geometry.taper_fw",            0.30,  0.60,  0.45,  "wing taper",                "-",     "TAPER_W"),
+    ("wing_geometry.stagger",             4.0,   6.0,   5.0,   "wing stagger",              "m",     None),
+    ("wing_geometry.gap",                 1.5,   2.8,   2.1,   "wing gap",                  "m",     None),
+    ("wing_geometry.x_LEMAC_fw",          0.5,   2.0,   1.0,   "front-wing LEMAC x",        "m",     None),
     # ---- Roll (dihedral / wing height / sweep) ----
-    ("wing_geometry.dihedral_front_wing", 0.0,  6.0,   0.0,   "front-wing dihedral",     "deg"),
-    ("wing_geometry.dihedral_aft_wing",   0.0,  6.0,   0.0,   "aft-wing dihedral",       "deg"),
-    ("wing_geometry.z_w_fw",            -1.0,   0.0,  -0.5,   "front-wing height z",     "m"),
-    ("wing_geometry.LE_sweep_fw",        0.0,  10.0,   0.0,   "front-wing LE sweep",     "deg"),
+    ("wing_geometry.dihedral_front_wing", 0.0,   6.0,   0.0,   "front-wing dihedral",       "deg",   None),
+    ("wing_geometry.dihedral_aft_wing",   0.0,   6.0,   0.0,   "aft-wing dihedral",         "deg",   None),
+    ("wing_geometry.z_w_fw",             -1.0,   0.0,  -0.5,   "front-wing height z",       "m",     None),
+    ("wing_geometry.LE_sweep_fw",         0.0,  10.0,   0.0,   "front-wing LE sweep",       "deg",   None),
+    ("wing_geometry.LE_sweep_aw",         0.0,  10.0,   0.0,   "aft-wing LE sweep",         "deg",   None),
     # ---- Directional (vertical tail / winglet) ----
-    ("tail_geometry.b_vert_tail",        1.2,   2.4,   1.6,   "vertical-tail span",      "m"),
-    ("tail_geometry.x_vert_tail",        5.5,   7.5,   6.4,   "vertical-tail arm",       "m"),
-    ("winglet_geometry.S_winglet",       1.0,   2.5,   1.57,  "winglet area",            "m^2"),
+    ("tail_geometry.b_vert_tail",         1.2,   2.4,   1.6,   "vertical-tail span",        "m",     None),
+    ("tail_geometry.x_vert_tail",         5.5,   7.5,   6.4,   "vertical-tail arm",         "m",     None),
+    ("tail_geometry.c_r_vert_tail",       1.2,   2.0,   1.6,   "v-tail root chord",         "m",     None),
+    ("tail_geometry.c_t_vert_tail",       0.9,   1.6,   1.3,   "v-tail tip chord",          "m",     None),
+    ("winglet_geometry.S_winglet",        1.0,   2.5,   1.57,  "winglet area",              "m^2",   None),
+    ("winglet_geometry.b_winglet",        1.5,   2.7,   2.1,   "winglet span",              "m",     None),
+    # ---- Fuselage (MTOW-coupled via Raymer mass) ----
+    ("fuselage_geometry.fuselage_length", 6.0,   8.5,   7.0,   "fuselage length",           "m",     "L_FUS"),
+    ("fuselage_geometry.d_fw",            1.6,   2.4,   2.0,   "fuselage width",            "m",     "FUSE_WIDTH"),
 ]
-PNAMES  = [p[0] for p in PARAMS]
-PLABEL  = {p[0]: p[4] for p in PARAMS}
-LO      = np.array([p[1] for p in PARAMS])
-HI      = np.array([p[2] for p in PARAMS])
-NOMINAL = {p[0]: p[3] for p in PARAMS}
+PNAMES    = [p[0] for p in PARAMS]
+PLABEL    = {p[0]: p[4] for p in PARAMS}
+LO        = np.array([p[1] for p in PARAMS])
+HI        = np.array([p[2] for p in PARAMS])
+NOMINAL   = {p[0]: p[3] for p in PARAMS}
+# Map of swept root -> mass_components global to override when reconverging MTOW.
+CONVERGER = {p[0]: p[6] for p in PARAMS if p[6]}
 D = len(PARAMS)
 
 REQ_NAMES = se.REQUIREMENT_NAMES
-# The aggregate output is appended to the per-requirement outputs.
-AGG_NAME = "n_failed"
-OUTPUT_NAMES = REQ_NAMES + [AGG_NAME]
+# The aggregate failing-count and the converged MTOW are extra outputs appended
+# to the per-requirement margins.
+AGG_NAME  = "n_failed"
+MTOW_NAME = "mtow"
+OUTPUT_NAMES = REQ_NAMES + [AGG_NAME, MTOW_NAME]
+# Rows shown in the per-output heatmap: every requirement plus the MTOW (the
+# aggregate n_failed is summarised separately in its own tornado/bar).
+HEATMAP_ROWS = REQ_NAMES + [MTOW_NAME]
 
 
 # ---------------------------------------------------------------------------
 # Core evaluation: one parameter vector -> all outputs
 # ---------------------------------------------------------------------------
 def evaluate_outputs(overrides):
-    """Run stability_eval for one override dict; return a dict of outputs.
+    """Run the coupled evaluation for one override dict; return a dict of outputs.
 
-    Outputs are every requirement's signed margin (<= 0 means satisfied) plus
-    the aggregate count of failing requirements.
+    Reconverges the MTOW for any converger-coupled roots in `overrides` (memoised
+    in stability_eval), then evaluates the stability requirements at that MTOW.
+    Outputs are every requirement's signed margin (<= 0 means satisfied), the
+    aggregate count of failing requirements, and the converged MTOW [kg].
     """
-    results = se.evaluate_stability(param_overrides=overrides)
+    geometry_overrides = {
+        CONVERGER[name]: value for name, value in overrides.items() if name in CONVERGER
+    }
+    mtow = se.converged_mtow(geometry_overrides)
+
+    results = se.evaluate_stability(param_overrides=overrides, mtow=mtow)
     out = dict(results["margins"])  # name -> signed margin
     out[AGG_NAME] = float(sum(1 for ok in results["requirements"].values() if not ok))
+    out[MTOW_NAME] = float(results["mtow"])
     return out
 
 
@@ -131,34 +180,34 @@ def _eval_matrix(matrix):
 
 
 # ---------------------------------------------------------------------------
-# Method 1 - Tornado (local one-at-a-time) on the aggregate n_failed
+# Method 1 - Tornado (local one-at-a-time) for a chosen output
 # ---------------------------------------------------------------------------
-def tornado():
-    base = evaluate_outputs(dict(NOMINAL))[AGG_NAME]
+def tornado(output_name):
+    """Local low->high swing of `output_name` for each root, vs the nominal."""
+    base = evaluate_outputs(dict(NOMINAL))[output_name]
     rows = []
-    for name, lo, hi, nom, label, unit in PARAMS:
+    for name, lo, hi, nom, label, unit, _conv in PARAMS:
         o = dict(NOMINAL); o[name] = lo
-        n_lo = evaluate_outputs(o)[AGG_NAME]
+        v_lo = evaluate_outputs(o)[output_name]
         o = dict(NOMINAL); o[name] = hi
-        n_hi = evaluate_outputs(o)[AGG_NAME]
-        rows.append((label, n_lo - base, n_hi - base, abs(n_hi - n_lo)))
+        v_hi = evaluate_outputs(o)[output_name]
+        rows.append((label, v_lo - base, v_hi - base, abs(v_hi - v_lo)))
     rows.sort(key=lambda r: r[3])  # ascending swing -> largest at top of barh
     return base, rows
 
 
-def plot_tornado(base, rows, path):
+def plot_tornado(base, rows, path, xlabel, title):
     labels = [r[0] for r in rows]
     lo = [r[1] for r in rows]
     hi = [r[2] for r in rows]
     y = np.arange(len(rows))
     fig, ax = plt.subplots(figsize=(8.5, 5.5))
-    ax.barh(y, lo, color="#ef5350", label="parameter at low end")
-    ax.barh(y, hi, color="#42a5f5", label="parameter at high end")
+    ax.barh(y, lo, color="#ef5350", label="root at low end")
+    ax.barh(y, hi, color="#42a5f5", label="root at high end")
     ax.axvline(0.0, color="k", lw=1)
     ax.set_yticks(y); ax.set_yticklabels(labels)
-    ax.set_xlabel("change in NUMBER OF FAILING requirements vs nominal")
-    ax.set_title(f"Tornado: local sensitivity of requirement failures\n"
-                 f"(nominal failing count = {base:.0f})")
+    ax.set_xlabel(xlabel)
+    ax.set_title(title)
     ax.legend(loc="lower right", fontsize=8)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout(); fig.savefig(path, dpi=140); plt.close(fig)
@@ -236,21 +285,26 @@ def plot_sobol_aggregate(S_mat, ST_mat, path):
 
 
 def plot_heatmap(ST_mat, path):
-    """Heatmap of total-order index for every (parameter x requirement) pair."""
-    # rows = requirements (exclude the aggregate), cols = parameters
-    matrix = np.array([np.clip(ST_mat[req], 0, None) for req in REQ_NAMES])  # (R, D)
-    fig, ax = plt.subplots(figsize=(1.0 + 0.55 * D, 1.0 + 0.40 * len(REQ_NAMES)))
+    """Heatmap of total-order index for every (root x output) pair.
+
+    Rows are every requirement plus the converged MTOW; columns are the roots.
+    The MTOW row lights up only on the converger-coupled roots.
+    """
+    matrix = np.array([np.clip(ST_mat[row], 0, None) for row in HEATMAP_ROWS])  # (R, D)
+    fig, ax = plt.subplots(figsize=(1.0 + 0.55 * D, 1.0 + 0.40 * len(HEATMAP_ROWS)))
     im = ax.imshow(matrix, aspect="auto", cmap="viridis", vmin=0.0, vmax=1.0)
     ax.set_xticks(np.arange(D)); ax.set_xticklabels([PLABEL[p] for p in PNAMES], rotation=45, ha="right", fontsize=7)
-    ax.set_yticks(np.arange(len(REQ_NAMES))); ax.set_yticklabels(REQ_NAMES, fontsize=7)
-    for r in range(len(REQ_NAMES)):
+    ax.set_yticks(np.arange(len(HEATMAP_ROWS))); ax.set_yticklabels(HEATMAP_ROWS, fontsize=7)
+    # Visually separate the MTOW row from the requirement rows.
+    ax.axhline(len(REQ_NAMES) - 0.5, color="w", lw=1.5)
+    for r in range(len(HEATMAP_ROWS)):
         for c in range(D):
             val = matrix[r, c]
             if val > 0.02:
                 ax.text(c, r, f"{val:.2f}", ha="center", va="center",
                         color="white" if val < 0.6 else "black", fontsize=6)
-    ax.set_title("Total-order Sobol index $S_{Ti}$ per (parameter x requirement)\n"
-                 "bright = this parameter drives this requirement")
+    ax.set_title("Total-order Sobol index $S_{Ti}$ per (root x output)\n"
+                 "bright = this root drives this requirement / the MTOW")
     fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02, label="$S_{Ti}$")
     fig.tight_layout(); fig.savefig(path, dpi=140); plt.close(fig)
 
@@ -260,40 +314,57 @@ def plot_heatmap(ST_mat, path):
 # ---------------------------------------------------------------------------
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    print(f"Stability sensitivity consult  ({D} parameters, {len(REQ_NAMES)} requirements)")
+    n_conv = len(CONVERGER)
+    print(f"Stability + MTOW sensitivity consult  ({D} roots, {len(REQ_NAMES)} requirements)")
     print(f"  Sobol N={N_SOBOL}  (~{N_SOBOL * (D + 2)} evaluations)")
+    print(f"  MTOW-coupled roots: {n_conv}  (~{(2 + n_conv) * N_SOBOL} MTOW reconverges @ ~25 s each;"
+          f" set STAB_SENS_N_SOBOL to lower)")
 
-    # 1) Tornado on the aggregate
-    print("\n[1/2] Tornado (local one-at-a-time) on number of failing requirements ...")
-    base, rows = tornado()
-    plot_tornado(base, rows, OUT_DIR / "tornado_failures.png")
-    print(f"      nominal failing count = {base:.0f}.  Largest swings (low->high):")
-    for label, dlo, dhi, swing in reversed(rows[-5:]):
-        print(f"        {label:<26s} swing {swing:.0f}  [{dlo:+.0f}, {dhi:+.0f}]")
+    # 1) Tornado on the aggregate failing count AND on the converged MTOW.
+    print("\n[1/2] Tornado (local one-at-a-time) ...")
+    base_fail, rows_fail = tornado(AGG_NAME)
+    plot_tornado(
+        base_fail, rows_fail, OUT_DIR / "tornado_failures.png",
+        xlabel="change in NUMBER OF FAILING requirements vs nominal",
+        title=f"Tornado: local sensitivity of requirement failures\n"
+              f"(nominal failing count = {base_fail:.0f})",
+    )
+    base_mtow, rows_mtow = tornado(MTOW_NAME)
+    plot_tornado(
+        base_mtow, rows_mtow, OUT_DIR / "tornado_mtow.png",
+        xlabel="change in converged MTOW [kg] vs nominal",
+        title=f"Tornado: local sensitivity of the converged MTOW\n"
+              f"(nominal MTOW = {base_mtow:.1f} kg)",
+    )
+    print(f"      nominal failing count = {base_fail:.0f}, nominal MTOW = {base_mtow:.1f} kg.")
+    print("      Largest MTOW swings (low->high):")
+    for label, dlo, dhi, swing in reversed(rows_mtow[-5:]):
+        print(f"        {label:<26s} swing {swing:7.1f} kg  [{dlo:+.1f}, {dhi:+.1f}]")
 
-    # 2) Sobol per requirement + aggregate
+    # 2) Sobol per requirement + MTOW + aggregate
     print("\n[2/2] Sobol variance-based global sensitivity ...")
     S_mat, ST_mat = sobol()
     plot_sobol_aggregate(S_mat, ST_mat, OUT_DIR / "sobol_aggregate.png")
     plot_heatmap(ST_mat, OUT_DIR / "sobol_heatmap.png")
 
-    print("      Top driver (total-order) of each requirement that VARIES:")
-    for req in REQ_NAMES:
-        ST = ST_mat[req]
+    print("      Top driver (total-order) of each output that VARIES:")
+    for name in HEATMAP_ROWS:
+        ST = ST_mat[name]
         if np.max(ST) <= 1e-9:
-            continue  # constant requirement (e.g. always-infeasible VTOL OEI)
+            continue  # constant output (e.g. always-infeasible VTOL OEI)
         i = int(np.argmax(ST))
-        print(f"        {req:<18s} <- {PLABEL[PNAMES[i]]:<26s} (S_T={ST[i]:.2f})")
+        print(f"        {name:<18s} <- {PLABEL[PNAMES[i]]:<26s} (S_T={ST[i]:.2f})")
 
-    # CSV summary: total-order index per (parameter x output). Uses the stdlib
-    # csv module so there is no third-party dependency.
+    # CSV summary: total-order index per (root x output). Uses the stdlib csv
+    # module so there is no third-party dependency.
     import csv
-    header = ["parameter", "label"] + [f"ST_{name}" for name in OUTPUT_NAMES]
+    header = ["parameter", "label", "converger_global"] + [f"ST_{name}" for name in OUTPUT_NAMES]
     with open(OUT_DIR / "sobol_total_order.csv", "w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(header)
         for j, pname in enumerate(PNAMES):
-            row = [pname, PLABEL[pname]] + [f"{ST_mat[name][j]:.6f}" for name in OUTPUT_NAMES]
+            row = [pname, PLABEL[pname], CONVERGER.get(pname, "")] + \
+                  [f"{ST_mat[name][j]:.6f}" for name in OUTPUT_NAMES]
             writer.writerow(row)
 
     print(f"\nFigures + CSV written to: {OUT_DIR}")
