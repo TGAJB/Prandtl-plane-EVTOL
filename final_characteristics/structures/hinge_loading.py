@@ -86,7 +86,7 @@ class Wing():
 
         plot_quadrilateral(self.ax, rotate_vectors_around_axis(self.hinge_vector, self.angle, self.geometry), alpha=0)
 
-        plot_single_vector(self.ax, self.hinge_vector, color="yellow")
+        #plot_single_vector(self.ax, self.hinge_vector, color="yellow")
         #find max scale factor among loads
         maxload = 0
         for load in self.point_loads:
@@ -764,16 +764,17 @@ def hinge_loading(root_chord, Propeller_Weight_Individual, propeller_thrust, win
     phi_input = HINGE_PHI  # deg
 
     taper = TAPER_W
+    taper = 0.7 #REMOVE THIS
+    print(taper)
     halfspan_hinge = HINGED_WING_LENGTH  # From the point where the hinge starts
 
     thruster_position_1 = FW_THRUSTER_POSITION_1
     thruster_position_2 = FW_THRUSTER_POSITION_2
 
-    v_cruise = V_CRUISE
     v_actual = 0  # The actual velocity you are expecting during whatever config you're testing out
     propeller_weight = Propeller_Weight_Individual
 
-    angle_cases = [i for i in range(121)]
+    angle_cases = [i for i in range(61)]
     v_cases = [(120 - angle) ** 2 / 251.221 for angle in angle_cases]
 
     forces_lst = []
@@ -802,7 +803,7 @@ def hinge_loading(root_chord, Propeller_Weight_Individual, propeller_thrust, win
         # The lifting force at the wingtip must be the winglet lift fraction * the force at the chord
         alpha = winglet_lift_fraction**2 + halfspan_hinge
         beta = weight_Carried_by_wing/(-2/3 * (alpha - halfspan_hinge)**(3/2) + 2/3 * (alpha)**(3/2))
-        return np.sqrt(-(x - alpha)) * beta
+        return np.sqrt(-(x - alpha)) * beta * (v_actual/V_CRUISE)**2
 
     """
     x = np.arange(0, halfspan_hinge, 0.1).tolist()
@@ -829,8 +830,8 @@ def hinge_loading(root_chord, Propeller_Weight_Individual, propeller_thrust, win
                                  nonangled=True)
     wing_planform.add_point_load(PointLoad((0, propeller_weight, 0), thruster_position_2, color="brown"),
                                  nonangled=True)
-    wing_planform.angle = 120
-    wing_planform.plot_wing()
+    wing_planform.angle = 0
+    wing_planform.plot_wing(point_forces=False, distributed_loads=False)
 
     # For loop
     for i in range(len(angle_cases)):
@@ -865,4 +866,4 @@ def hinge_loading(root_chord, Propeller_Weight_Individual, propeller_thrust, win
     plt.show()
 
 if __name__ == "__main__":
-    hinge_loading(3, (7.31 + 48.09) * 9.81, 240, 50*9.81, 1000)
+    hinge_loading(1.2, (7.31 + 48.09) * 9.81, 240, 50*9.81, 1000)
