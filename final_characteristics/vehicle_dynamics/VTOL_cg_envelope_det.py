@@ -27,8 +27,9 @@ from parameters import (
     N_PROP,
     RHO_ORIGIN,
     VTOL_OEI_STATIC_MARGIN,
-    X_ROTOR_FW,
-    X_ROTOR_RW,
+    X_ROTOR_FW_IN_VTOL,
+    X_ROTOR_FW_OUT_VTOL,
+    X_ROTOR_RW_VTOL,
     Z_ROTOR_FW,
     Z_ROTOR_RW,
     AircraftParameters,
@@ -60,10 +61,13 @@ def load_design_parameters():
     Fills the fields that the VD parameter sheet leaves as None from their
     authoritative sources elsewhere in the code:
       - mass.mtow            <- class-II converged MTOW (class_II_sizing/mtow_sizing.py)
-      - propulsion x/y/z     <- the 4+2 rotor stations used by class_II_sizing/MMOI.py
-                                (parameters.py Part 2: X_ROTOR_*, ETA_ROTOR_*, nose datum)
+      - propulsion x/y/z     <- the 4+2 FOLDED rotor stations (X_ROTOR_*_VTOL,
+                                ETA_ROTOR_*, nose datum). OEI hover is the folded
+                                VTOL config (both wings folded), matching the
+                                folded VTOL c.g. from class_II_sizing/MMOI.py.
       - propulsion.P_max_SL  <- installed power from the class-II sizing
-      - max_thrust_per_engine<- P_max_SL inverted through hover momentum theory
+      - max_thrust_per_engine<- left at the sheet PEAK (short-duration OEI rating);
+                                see the thrust note below.
 
     Propeller numbering (1-based, matches the --failed-cases CLI):
       1 fw inboard stbd, 2 fw inboard port, 3 fw outboard stbd,
@@ -74,14 +78,19 @@ def load_design_parameters():
 
     params.mass.mtow = design_state["mtow"]
 
+    # The OEI hover is the FOLDED VTOL configuration (both wings folded), so the
+    # rotor longitudinal stations are the folded ones (X_ROTOR_*_VTOL), matching
+    # how MMOI places the rotors for the folded VTOL c.g. Spanwise y and height z
+    # keep the cruise values (the simplified fold model used by MMOI does not yet
+    # rotate the pod y/z; see the model-fidelity note in the plan/docs).
     span = design_state["wing_geom"]["span_m"]
     stations = [
-        (X_ROTOR_FW, +ETA_ROTOR_FW_IN * span / 2.0, Z_ROTOR_FW),
-        (X_ROTOR_FW, -ETA_ROTOR_FW_IN * span / 2.0, Z_ROTOR_FW),
-        (X_ROTOR_FW, +ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
-        (X_ROTOR_FW, -ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
-        (X_ROTOR_RW, +ETA_ROTOR_RW * span / 2.0, Z_ROTOR_RW),
-        (X_ROTOR_RW, -ETA_ROTOR_RW * span / 2.0, Z_ROTOR_RW),
+        (X_ROTOR_FW_IN_VTOL,  +ETA_ROTOR_FW_IN * span / 2.0,  Z_ROTOR_FW),
+        (X_ROTOR_FW_IN_VTOL,  -ETA_ROTOR_FW_IN * span / 2.0,  Z_ROTOR_FW),
+        (X_ROTOR_FW_OUT_VTOL, +ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
+        (X_ROTOR_FW_OUT_VTOL, -ETA_ROTOR_FW_OUT * span / 2.0, Z_ROTOR_FW),
+        (X_ROTOR_RW_VTOL,     +ETA_ROTOR_RW * span / 2.0,     Z_ROTOR_RW),
+        (X_ROTOR_RW_VTOL,     -ETA_ROTOR_RW * span / 2.0,     Z_ROTOR_RW),
     ]
     prop = params.propulsion
     for idx, (x, y, z) in enumerate(stations, start=1):
@@ -90,7 +99,14 @@ def load_design_parameters():
         setattr(prop, f"z_vtol_{idx}", z)
 
     prop.P_max_SL = design_state["max_power_kw"] * 1000.0
-    prop.max_thrust_per_engine = max_thrust_per_engine_from_power(prop.P_max_SL)
+    # OEI is a brief one-engine-out EMERGENCY, so the per-rotor thrust ceiling is
+    # the motor short-duration PEAK rating (prop.max_thrust_per_engine, the
+    # AircraftParameters default = 5500 N; confirm the peak value with propulsion),
+    # NOT the continuous power-limited value. We deliberately leave
+    # max_thrust_per_engine at the sheet peak and do not override it with
+    # max_thrust_per_engine_from_power(P_max_SL) (~3942 N continuous), which is too
+    # conservative for the transient OEI case; that helper is kept as the
+    # continuous reference.
 
     return params
 

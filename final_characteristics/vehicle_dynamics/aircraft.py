@@ -252,7 +252,7 @@ class Aircraft:
         wg = self.params.wing_geometry
         ac = self.params.aerodynamics
 
-        S  = self._require(wg.S_aw, "wing_geometry.S_aft")
+        S  = self._require(wg.S_aw, "wing_geometry.S_aw")
         b  = self._require(wg.b_aw, "wing_geometry.b_aft")
         LE_sweep_aw = self._require(wg.LE_sweep_aw, "wing_geometry.LE_sweep_aft")
 
@@ -365,7 +365,7 @@ class Aircraft:
 
         S_ref, _, c_ref = self._ref()
         S_fw = self._require(wg.S_fw, "wing_geometry.S_fw")
-        S_aw = self._require(wg.S_aw, "wing_geometry.S_aft")
+        S_aw = self._require(wg.S_aw, "wing_geometry.S_aw")
         x_ac_fw = self.x_ac_fw()
         x_ac_aw = self.x_ac_aw()
         x_cg = self.x_cg()
@@ -458,7 +458,7 @@ class Aircraft:
         wg = self.params.wing_geometry
         ac = self.params.aerodynamics
 
-        S_aw = self._require(wg.S_aw, "wing_geometry.S_aft")
+        S_aw = self._require(wg.S_aw, "wing_geometry.S_aw")
         S_ref, _, c_ref = self._ref()
         x_ac_aw = self.x_ac_aw()
         x_cg = self.x_cg()
@@ -1346,6 +1346,17 @@ def main_aircraft():
     apply_mmoi_mass_properties(params, verbose=True)
 
     aircraft = Aircraft(params, physical, fc, charts)
+
+    # Use the design-point-consistent wing areas/MAC (W/S = design_point), the same
+    # geometry evaluate_stability() uses, instead of the dataclass S_* defaults
+    # (which imply a different W/S). Otherwise the dynamic-stability analysis runs
+    # on inconsistent, oversized wings. Deferred import avoids the circular import
+    # (stat_long_stab_anal_func imports aircraft).
+    from stat_long_stab_anal_func import (
+        _update_aircraft_for_wing_split,
+        DEFAULT_S_AFT_TO_S_TOTAL,
+    )
+    _update_aircraft_for_wing_split(aircraft, params.mass.mtow, DEFAULT_S_AFT_TO_S_TOTAL)
 
     solved = aircraft.solve()
     assert solved is aircraft.params
