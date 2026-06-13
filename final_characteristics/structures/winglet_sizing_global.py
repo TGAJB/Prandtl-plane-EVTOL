@@ -95,9 +95,9 @@ def calculate_Ibeam_moment_of_inertia(root_chord, thick_chord_ratio, b, t_f, t_w
 
 
 def calc_individual_rib_spacing(stress, buckling_coeff, young_mod, skin_thickness, poisson_ratio):
-        num = buckling_coeff * (np.pi ** 2) * young_mod * skin_thickness ** 2
-        den = 12 * stress * (1 - poisson_ratio ** 2)
-        return np.sqrt(num / den)
+    num = buckling_coeff * (np.pi ** 2) * young_mod * skin_thickness ** 2
+    den = 12 * stress * (1 - poisson_ratio ** 2)
+    return np.sqrt(num / den)
 
 def calc_total_rib_spacing(max_stress_beam, wing_length, root_chord, thick_chord_ratio, I, number_of_beams, M, x, buckling_coeff, young_mod, skin_thickness, poisson_ratio):
     #Using the rearranged critical buckling formula to find rib spacing
@@ -108,7 +108,6 @@ def calc_total_rib_spacing(max_stress_beam, wing_length, root_chord, thick_chord
         ribslst.append(curr_rib)
         Moment_at_point = float(np.interp(curr_rib, x, M))
         stress_beam = Moment_at_point * root_chord*thick_chord_ratio/2 /(I * number_of_beams)
-        print(stress_beam)
         curr_rib += calc_individual_rib_spacing(stress_beam, buckling_coeff, young_mod, skin_thickness, poisson_ratio)
 
     ribslst.insert(0, 0)
@@ -127,10 +126,9 @@ def calc_winglet_mass(root_chord):
     front_wing_distribution = 500
     back_wing_distribution = 300
 
-    taper_ratio = 1
-
     # Wing & Winglet dimensions
     thick_chord_ratio = TIP_TO_CHORD_W
+    taper_ratio = 1
 
     wings_vertical_spacing = 2  # UPDATE THESE LATER
     wings_horizontal_spacing = 5  # UPDATE THESE LATER
@@ -145,8 +143,8 @@ def calc_winglet_mass(root_chord):
 
     # I_BEAM
     flange_length = 0.01
-    flange_thickness = 0.001  # This is what will impact the mmoi the most
-    beam_thickness = 0.001  # m
+    flange_thickness = 0.004  # This is what will impact the mmoi the most
+    beam_thickness = 0.004  # m
 
     # Material characteristics
     allowable_stress = 278e6 * 0.8
@@ -154,7 +152,6 @@ def calc_winglet_mass(root_chord):
     buckling_coeff = 4
     young_mod = 70e9
     density = 2700
-
 
 
     I = calculate_Ibeam_moment_of_inertia(root_chord, thick_chord_ratio, flange_length, flange_thickness, beam_thickness)
@@ -167,17 +164,16 @@ def calc_winglet_mass(root_chord):
 
     ribslst = calc_total_rib_spacing(max_stress_beam, winglet_length, root_chord, thick_chord_ratio, I, number_of_beams, M, x, buckling_coeff, young_mod, winglet_skin_thickness, poisson_ratio)
 
-    print(ribslst)
-
     surface_area = winglet_area/winglet_length
-    surface_area /= ((taper_ratio - 1)*0.5 + 1)**2
 
+    rib_surface_area = surface_area/((taper_ratio - 1)*0.5 + 1)**2 * 0.6 #Assuming the rib area is 0.6 times the airfoil cross section due to holes & cutouts
+
+    #ribs_mass = rib_surface_area * density * rib_thickness * len(ribslst)
     ribs_mass = 0
 
-    #Find mass of ribs
     for rib_pos in ribslst:
         point_taper = ((taper_ratio - 1)/winglet_length * rib_pos + 1)
-        rib_volume = surface_area * point_taper * rib_thickness * density * 0.6 #Assuming ribs occupy around 0.6 of the airfoil volume due to holes and cutouts
+        rib_volume = surface_area * point_taper**2 * rib_thickness
         ribs_mass += rib_volume * density
 
     print(ribs_mass)
