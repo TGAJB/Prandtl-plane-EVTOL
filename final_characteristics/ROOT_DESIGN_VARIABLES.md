@@ -99,8 +99,13 @@ sheet value). If tail mass should respond, wire `b/c_r/c_t_vert_tail` →
 
 | Root | loc | MTOW-coupled | Primarily drives | Leverage |
 |---|---|---|---|---|
-| `fuselage_geometry.fuselage_length` | :186 | **yes** `L_FUS` | fuselage mass (Raymer) → MTOW; cg | med (MTOW) |
-| `fuselage_geometry.d_fw` (width) | :187 | **yes** `FUSE_WIDTH` | fuselage mass → MTOW; `C_L_beta` body term, side-area / `C_Y_p`, `C_N_beta` | med |
+| `fuselage_geometry.fuselage_length` | :186 | **yes** `L_FUS` | fuselage mass (Raymer) → MTOW; cg | **high (MTOW)** — top MTOW driver in the sweep (±~25 kg) |
+| `fuselage_geometry.d_fw` (width) | :187 | yes⁴ `FUSE_WIDTH` | `C_L_beta` body term, side-area / `C_Y_p`, `C_N_beta`; landing-gear track | med (aero); **MTOW ≈ 0** |
+
+⁴ `FUSE_WIDTH` feeds the landing-gear *track* (→ gear mass in the trade study),
+not the fuselage-mass regression; over [1.6, 2.4] m its measured MTOW effect is
+~0. Tagged coupled because it does enter the converger, but treat it as
+MTOW-neutral in practice.
 
 ---
 
