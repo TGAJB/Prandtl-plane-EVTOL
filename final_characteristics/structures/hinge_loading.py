@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+from parameters import *
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -10,8 +11,6 @@ import csv
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
-
-from parameters import project_vector
 
 class Wing():
     def __init__(self, geometry, theta_deg, phi_deg, alpha=0.0):
@@ -699,40 +698,171 @@ def run_wing_sim(angle, v):
 
     return resultant_force, resultant_moment
 
+def project_vector(a, b):
+    return np.dot(a, b)/(np.sqrt(np.dot(b, b))) * b
 
 
-if __name__ == "__main__":
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
-    #Initialize plot
+
+def plot_vectors_3d(vectors):
+    vectors = np.asarray(vectors)
+    num_vectors = len(vectors)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    # Draw arrows from origin
+    origins = np.zeros_like(vectors)
+
+    # 1. Create a custom colormap from Yellow to Blue
+    cmap = mcolors.LinearSegmentedColormap.from_list("yellow_blue", ["yellow", "blue"])
+
+    # 2. Generate evenly spaced colors across the colormap
+    if num_vectors == 1:
+        arrow_colors = [cmap(0.0)]
+    else:
+        arrow_colors = cmap(np.linspace(0, 1, num_vectors))
+
+    # 3. Pass the colors to ax.quiver
+    ax.quiver(
+        origins[:, 0],
+        origins[:, 1],
+        origins[:, 2],
+        vectors[:, 0],
+        vectors[:, 1],
+        vectors[:, 2],
+        arrow_length_ratio=0.08,
+        normalize=False,  # preserve actual vector magnitudes
+        colors=arrow_colors  # Apply the gradient colors
+    )
+
+    # Equal scaling for x/y/z axes
+    max_range = np.abs(vectors).max()
+
+    ax.set_xlim(-max_range, max_range)
+    ax.set_ylim(-max_range, max_range)
+    ax.set_zlim(-max_range, max_range)
+
+    # Force equal aspect ratio (important!)
+    ax.set_box_aspect([1, 1, 1])
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+
+    plt.show()
+
+
+def hinge_loading(root_chord, Propeller_Weight_Individual, propeller_thrust, wing_weight, weight_Carried_by_wing): #Weight carried by wing is the amount of aircraft weight carried by that wing, DUH
 
     ###3 coords systems used in this model, fuselage (a.c), wing and hinge
 
-    theta_input = -45 #deg
-    phi_input = 35.26438968 #deg
+    theta_input = HINGE_THETA  # deg
+    phi_input = HINGE_PHI  # deg
 
-    root_chord = 3 #m
-    taper = 0.8
-    halfspan_hinge = 10 #From the point where the hinge starts
-    #assuming hinge is positioned at the quarter chord
+    taper = TAPER_W
+    halfspan_hinge = HINGED_WING_LENGTH  # From the point where the hinge starts
 
-    thruster_position_1 = (0.5, 0, 3)
-    thruster_position_2 = (0.5, 0, 6)
+    thruster_position_1 = FW_THRUSTER_POSITION_1
+    thruster_position_2 = FW_THRUSTER_POSITION_2
 
-    v_cruise = 81
-    v_actual = 0 #The actual velocity you are expecting during whatever config you're testing out
-    propeller_thrust = 240 #N
-    propeller_weight = (7.31 + 48.09) * 9.81
+    v_cruise = V_CRUISE
+    v_actual = 0  # The actual velocity you are expecting during whatever config you're testing out
+    propeller_weight = Propeller_Weight_Individual
 
-    angle_cases = [0,60,120]
-    v_cases = [(120 - angle)**2/251.221 for angle in angle_cases]
+    angle_cases = [i for i in range(121)]
+    v_cases = [(120 - angle) ** 2 / 251.221 for angle in angle_cases]
 
     forces_lst = []
     moments_lst = []
 
-    for i in range(len(angle_cases)):
-        force, moment = run_wing_sim(angle_cases[i], v_cases[i])
-        forces_lst.append(force)
-        moments_lst.append(moment)
+    #Characteristics relevant to lifting distribution & weight
+    wing_weight_distributed = wing_weight/halfspan_hinge
+    winglet_lift_fraction = 0.4 #Lifting force at the winglet / Lifting force at the wing start
 
-    np.savetxt("r_moments.txt", np.array(moments_lst))
-    np.savetxt("r_forces.txt", np.array(forces_lst))
+    ###INITIALIZE WING
+    wing_planform = Wing(
+        np.array([[0.25 * root_chord, 0, 0], [0.25 * root_chord * taper, 0, halfspan_hinge],
+                  [-0.75 * root_chord * taper, 0, halfspan_hinge], [-0.75 * root_chord, 0, 0]]),
+        theta_input,
+        phi_input)
+
+    def weight(x):
+        return wing_weight_distributed
+
+    halfspan_hinge = 4
+    winglet_lift_fraction = 0.4
+
+    def wing_loading(x): #THIS NEEDS TO BE SCALED TO ACCOUNT FOR HALFSPAN
+        #Alpha and beta are derived from these constraints:
+        # The integral of this formula along the span must equal the weight the wing is expected to carry
+        # The lifting force at the wingtip must be the winglet lift fraction * the force at the chord
+        alpha = winglet_lift_fraction**2 + halfspan_hinge
+        beta = weight_Carried_by_wing/(-2/3 * (alpha - halfspan_hinge)**(3/2) + 2/3 * (alpha)**(3/2))
+        return np.sqrt(-(x - alpha)) * beta
+
+    """
+    x = np.arange(0, halfspan_hinge, 0.1).tolist()
+    print(wing_loading(4))
+    L = [wing_loading(i) for i in x]
+    W = [weight(i) for i in x]
+    plt.plot(x, L)
+    plt.plot(x, W)
+    plt.ylim(bottom=0, top=None)
+    plt.show()
+    """
+
+    # lift acts on the quarter-chord line, which for this geometry lies at x = 0 along the whole span
+    wing_planform.add_distributed_load(
+        DistributedLoad((0, -1, 0), (0, 0, 0), (0, 0, halfspan_hinge), wing_loading))
+
+    wing_planform.add_distributed_load(
+        DistributedLoad((0, 1, 0), (-1, 0, 0), (-0, 0, halfspan_hinge), weight, color="blue"), nonangled=True)
+
+    ###PROPELLER THRUST FORCES (wing-fixed) AND WEIGHTS (gravity-fixed, hence nonangled)
+    wing_planform.add_point_load(PointLoad((propeller_thrust, 0, 0), thruster_position_1, color="orange"))
+    wing_planform.add_point_load(PointLoad((propeller_thrust, 0, 0), thruster_position_2, color="orange"))
+    wing_planform.add_point_load(PointLoad((0, propeller_weight, 0), thruster_position_1, color="brown"),
+                                 nonangled=True)
+    wing_planform.add_point_load(PointLoad((0, propeller_weight, 0), thruster_position_2, color="brown"),
+                                 nonangled=True)
+    wing_planform.angle = 120
+    wing_planform.plot_wing()
+
+    # For loop
+    for i in range(len(angle_cases)):
+        wing_planform.angle = angle_cases[i]
+        v_actual = v_cases[i]
+
+        wing_planform.discretize()
+
+        rx = wing_planform.create_loading_diagram(force_direction="x", path_direction="z")
+        ry = wing_planform.create_loading_diagram(force_direction="y", path_direction="z")
+        rz = wing_planform.create_loading_diagram(force_direction="z", path_direction="y")
+        mx = wing_planform.create_moment_diagram("x")
+        my = wing_planform.create_moment_diagram("y")
+        mz = wing_planform.create_moment_diagram("z")
+
+        resultant_force = np.array([rx, ry, rz])
+
+        resultant_force_n = resultant_force / np.sqrt(np.dot(resultant_force, resultant_force))
+
+        # plot_single_vector(wing_planform.ax, resultant_force_n, color="purple", alpha=1)
+
+        # both reactions are computed in the wing frame; express them in the global frame
+        resultant_force = transform_vector(resultant_force, wing_planform.wing_axes, np.eye(3))
+        resultant_moment = transform_vector(np.array([mx, my, mz]), wing_planform.wing_axes, np.eye(3))
+
+        forces_lst.append(resultant_force)
+        moments_lst.append(resultant_moment)
+
+        # np.savetxt("r_moments.txt", np.array(moments_lst))
+        # np.savetxt("r_forces.txt", np.array(forces_lst))
+    plot_vectors_3d(moments_lst)
+    plt.show()
+
+if __name__ == "__main__":
+    hinge_loading(3, (7.31 + 48.09) * 9.81, 240, 50*9.81, 1000)

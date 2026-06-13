@@ -54,7 +54,31 @@ Author: (your group) -- conceptual design phase
 from __future__ import annotations
 from dataclasses import dataclass, field
 from math import log, sqrt
-import csv
+import sys
+from pathlib import Path
+
+# --------------------------------------------------------------------------- #
+# Shared design parameters (single source of truth: repo-root parameters.py).
+# Geometry and mission constants are pulled from there instead of being
+# hardcoded here, so the ECS stays consistent with the rest of the design when
+# those values change. Only quantities that genuinely live in parameters.py are
+# sourced; ECS-specific assumptions (insulation, efficiencies, cabin targets,
+# per-phase ISA/Mach/E_prop) remain local. Path setup mirrors the other
+# final_characteristics modules (e.g. ppe.py, FBD_Generator_wing.py).
+# --------------------------------------------------------------------------- #
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+from parameters import (
+    N_PAX,            # passenger count [-]
+    L_FUS,            # fuselage length [m]
+    PER_FUS_MAX,      # fuselage maximum perimeter [m]
+    FUSE_WIDTH,       # fuselage width [m] -> cabin inner radius (d_fw)
+    M_CR,             # cruise Mach number [-]
+    H_CRUISE,         # cruise altitude [m]
+    T_TAKEOFF, T_VERTICAL_CLIMB, T_CLIMB, T_CRUISE, T_DESCENT, T_LANDING,  # phase durations [s]
+)
 
 # --------------------------------------------------------------------------- #
 # Physical constants and air properties
@@ -207,17 +231,17 @@ class Aircraft:
     r ~ 1.0 m) and the constants-file fuselage length (7.0 m). Set
     `use_perimeter_for_radius=True` to instead derive radius from PER_FUS_MAX.
     """
-    n_pax: int = 4                  # [CONST] N_PAX = 4
+    n_pax: int = N_PAX              # [PARAM] parameters.N_PAX
     n_crew: int = 0                 # [CONST] autonomous -> W_CREW = 0
     n_cabin_crew: int = 0
 
     # Fuselage as a 3-layer cylinder (paper Fig. 2)
     cabin_length_m: float = 6.0     # [ASSUMED] conditioned cabin length;
                                     #   ~0.65-0.75 x fuselage length (paper)
-    fuselage_length_m: float = 7.0  # [CONST] L_FUS = 7.0
-    fuselage_perimeter_m: float = 12.0   # [CONST] PER_FUS_MAX = 12.0
+    fuselage_length_m: float = L_FUS      # [PARAM] parameters.L_FUS
+    fuselage_perimeter_m: float = PER_FUS_MAX  # [PARAM] parameters.PER_FUS_MAX
     use_perimeter_for_radius: bool = False
-    r_inner_m: float = 1.0          # [REPORT] ~half of 2.0 m cabin height
+    r_inner_m: float = FUSE_WIDTH / 2.0   # [PARAM] half of parameters.FUSE_WIDTH (d_fw)
     t_trim_m: float = 0.005         # [ASSUMED] decorative/inner-skin thickness
     t_insul_m: float = 0.035        # [ASSUMED] microlite insulation (25-51 mm)
     t_outer_m: float = 0.002        # [ASSUMED] outer skin thickness
@@ -679,27 +703,6 @@ def _print_report(summary: dict) -> None:
               f"{summary['ecs_fraction_of_prop']*100:>11.2f}%")
 
 
-def _write_csv(summary: dict, path: str) -> None:
-    with open(path, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["phase", "alt_ft", "isa_offset_K", "mach", "p_amb_bar",
-                    "p_cab_bar", "beta_c", "q_total_W", "m_ecs_kg_s",
-                    "P_compressor_W", "P_motor_W", "T_comp_exit_C",
-                    "duration_s", "ECS_energy_Wh", "ECS_energy_kWh",
-                    "E_prop_kWh", "ECS_pct_of_prop"])
-        for r in summary["per_phase"]:
-            ecs_kwh = r["energy_Wh"] / 1000.0
-            pct = (ecs_kwh / r["E_prop_kWh"] * 100.0) if r["E_prop_kWh"] > 0 else ""
-            w.writerow([r["phase"], r["altitude_ft"], r["isa_offset_K"], r["mach"],
-                        f"{r['p_ambient_bar']:.4f}", f"{r['p_cabin_bar']:.4f}",
-                        f"{r['beta_c']:.4f}", f"{r['q_total_W']:.1f}",
-                        f"{r['m_ecs_kg_s']:.5f}", f"{r['P_compressor_W']:.1f}",
-                        f"{r['P_motor_W']:.1f}", f"{r['T_comp_exit_C']:.1f}",
-                        f"{r['duration_s']:.0f}", f"{r['energy_Wh']:.2f}",
-                        f"{ecs_kwh:.5f}", f"{r['E_prop_kWh']:.3f}",
-                        f"{pct:.2f}" if pct != "" else ""])
-
-
 if __name__ == "__main__":
     ac = Aircraft()        # geometry now seeded from team constants (see class)
     cond = Conditioning()  # tweak targets / efficiencies
@@ -733,12 +736,11 @@ if __name__ == "__main__":
     # Mapping choices (confirmed): cruise ISA-20; takeoff/v-climb at Nice SL,
     # landing at Courchevel 6000 ft; climb SEGMENTED from SL to 12500 ft so the
     # pressurization ramp is resolved (final-design fidelity).
-    T_TAKEOFF        = 5.0       # [CONST]
-    T_VERTICAL_CLIMB = 25.0      # [CONST]
-    T_CLIMB          = 1221.7    # [CONST] (+ T_CLIMB_ACC 20 s folded in)
-    T_CRUISE         = 2194.7    # [CONST]
-    T_DESCENT        = 311.945   # [CONST]
-    T_LANDING        = 71.47     # [CONST]
+    # Phase durations [s] come from parameters.py (imported at module top), so
+    # ECS shares the mission timeline with the rest of the design. NOTE: climb
+    # uses parameters.T_CLIMB only; if the 20 s climb-acceleration segment
+    # (parameters.T_CLIMB_ACC) should be folded in, use T_CLIMB + T_CLIMB_ACC.
+    H_CRUISE_FT = H_CRUISE / FT2M    # parameters.H_CRUISE [m] -> ft (= 12500 ft)
 
     # Phase(name, alt_ft, ISA_offset, Mach, mode, sunny, on_ground, E_prop_kWh)
     phases = [
@@ -749,10 +751,10 @@ if __name__ == "__main__":
         # climb -- SEGMENTED from SL to cruise altitude so the pressurization
         # ramp is captured (single mid-point would zero it out). 6 sub-segments.
         ("SEGMENTED", "Climb",
-         make_altitude_sweep_phases("Climb", 0, 12500, -20, 0.15, "heat",
+         make_altitude_sweep_phases("Climb", 0, H_CRUISE_FT, -20, 0.15, "heat",
                                     True, T_CLIMB, 37.78, n_segments=6)),
         # cruise over the Alps, cold
-        (Phase("Cruise",         12500, -20, 0.17, "heat", False, False, 36.9),   T_CRUISE),
+        (Phase("Cruise",         H_CRUISE_FT, -20, M_CR, "heat", False, False, 36.9),   T_CRUISE),
         # descent toward Courchevel
         (Phase("Descent",        9000,  -20, 0.12, "heat", False, False, 6.58),   T_DESCENT),
         # landing -- vertical, at Courchevel 6000 ft, cold
@@ -761,7 +763,6 @@ if __name__ == "__main__":
 
     summary = size_mission(ac, cond, phases)
     _print_report(summary)
-    _write_csv(summary, "/home/claude/ecs_results.csv")
 
     # --- Climb sub-segment breakdown (shows the pressurization ramp) ----- #
     for r in summary["per_phase"]:
