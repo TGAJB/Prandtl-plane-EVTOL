@@ -64,6 +64,35 @@ from final_characteristics.stability_eval import (
     evaluate_stability,
 )
 
+# Design-variable BOUNDS are derived from parameters.py (single source of truth),
+# never hardcoded: the z_w_fw range is expressed as a chord/ground span and the
+# VTOL-battery slide range from the (flat-wide) box length vs the fuselage.
+import parameters as _p
+from class_II_sizing.mtow_sizing import converged_mass as _converged_mass
+
+_WG = _p.WingGeometry()
+_TG = _p.TailGeometry()
+_C_ROOT_FW = _WG.chord_fw_root                     # [m] front-wing root chord
+_Z_GROUND = _p.Z_GEAR                              # [m] skid-bottom datum (centreline frame, z up)
+# Front-wing height above the ground (skid) datum: bounded by (3/4 * root_chord)
+# and (2.4 m - root_chord). Sorted so pymoo gets (low, high); in the body frame
+# this is ~[-0.56, -0.055] m, bracketing the current -0.5 m.
+_ZWFW_BOUNDS = tuple(sorted((
+    _Z_GROUND + 0.75 * _C_ROOT_FW,     # 3/4 root-chord above ground
+    _Z_GROUND + (2.4 - _C_ROOT_FW),    # 2.4 m - root chord above ground
+)))
+# Sliding-battery VTOL station: cruise station back to where the flat-wide box's
+# aft face reaches the fuselage tail (so it stays inside the airframe).
+_BATT_MASS = _converged_mass()["battery"]
+_XBATT_VTOL_BOUNDS = _p.battery_vtol_slide_range(_BATT_MASS)
+# Cruise-battery station: kept forward enough that the box stays inside the cabin
+# and the cruise c.g. is balanceable; aft bound is the cruise station.
+_XBATT_CRUISE_BOUNDS = (1.5, _p.X_BATT_CRUISE + 0.3)
+
+# Couple the vertical-tail span to the MTOW converger (tail mass)? Off by default
+# for speed (each coupled eval reconverges the MTOW, ~6 s). See evaluate_design.
+COUPLE_TAIL_MASS = False
+
 # pymoo: the NSGA-II implementation used in Phase 2.
 from pymoo.core.problem import Problem
 from pymoo.algorithms.moo.nsga2 import NSGA2
@@ -92,18 +121,27 @@ from pymoo.operators.mutation.pm import PM
 # constraints; promote the layout roots that MOVE the c.g. (e.g. x_LEMAC_fw,
 # x_vert_tail, battery/payload stations) rather than tuning the c.g. directly.
 #
-# The set + bounds below are SUGGESTIONS grounded in the Sobol consult
-# (stability_sensitivity.py). Edit to match the team's chosen tunables.
+# The six tunable levers the team can manipulate (the c.g. is NOT one: it emerges
+# from the layout + the sliding battery). All ranges come from parameters.py.
+#
+# DEFERRED: the rear-rotor SPANWISE lever (ETA_ROTOR_RW -> folded rotor further aft
+# via the 120-deg wing fold). Analysis showed it moves the OEI window the WRONG way
+# for cg_vtol_fwd (it pushes the window aft of the c.g.), and the sliding battery
+# already seats the VTOL c.g. in the window, so it is omitted here. Re-add it once
+# the fold-kinematic folded-rotor position is wired into MMOI + the OEI LP.
 DESIGN_VARIABLES = {
-    "s_aft_to_s_total": {"bounds": (0.30, 0.70), "route": "override:s_aft_to_s_total",                 "converger": None},
-    "dihedral_fw":      {"bounds": (0.0, 6.0),   "route": "override:wing_geometry.dihedral_front_wing","converger": None},
-    "dihedral_aw":      {"bounds": (0.0, 6.0),   "route": "override:wing_geometry.dihedral_aft_wing",  "converger": None},
-    "x_LEMAC_fw":       {"bounds": (0.5, 2.0),   "route": "override:wing_geometry.x_LEMAC_fw",         "converger": None},
-    "b_vert_tail":      {"bounds": (1.2, 2.4),   "route": "override:tail_geometry.b_vert_tail",        "converger": None},
-    # wing_loading feeds BOTH the stability geometry (design_point) AND the MTOW
-    # converger (WING_LOADING_N). Including it makes each evaluation reconverge
-    # the MTOW (~25 s) -- see the performance note in converged_mtow().
-    "wing_loading":     {"bounds": (650.0, 880.0), "route": "override:wing_geometry.design_point",     "converger": "WING_LOADING_N"},
+    # front-wing LEMAC: nose (0) to the current 1.5 m station -- shifts the cruise
+    # c.g. envelope (and, via the MMOI wing station, the c.g.).
+    "x_LEMAC_fw":    {"bounds": (0.0, 1.5),            "route": "override:wing_geometry.x_LEMAC_fw", "converger": None},
+    # sliding battery: cruise station (cruise c.g.) and aft VTOL-emergency station
+    # (seats the VTOL-OEI c.g. in its envelope without disturbing cruise).
+    "x_batt_cruise": {"bounds": _XBATT_CRUISE_BOUNDS,  "route": "design_var:x_batt_cruise",          "converger": None},
+    "x_batt_vtol":   {"bounds": _XBATT_VTOL_BOUNDS,    "route": "design_var:x_batt_vtol",            "converger": None},
+    # front-wing height z (3/4 to 2.4 root-chords above the ground datum).
+    "z_w_fw":        {"bounds": _ZWFW_BOUNDS,          "route": "override:wing_geometry.z_w_fw",     "converger": None},
+    # vertical-tail span (also feeds the MTOW converger via the tail mass, so
+    # shrinking it trades directional stability against mass -- see evaluate_design).
+    "b_vert_tail":   {"bounds": (1.4, 1.6),            "route": "override:tail_geometry.b_vert_tail", "converger": None},
 }
 DESIGN_VARIABLE_NAMES = list(DESIGN_VARIABLES.keys())
 
@@ -114,14 +152,13 @@ def design_vector_to_dict(x):
 
 
 def default_design_vector():
-    """Nominal starting design (mid-range-ish, near the current sheet values)."""
+    """Nominal starting design (mid-range, near the current sheet values)."""
     return {
-        "s_aft_to_s_total": 0.50,
-        "dihedral_fw":      0.0,
-        "dihedral_aw":      0.0,
-        "x_LEMAC_fw":       1.0,
-        "b_vert_tail":      1.6,
-        "wing_loading":     760.0,
+        "x_LEMAC_fw":    1.5,
+        "x_batt_cruise": _p.X_BATT_CRUISE,
+        "x_batt_vtol":   0.5 * (_XBATT_VTOL_BOUNDS[0] + _XBATT_VTOL_BOUNDS[1]),
+        "z_w_fw":        0.5 * (_ZWFW_BOUNDS[0] + _ZWFW_BOUNDS[1]),
+        "b_vert_tail":   1.6,
     }
 
 
@@ -150,6 +187,17 @@ def evaluate_design(design_vars=None):
             param_overrides[key] = value
         if spec["converger"]:
             geometry_overrides[spec["converger"]] = value
+
+    # The vertical-tail span also drives the tail MASS in the converger (S_TAIL,
+    # AR_T); shrinking it lowers MTOW slightly. That coupling is left OFF by
+    # default because it forces a ~6 s MTOW reconverge on every evaluation for a
+    # tail-mass effect of only ~10-20 kg. Set COUPLE_TAIL_MASS = True to trade
+    # speed for a true min-MTOW gradient on the tail span.
+    if COUPLE_TAIL_MASS and "b_vert_tail" in design_vars:
+        b = design_vars["b_vert_tail"]
+        s_tail = (_TG.c_r_vert_tail + _TG.c_t_vert_tail) * b / 2.0
+        geometry_overrides["S_TAIL"] = s_tail
+        geometry_overrides["AR_T"] = b * b / s_tail
 
     # 1) Converged MTOW (responds to converger-coupled geometry vars).
     mtow = converged_mtow(geometry_overrides)
@@ -239,18 +287,19 @@ def run_phase_2():
 
     problem = DesignProblem()
 
-    # pop_size / n_gen are intentionally small: when wing_loading is active each
-    # evaluation reconverges the MTOW (~25 s). Raise these only with a surrogate
-    # or after dropping the converger-coupled design var.
+    # The five active levers do NOT reconverge the MTOW (COUPLE_TAIL_MASS=False),
+    # so each evaluation is cheap (~0.3 s) and we can afford a healthy population
+    # and generation count for robust exploration of the feasible region (the
+    # VTOL-OEI constraint needs the sliding battery near its aft travel).
     algorithm = NSGA2(
-        pop_size=12,
+        pop_size=24,
         sampling=FloatRandomSampling(),
         crossover=SBX(prob=0.9, eta=15),
         mutation=PM(eta=20),
         eliminate_duplicates=True,
     )
 
-    result = minimize(problem, algorithm, termination=("n_gen", 10), seed=1, verbose=True)
+    result = minimize(problem, algorithm, termination=("n_gen", 20), seed=1, verbose=True)
 
     best_x = result.X
     if best_x is None:

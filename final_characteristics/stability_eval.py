@@ -61,6 +61,7 @@ for _path in (PROJECT_ROOT, VEHICLE_DYNAMICS_DIR):
 from class_II_sizing.mtow_sizing import load_final_design_state
 from class_II_sizing import mtow_sizing
 import class_II_sizing.mass_components as mass_components
+import class_II_sizing.MMOI as mmoi
 
 import aircraft
 from stat_long_stab_anal_func import (
@@ -203,6 +204,7 @@ def _resolve_dependents(params):
     # stays stale. (No-ops at the baseline where they already match.)
     wg.b_aw = wg.b_fw
     wg.taper_aw = wg.taper_fw
+    wg.b_ref = wg.b_fw   # lateral-directional reference span tracks the (possibly swept) front-wing span
 
     # Wing: aft-wing vertical position tracks the front wing plus the gap.
     wg.z_w_aw = wg.z_w_fw + wg.gap
@@ -332,7 +334,23 @@ def evaluate_stability(param_overrides=None, design_vars=None, mtow=None):
     # hand-set sheet value. The cruise build-up fills params.mass and feeds the
     # cruise checks; the aft-shifted VTOL (wings-folded) build-up feeds the
     # VTOL-OEI check. design_vars may still override for manual what-ifs.
-    mmoi_cruise_cg, mmoi_vtol_cg = aircraft.apply_mmoi_mass_properties(params)
+    #
+    # MMOI reads component-layout stations as module globals, so design variables
+    # that MOVE masses in the build-up (the two sliding-battery stations) are
+    # applied by overriding those globals around the build, then restoring them.
+    mmoi_overrides = {}
+    if "x_batt_cruise" in design_vars:
+        mmoi_overrides["X_BATT"] = design_vars["x_batt_cruise"]
+    if "x_batt_vtol" in design_vars:
+        mmoi_overrides["X_BATT_VTOL"] = design_vars["x_batt_vtol"]
+    _saved_mmoi = {name: getattr(mmoi, name) for name in mmoi_overrides}
+    try:
+        for name, value in mmoi_overrides.items():
+            setattr(mmoi, name, value)
+        mmoi_cruise_cg, mmoi_vtol_cg = aircraft.apply_mmoi_mass_properties(params)
+    finally:
+        for name, value in _saved_mmoi.items():
+            setattr(mmoi, name, value)
     cg_cruise_nose = design_vars.get("cg_cruise_nose", design_vars.get("x_cg", mmoi_cruise_cg))
     cg_vtol_nose = design_vars.get("cg_vtol_nose", design_vars.get("x_cg", mmoi_vtol_cg))
     cruise_static_margin = design_vars.get("cruise_static_margin", DEFAULT_CRUISE_STATIC_MARGIN)

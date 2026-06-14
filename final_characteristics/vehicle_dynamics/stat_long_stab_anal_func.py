@@ -92,6 +92,12 @@ def _update_aircraft_for_wing_split(ac, mtow, s_aft_to_s_total):
     wg.A_aw = A_aw
     wg.S_e_fw = S_e_fw
     wg.S_e_aw = S_e_aw
+    # Non-dimensionalisation references MUST track the live geometry, otherwise
+    # every aircraft-level derivative is referenced to a stale area/span. The
+    # dataclass seeds (S_ref=S_tot, b_ref=b_fw) are frozen at class-definition
+    # time; refresh them here so they follow the converged/overridden geometry.
+    wg.S_ref = S_tot
+    wg.b_ref = wg.b_fw
 
     return {
         "S_tot": S_tot,

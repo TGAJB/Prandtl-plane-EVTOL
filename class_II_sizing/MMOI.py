@@ -95,7 +95,7 @@ from parameters import (
     ETA_ROTOR_FW_IN, ETA_ROTOR_FW_OUT, ETA_ROTOR_RW,
     X_ROTOR_FW, X_ROTOR_RW, Z_ROTOR_FW, Z_ROTOR_RW,
     X_ROTOR_FW_IN_VTOL, X_ROTOR_FW_OUT_VTOL, X_ROTOR_RW_VTOL,
-    X_BATT, Z_BATT, battery_box_dimensions,
+    X_BATT, X_BATT_VTOL, Z_BATT, battery_box_dimensions,
     X_PAYLOAD, Z_PAYLOAD, L_PAYLOAD_BOX, W_PAYLOAD_BOX, H_PAYLOAD_BOX,
     X_GEAR, Y_GEAR_RAIL, Z_GEAR, L_SKID_RAIL,
     X_MISC, Z_MISC, FAT_CYLINDER_SECTION
@@ -302,11 +302,15 @@ def build_components(breakdown, configuration="cruise"):
         add(f"pod_{name}", m_pod, (x, y, z), np.zeros((3, 3)))
         add(f"prop_{name}", m_prop, (x, y, z), prop_local)
 
-    # -- Battery: solid underfloor box; L x W x H scale isometrically from the
-    #    installed cells (126:43:9 proportions), so the box grows with m_batt. --
+    # -- Battery: solid underfloor flat-wide slab. TWO longitudinal stations: the
+    #    cruise station (X_BATT) for the cruise build-up, and the aft VTOL-emergency
+    #    station (X_BATT_VTOL) for the folded/VTOL build-up -- the sliding battery
+    #    deploys aft in a VTOL one-engine-out emergency to move the VTOL c.g. into
+    #    its OEI-balanceable envelope without disturbing the cruise c.g. --
     m_batt = breakdown["battery"]
     l_batt, w_batt, h_batt = battery_box_dimensions(m_batt)
-    add("battery", m_batt, (X_BATT, 0.0, Z_BATT),
+    x_batt = X_BATT_VTOL if config in ("vtol", "folded") else X_BATT
+    add("battery", m_batt, (x_batt, 0.0, Z_BATT),
         inertia_solid_box(m_batt, l_batt, w_batt, h_batt))
 
     # -- Payload: solid cabin box --
