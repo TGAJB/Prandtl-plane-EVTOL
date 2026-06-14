@@ -223,6 +223,8 @@ def print_design_report(results):
     for name in REQUIREMENT_NAMES:
         status = "PASS" if results["requirements"][name] else "FAIL"
         print(f"    {name:18s}: {status}   (margin {results['margins'][name]:+.4f})")
+    print(f"  Worst normalised margin (robustness): {results['worst_margin']:+.4f}  "
+          f"(<=0 = all met with slack; ~-1 = baseline slack)")
     print(f"  Overall: {'ACCEPTED' if results['accepted'] else 'REJECTED'}")
     print("-" * 64)
 
@@ -245,7 +247,12 @@ class DesignProblem(Problem):
     """pymoo problem wrapper around evaluate_design().
 
     n_var    = number of design variables
-    n_obj    = 1  -> minimise the converged MTOW
+    n_obj    = 2  -> minimise (converged MTOW, worst NORMALISED stability margin)
+                     The active levers barely move MTOW, so on their own they give
+                     a near-flat objective; the worst normalised margin (each margin
+                     scaled by its baseline magnitude, so robustness tracks RELATIVE
+                     slack) is the objective they DO drive, turning Phase 2 into a
+                     real Pareto trade of mass against stability slack, not pass/fail.
     n_constr = number of stability requirements (their signed margins; <= 0 = OK)
     xl / xu  = bounds from DESIGN_VARIABLES
     """
@@ -255,7 +262,7 @@ class DesignProblem(Problem):
         upper = [DESIGN_VARIABLES[name]["bounds"][1] for name in DESIGN_VARIABLE_NAMES]
         super().__init__(
             n_var=len(DESIGN_VARIABLE_NAMES),
-            n_obj=1,                          # <-- bump to 2 + add a 2nd F below for true Pareto
+            n_obj=2,                          # (MTOW, worst-case stability margin)
             n_constr=len(REQUIREMENT_NAMES),
             xl=np.array(lower),
             xu=np.array(upper),
@@ -267,11 +274,16 @@ class DesignProblem(Problem):
         for x in X:
             results = evaluate_design(design_vector_to_dict(x))
 
-            # OBJECTIVE: minimise the converged MTOW.
-            # To add a 2nd objective (true multi-objective Pareto): append it here,
-            # e.g. objectives = [results["mtow"], results["total_violation"]], and
-            # set n_obj=2 above.
-            objective_rows.append([results["mtow"]])
+            # OBJECTIVES (both minimised by pymoo):
+            #   1) the converged MTOW.
+            #   2) the worst NORMALISED stability margin -- each margin is divided
+            #      by its baseline magnitude so the binding requirement is the one
+            #      with the least RELATIVE slack (not the smallest absolute number,
+            #      which would always be C_Y_p). Driving it down makes the design
+            #      robustly stable where it actually has tension. total_violation
+            #      would flatten to 0 across the feasible region; worst_margin keeps
+            #      improving, so it is the objective that actually shapes the front.
+            objective_rows.append([results["mtow"], results["worst_margin"]])
 
             # CONSTRAINTS: each requirement's signed margin is already in pymoo's
             # "g(x) <= 0 means satisfied" convention.
@@ -301,16 +313,32 @@ def run_phase_2():
 
     result = minimize(problem, algorithm, termination=("n_gen", 20), seed=1, verbose=True)
 
-    best_x = result.X
-    if best_x is None:
+    pareto_x = result.X
+    if pareto_x is None:
         print("NSGA-II did not return a feasible design. Some requirements may not be "
               "reachable with the current design-variable set (e.g. the VTOL OEI "
               "envelope, which needs a propulsion change, not geometry).")
         return None
 
-    best_x = np.atleast_2d(best_x)[0]
-    print("\nBest design found by NSGA-II:")
-    best = evaluate_design(design_vector_to_dict(best_x))
+    # Two objectives now -> result.X is the non-dominated (Pareto) set trading MTOW
+    # against stability robustness. Report the whole front, then detail one pick.
+    pareto_x = np.atleast_2d(pareto_x)
+    pareto_f = np.atleast_2d(result.F)
+    order = np.argsort(pareto_f[:, 0])   # by ascending MTOW
+
+    print(f"\nNSGA-II Pareto front ({len(pareto_x)} non-dominated designs):")
+    print("    rank   MTOW [kg]   worst norm. margin (<=0 = feasible)")
+    for rank, i in enumerate(order):
+        print(f"    #{rank:<3d}  {pareto_f[i, 0]:9.2f}   {pareto_f[i, 1]:+.4f}")
+
+    # Representative pick: the lightest design that is also feasible (worst margin
+    # <= 0); if none on the front are feasible, fall back to the most robust one.
+    feasible = order[pareto_f[order, 1] <= 0.0]
+    chosen = int(feasible[0]) if len(feasible) else int(np.argmin(pareto_f[:, 1]))
+
+    label = "lightest feasible" if len(feasible) else "most robust (none feasible)"
+    print(f"\nRepresentative design on the front ({label}):")
+    best = evaluate_design(design_vector_to_dict(pareto_x[chosen]))
     print_design_report(best)
     return best
 

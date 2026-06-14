@@ -305,7 +305,8 @@ def evaluate_stability(param_overrides=None, design_vars=None, mtow=None):
 
     Returns a dict:
         {mtow, derivatives, np_cg, requirements: {name: bool},
-         margins: {name: signed worst-side margin}, total_violation: float}
+         margins: {name: signed worst-side margin}, total_violation: float,
+         worst_margin: float (<=0 = every requirement met with slack)}
     """
     param_overrides = dict(param_overrides) if param_overrides else {}
     design_vars = dict(design_vars) if design_vars else {}
@@ -379,6 +380,7 @@ def evaluate_stability(param_overrides=None, design_vars=None, mtow=None):
     results["requirements"] = check_requirements(results)
     results["margins"] = requirement_margins(results)
     results["total_violation"] = total_violation(results)
+    results["worst_margin"] = worst_case_margin(results)
     results["accepted"] = all(results["requirements"].values())
     return results
 
@@ -422,6 +424,65 @@ def total_violation(results):
     """
     margins = requirement_margins(results)
     return float(sum(max(0.0, m) for m in margins.values()))
+
+
+# Per-requirement normalisation scales for the robustness objective. The raw
+# margins live on wildly different natural scales (C_M_q ~ -98, C_Y_p ~ -0.009),
+# so a raw min-max worst-margin is ALWAYS hijacked by the smallest-magnitude
+# requirement (C_Y_p passes comfortably but would pin the worst margin simply
+# because its number is tiny). We normalise each margin by the ABSOLUTE MARGIN OF
+# THE BASELINE (no-override) DESIGN, so the robustness objective measures RELATIVE
+# slack: every requirement is ~-1 at the baseline, and the worst RELATIVE slack
+# then drives the optimiser, surfacing the requirement with real design tension
+# (the c.g.-envelope ones the levers actually move) rather than the one with the
+# naturally tiniest number.
+_SCALE_FLOOR = 1e-6                  # guards a ~0 baseline margin (div-by-zero)
+_NOMINAL_MARGIN_SCALES = None       # {req_name: |baseline margin|}, computed once
+_COMPUTING_NOMINAL_SCALES = False   # re-entrancy guard (the baseline eval calls back)
+
+
+def _nominal_margin_scales():
+    """Lazily compute & cache the per-requirement |baseline margin| scales.
+
+    Evaluates the baseline (no-override) design ONCE and stores the absolute value
+    of each requirement's margin as its normalisation scale. Returns None while
+    that baseline evaluation is itself in flight, so worst_case_margin falls back
+    to the raw margin to seed the scales without recursing forever.
+    """
+    global _NOMINAL_MARGIN_SCALES, _COMPUTING_NOMINAL_SCALES
+    if _NOMINAL_MARGIN_SCALES is None and not _COMPUTING_NOMINAL_SCALES:
+        _COMPUTING_NOMINAL_SCALES = True
+        try:
+            baseline = evaluate_stability()   # default design, no overrides
+            _NOMINAL_MARGIN_SCALES = {
+                name: max(abs(margin), _SCALE_FLOOR)
+                for name, margin in baseline["margins"].items()
+            }
+        finally:
+            _COMPUTING_NOMINAL_SCALES = False
+    return _NOMINAL_MARGIN_SCALES
+
+
+def worst_case_margin(results):
+    """Worst NORMALISED requirement margin -- the robustness score.
+
+    Each requirement is satisfied when its margin is <= 0. Dividing every margin
+    by its |baseline margin| (see _nominal_margin_scales) preserves that sign but
+    puts all requirements on a common dimensionless scale (~-1 at the baseline),
+    so the LARGEST normalised margin is the requirement with the least RELATIVE
+    slack. Driving it down makes the design robustly stable where it actually has
+    tension, instead of chasing whichever derivative is smallest in absolute terms
+    (e.g. C_Y_p ~ -0.009, which passes comfortably but would pin a raw min-max).
+
+    <= 0 still means every requirement is met with slack. Unlike total_violation
+    (flat at 0 across the feasible region) this keeps improving, so it is the right
+    continuous objective to trade against MTOW.
+    """
+    margins = requirement_margins(results)
+    scales = _nominal_margin_scales()
+    if scales is None:                       # inside the baseline eval seeding the scales
+        return float(max(margins.values()))  # raw fallback (this value is not used)
+    return float(max(margins[name] / scales[name] for name in margins))
 
 
 # ===========================================================================
