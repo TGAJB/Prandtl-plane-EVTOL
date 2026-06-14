@@ -14,8 +14,21 @@
 # ============================================================================
 
 import math
-import numpy as np
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
+
+import numpy as np
+
+# Make the project root importable so the Prandtl box-wing Oswald relation
+# (single source of truth, support_files/oswaldefficiency.py) can be reused here
+# instead of hardcoding the Oswald factor. oswaldefficiency is import-light
+# (matplotlib is lazy), so this stays cheap even though parameters.py is imported
+# everywhere.
+_PROJECT_ROOT = Path(__file__).resolve().parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(_PROJECT_ROOT))
+from support_files.oswaldefficiency import oswald_efficiency
 
 
 # ============================================================================
@@ -321,7 +334,13 @@ class AerodynamicCoefficients:
     CD0_fuselage:                       float = None  # [-]
 
     # Oswald efficiency factors
-    e_hor_wings:                         float = 1.34  # [-] (updated 11-06-2026) (DOES THE VALIDITY CHANGE WHEN HLDs ARE DEPLOYED?)
+    # Sourced from the Prandtl box-wing relation (Rizzo 2007 = Midterm report
+    # eq 4.7, support_files/oswaldefficiency.py) at the design vertical gap and
+    # span, NOT hardcoded: e = oswald_efficiency(gap, b_fw). At the baseline
+    # (gap 2.1 m, b 13 m) this evaluates to ~1.342, i.e. the previous 1.34. It is
+    # refreshed at runtime from the (possibly overridden) gap/span in
+    # stability_eval._resolve_dependents so a swept gap/span propagates.
+    e_hor_wings:                         float = float(oswald_efficiency(WingGeometry.gap, WingGeometry.b_fw))  # [-]
     e_vert_tail:                         float = None  # [-]
     e_winglet:                           float = None  # [-]
 
@@ -566,6 +585,17 @@ DRAG_POLAR_N_POINTS  = 100    # [-]   number of points used for drag-polar plots
 LD_CRUISE            = 14.7   # [-]   box-wing cruise L/D (preliminary)
 CD0                  = 0.0205 # [-]   zero-lift drag coefficient (preliminary)
 OSWALD_EFFICIENCY    = AerodynamicCoefficients.e_hor_wings  # [-] Oswald efficiency factor
+
+# Matching-diagram / design-point sizing inputs (cruise-configuration wing & power
+# loading). These are mission/requirement values used by
+# final_characteristics/matching_diagram.py to bound the wing loading W/S; they
+# are NOT aerodynamic models. The constraint equations themselves are the standard
+# ADSEE forms. Take-off/landing sizing is omitted (VTOL handles those vertically).
+STALL_SPEED_MAX  = 25.0   # [m/s] maximum allowable cruise-config stall speed (sets the W/S upper bound)
+CLIMB_RATE       = 3.0    # [m/s] required steady rate of climb (climb-rate constraint)
+CLIMB_GRADIENT   = 0.083  # [-]   required climb gradient c/V (CS/FAR 23.65, all engines operating)
+CL_MAX_CLIMB     = 1.8    # [-]   lift coefficient used in the climb-gradient constraint
+PROP_EFFICIENCY  = 0.80   # [-]   propeller efficiency for the matching diagram (conservative)
 
 # Longitudinal static-stability margins (fraction of the global MAC)
 # Master values for the two CG-envelope analyses in final_characteristics/

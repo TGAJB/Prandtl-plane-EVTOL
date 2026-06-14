@@ -99,6 +99,18 @@ def _update_aircraft_for_wing_split(ac, mtow, s_aft_to_s_total):
     wg.S_ref = S_tot
     wg.b_ref = wg.b_fw
 
+    # Root/tip chords follow the SAME planform identity already used above in
+    # calc_wing_geom (c_r = 2S/(b(1+taper)), c_t = taper*c_r). Refresh them from
+    # the live area so consumers that read the chord directly -- e.g.
+    # CM_alpha_front_wing/CM_alpha_aft_wing in aircraft.py, which form c_r/MAC --
+    # stay consistent with the (possibly W/S-overridden) area instead of the
+    # frozen sheet chords. This is planform GEOMETRY only; no aerodynamic formula
+    # is introduced or altered.
+    wg.chord_fw_root = (2.0 * S_fw) / (wg.b_fw * (1.0 + wg.taper_fw))
+    wg.chord_fw_tip = wg.taper_fw * wg.chord_fw_root
+    wg.chord_aw_root = (2.0 * S_aw) / (wg.b_aw * (1.0 + wg.taper_aw))
+    wg.chord_aw_tip = wg.taper_aw * wg.chord_aw_root
+
     return {
         "S_tot": S_tot,
         "S_fw": S_fw,

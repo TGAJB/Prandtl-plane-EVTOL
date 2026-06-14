@@ -79,6 +79,11 @@ from VTOL_cg_envelope_det import load_design_parameters
 # sheet (single master value).
 from parameters import VTOL_INFEASIBLE_PENALTY as _INFEASIBLE_PENALTY  # [m]
 
+# Single source of the Prandtl box-wing Oswald relation (Rizzo 2007 = report
+# eq 4.7); used to refresh e_hor_wings when the gap/span are overridden so the
+# Oswald factor is not left frozen at the sheet seed.
+from support_files.oswaldefficiency import oswald_efficiency
+
 
 # ===========================================================================
 # 0. CONVERGED MTOW WITH GEOMETRY OVERRIDES  (so MTOW responds to the roots)
@@ -208,6 +213,13 @@ def _resolve_dependents(params):
 
     # Wing: aft-wing vertical position tracks the front wing plus the gap.
     wg.z_w_aw = wg.z_w_fw + wg.gap
+
+    # Oswald efficiency: the Prandtl box-wing Rizzo relation (report eq 4.7) is a
+    # function of the vertical gap and span, so a swept gap/span must propagate to
+    # e instead of leaving it frozen at the sheet seed. Single source =
+    # support_files/oswaldefficiency.py (the same relation that seeds
+    # AerodynamicCoefficients.e_hor_wings). No new/altered aero formula.
+    params.aerodynamics.e_hor_wings = float(oswald_efficiency(wg.gap, wg.b_fw))
 
     # Vertical tail: area, taper, aspect ratio, MAC from root/tip chord and span.
     tg.S_vert_tail = ((tg.c_r_vert_tail + tg.c_t_vert_tail) * tg.b_vert_tail) / 2.0
