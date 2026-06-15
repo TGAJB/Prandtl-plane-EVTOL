@@ -1,0 +1,54 @@
+digraph "pipeline_dataflow" {
+  rankdir=LR;
+  labelloc="t";
+  label="Runtime pipeline & data flow (curated)";
+  fontname="Helvetica"; fontsize=16;
+  node [fontname="Helvetica", style="rounded,filled"];
+  edge [fontname="Helvetica", fontsize=9, arrowsize=0.7];
+  compound=true;
+  subgraph "cluster_opt" {
+    label="Optimiser (NSGA-II)"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#fde9d9"; fontname="Helvetica-Bold"; fontsize=12;
+    "opt" [label="optimiser.py\nNSGA-II (pymoo)", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
+    "evald" [label="evaluate_design", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+  }
+  subgraph "cluster_mtow" {
+    label="MTOW convergence loop"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#dbe9fb"; fontname="Helvetica-Bold"; fontsize=12;
+    "convm" [label="converged_mtow", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "solveconv" [label="_solve_converged_mass\n(mtow_sizing)", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "mass" [label="mass_components\nfuselage/wing/tail/LG", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "energy" [label="energy\nbattery_mass", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+  }
+  subgraph "cluster_stab" {
+    label="Stability evaluation"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#d9eef1"; fontname="Helvetica-Bold"; fontsize=12;
+    "evalstab" [label="evaluate_stability", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "splitfn" [label="_update_aircraft_for_wing_split", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "vlm" [label="apply_vlm_aero\n(aero_model VLM)", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "aircraft" [label="aircraft.solve()\nDATCOM derivatives", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "margins" [label="requirement margins\n+ worst_margin", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+  }
+  subgraph "cluster_src" {
+    label="Inputs"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#fff2cc"; fontname="Helvetica-Bold"; fontsize=12;
+    "params" [label="parameters.py\n(single source of truth)", shape=box, fillcolor="#ffd966", color="#bf9000", penwidth=2.2, fontsize=11];
+    "matching" [label="matching_diagram\nW/S bounds + power/CL", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "mmoi" [label="MMOI\nmass / c.g. / inertia", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+  }
+  "params" -> "opt" [color="#888888", label="constants"; fontcolor="#888888"];
+  "params" -> "mass" [color="#888888", label="constants"; fontcolor="#888888"];
+  "params" -> "evalstab" [color="#888888", label="constants"; fontcolor="#888888"];
+  "matching" -> "opt" [color="#888888", label="W/S range + feasibility"; fontcolor="#888888"];
+  "opt" -> "evald" [color="#888888", label="design vector"; fontcolor="#888888"];
+  "evald" -> "convm" [color="#888888", label="geometry overrides"; fontcolor="#888888"];
+  "convm" -> "solveconv" [color="#888888"];
+  "solveconv" -> "mass" [color="#888888", label="iterate"; fontcolor="#888888", dir=both];
+  "solveconv" -> "energy" [color="#888888"];
+  "convm" -> "mass" [color="#c0392b", label="setattr override:\nWING_LOADING_N, S_AFT_TO_S_TOTAL"; fontcolor="#c0392b", style=dashed];
+  "solveconv" -> "opt" [color="#888888", label="MTOW (objective 1)"; fontcolor="#888888"];
+  "evald" -> "evalstab" [color="#888888", label="MTOW + overrides"; fontcolor="#888888"];
+  "evalstab" -> "splitfn" [color="#888888"];
+  "splitfn" -> "vlm" [color="#888888"];
+  "vlm" -> "aircraft" [color="#888888"];
+  "aircraft" -> "margins" [color="#888888", label="derivatives"; fontcolor="#888888"];
+  "evalstab" -> "mmoi" [color="#c0392b", label="setattr override:\nMMOI globals"; fontcolor="#c0392b", style=dashed];
+  "mmoi" -> "evalstab" [color="#888888", label="c.g. / inertia"; fontcolor="#888888"];
+  "margins" -> "opt" [color="#888888", label="worst margin (objective 2)"; fontcolor="#888888"];
+}

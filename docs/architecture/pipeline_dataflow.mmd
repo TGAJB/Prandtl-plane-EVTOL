@@ -1,0 +1,45 @@
+```mermaid
+flowchart LR
+  subgraph cl_opt["Optimiser (NSGA-II)"]
+    opt["optimiser.py<br/>NSGA-II (pymoo)"]
+    evald["evaluate_design"]
+  end
+  subgraph cl_mtow["MTOW convergence loop"]
+    convm["converged_mtow"]
+    solveconv["_solve_converged_mass<br/>(mtow_sizing)"]
+    mass["mass_components<br/>fuselage/wing/tail/LG"]
+    energy["energy<br/>battery_mass"]
+  end
+  subgraph cl_stab["Stability evaluation"]
+    evalstab["evaluate_stability"]
+    splitfn["_update_aircraft_for_wing_split"]
+    vlm["apply_vlm_aero<br/>(aero_model VLM)"]
+    aircraft["aircraft.solve()<br/>DATCOM derivatives"]
+    margins["requirement margins<br/>+ worst_margin"]
+  end
+  subgraph cl_src["Inputs"]
+    params["parameters.py<br/>(single source of truth)"]
+    matching["matching_diagram<br/>W/S bounds + power/CL"]
+    mmoi["MMOI<br/>mass / c.g. / inertia"]
+  end
+  params -->|constants| opt
+  params -->|constants| mass
+  params -->|constants| evalstab
+  matching -->|W/S range + feasibility| opt
+  opt -->|design vector| evald
+  evald -->|geometry overrides| convm
+  convm --> solveconv
+  solveconv -->|iterate| mass
+  mass --> solveconv
+  solveconv --> energy
+  convm -.->|setattr override:<br/>WING_LOADING_N, S_AFT_TO_S_TOTAL| mass
+  solveconv -->|MTOW (objective 1)| opt
+  evald -->|MTOW + overrides| evalstab
+  evalstab --> splitfn
+  splitfn --> vlm
+  vlm --> aircraft
+  aircraft -->|derivatives| margins
+  evalstab -.->|setattr override:<br/>MMOI globals| mmoi
+  mmoi -->|c.g. / inertia| evalstab
+  margins -->|worst margin (objective 2)| opt
+```

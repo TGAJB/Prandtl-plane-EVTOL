@@ -11,7 +11,6 @@ import sys
 import warnings
 from pathlib import Path
 from scipy.integrate import quad, cumulative_trapezoid
-from mtow_sizing import *
 
 import numpy as np
 from scipy.optimize import minimize
@@ -47,6 +46,19 @@ from parameters import (
 )
 """
 from parameters import *
+
+
+def _rear_lift_fraction():
+    """Rear-wing lift fraction = aft area fraction S_AFT_TO_S_TOTAL.
+
+    Common-CL box wing: both wings trim at the same CL, so the total lift is shared in
+    proportion to area (lift fraction = area fraction). This mirrors the aircraft-model
+    derivative build-up, which references each wing by S/S_ref at the common CL_trim.
+    Reads the LIVE module global S_AFT_TO_S_TOTAL so the optimiser/converger override
+    (setattr on this module) flows through to every structural lift split. The front
+    fraction is 1 - this. Single source of truth for the front/aft lift split."""
+    return S_AFT_TO_S_TOTAL
+
 
 # -- Detailed wing/winglet structural sizing primitives -----------------------
 # The FEA-style wing-mass model size_wing() lives below; it was MOVED here from
@@ -179,8 +191,9 @@ def _fus_conditions(mtow_kg):
     #      The wing-borne mass pushes DOWN through the wing joints; the skid footprint
     #      (two contact points) reacts everything; fuselage inertia is distributed.
     m_wing_borne = max((1.0 - FUS_BORNE_MASS_FRAC) * mtow_kg, 0.0)
-    f_front = (1.0 - F_REAR_WING) * m_wing_borne * N_LIMIT * G
-    f_rear = F_REAR_WING * m_wing_borne * N_LIMIT * G
+    f_rear_frac = _rear_lift_fraction()                         # = aft area fraction
+    f_front = (1.0 - f_rear_frac) * m_wing_borne * N_LIMIT * G
+    f_rear = f_rear_frac * m_wing_borne * N_LIMIT * G
     skid_lo = X_GEAR - L_SKID_RAIL / 2.0
     skid_hi = X_GEAR + L_SKID_RAIL / 2.0
     conds.append(_fus_condition(
@@ -379,16 +392,17 @@ def _panel_mass(mtow_kg, panel, f_lift, semi_span_m):
 
 def wing_mass(mtow_kg, geometry=None):
     # -- Size front and rear box-wings independently. Each carries its lift
-    #    fraction (F_REAR_WING) on its OWN area/chord, so a non-0.5 area split
-    #    (S_AFT_TO_S_TOTAL) changes the per-wing spar depth + skin area and the
-    #    total wing mass responds to the split. --
+    #    fraction (= its area fraction S_AFT_TO_S_TOTAL; common-CL box wing) on its
+    #    OWN area/chord, so the area split changes BOTH the lift each wing carries AND
+    #    the per-wing spar depth + skin area, and the total wing mass responds to it. --
     if geometry is None:
         geometry = wing_geometry(mtow_kg)
 
     s = geometry["span_m"] / 2.0                        # semi-span [m]
     # no h_eff correction: wing is horizontal, bending is about the chord axis
-    m_front = _panel_mass(mtow_kg, geometry["front"], 1.0 - F_REAR_WING, s)
-    m_rear  = _panel_mass(mtow_kg, geometry["aft"],   F_REAR_WING,       s)
+    f_rear = _rear_lift_fraction()                      # = aft area fraction (common-CL)
+    m_front = _panel_mass(mtow_kg, geometry["front"], 1.0 - f_rear, s)
+    m_rear  = _panel_mass(mtow_kg, geometry["aft"],   f_rear,       s)
 
     ### Buckling calculations (from winglet)
 
@@ -470,9 +484,11 @@ def size_wing(mtow_kg, m_props, wing_geom):
     speed_ratio = vmax / V_CRUISE
     prop_weight_each = (m_props / N_PROP) * g          # weight of ONE rotor's blades
 
-    # Lift each wing's semi-span carries (the ellipse integrates to this).
-    lift_fw_semi = mtow_kg * g * mtow_fraction_fw / 2.0
-    lift_rw_semi = mtow_kg * g * mtow_fraction_rw / 2.0
+    # Lift each wing's semi-span carries (the ellipse integrates to this). The front/aft
+    # lift split follows the area split (common-CL box wing): rear = aft area fraction.
+    f_rear = _rear_lift_fraction()
+    lift_fw_semi = mtow_kg * g * (1.0 - f_rear) / 2.0
+    lift_rw_semi = mtow_kg * g * f_rear / 2.0
 
     # Spanwise rotor stations (front wing: inboard + outboard pair; rear: one pair),
     # as fractions of the semi-span from parameters.py.
@@ -1245,7 +1261,7 @@ def tail_mass(mtow_kg):
     h_eff   = h_spar * np.cos(np.radians(V_ANGLE))
 
     # -- Load case 1: rear wing lift transferred through V-tail root --
-    f_vert  = (F_REAR_WING * N_W * mtow_kg * G) / 2.0
+    f_vert  = (_rear_lift_fraction() * N_W * mtow_kg * G) / 2.0
     m_rear  = b_half * f_vert
 
     # -- Load case 2: V-tail own aero load at dive speed, max deflection --

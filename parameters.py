@@ -652,7 +652,9 @@ WINGLET_SPAR_BEAM_THICKNESS = 0.004
 V_ANGLE        = 25.0    # [deg]  V-tail dihedral from horizontal
 TAPER_TAIL     = TailGeometry.taper_vert_tail  # [-]  chord taper ratio (c_tip / c_root)
 TIP_TO_CHORD   = TailGeometry.t_c_vert_tail    # [-]  thickness-to-chord ratio
-F_REAR_WING    = 0.50    # [-]    rear Prandtl-wing lift fraction
+F_REAR_WING    = S_AFT_TO_S_TOTAL  # [-] rear lift fraction = aft area fraction (common-CL box
+#                        wing). Derived alias for one source of truth; the LIVE, override-aware
+#                        split used in sizing is mass_components._rear_lift_fraction().
 N_W            = 3.5     # [-]    design limit load factor
 T_SKIN_MIN_AL  = 2.0e-3  # [m]    minimum skin gauge (Niu 1988)
 STRUCT_SF      = 1.5     # [-]    ultimate safety factor (FAR/CS 25.303)
@@ -769,8 +771,11 @@ WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out fo
 WINGLET_TAPER_RATIO = WingletGeometry.taper_winglet  # [-] single source of truth (WingletGeometry.taper_winglet)
 thrust_props = 240
 w_propeller = (7.31 + 48.09) * G
-mtow_fraction_fw = 0.6
-mtow_fraction_rw = 1 - mtow_fraction_fw
+# Front/aft lift split follows the area split (common-CL box wing), derived from
+# S_AFT_TO_S_TOTAL for a single source of truth. The LIVE, override-aware split used in
+# structural sizing is mass_components._rear_lift_fraction(); these are baseline aliases.
+mtow_fraction_fw = 1.0 - S_AFT_TO_S_TOTAL
+mtow_fraction_rw = S_AFT_TO_S_TOTAL
 vmax = V_CRUISE*1.25
 load_factor = 1
 wing_length = (WING_SPAN - FuselageGeometry.body_depth_at_wing)/2
