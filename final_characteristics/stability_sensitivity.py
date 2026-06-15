@@ -101,7 +101,7 @@ PARAMS = [
     ("s_aft_to_s_total",                  0.30,  0.70,  0.50,  "aft/total wing-area split", "-",     None),
     ("wing_geometry.design_point",        650.0, 880.0, 760.0, "wing loading W/S",          "N/m^2", "WING_LOADING_N"),
     ("wing_geometry.taper_fw",            0.30,  0.60,  0.45,  "wing taper",                "-",     "TAPER_W"),
-    ("wing_geometry.stagger",             4.0,   6.0,   5.0,   "wing stagger",              "m",     None),
+    ("wing_geometry.x_LEMAC_aw",          4.5,   6.5,   5.5982,"aft-wing LEMAC x (sets stagger)", "m", None),
     ("wing_geometry.gap",                 1.5,   2.8,   2.1,   "wing gap",                  "m",     None),
     ("wing_geometry.x_LEMAC_fw",          0.5,   2.0,   1.0,   "front-wing LEMAC x",        "m",     None),
     # ---- Roll (dihedral / wing height / sweep) ----

@@ -84,7 +84,7 @@ class WingGeometry:
     A_aw:                 float = b_aw**2/S_aw  # [-]
 
     gap:                  float = 2.1  # [m]
-    stagger:              float = 5.0  # [m]
+    stagger:              float = 5.0  # [m] seed; DERIVED at runtime by _resolve_dependents as (x_LEMAC_aw - x_LEMAC_fw)
 
     MAC_fw:               float = 0.907  # [m] seed (converged value); recomputed at runtime by _update_aircraft_for_wing_split
     MAC_aw:               float = 0.907  # [m] seed (converged value); recomputed at runtime by _update_aircraft_for_wing_split
@@ -132,9 +132,14 @@ class WingGeometry:
     z_w_fw:               float = -0.2889         # [m]
     z_w_aw:               float = z_w_fw + gap  # [m]
 
-    x_LEMAC_fw:           float = 0.5982 # [m] - very rough estimate
-    
+    x_LEMAC_fw:           float = 0.5982 # [m] front-wing LEMAC, MASTER (optimiser design variable, bounds 0-1.5)
+    x_LEMAC_aw:           float = 5.5982 # [m] aft-wing LEMAC, MASTER (fixed, independent of front); = x_LEMAC_fw default + 5.0 so baseline stagger stays 5.0
+
     # ===== FOLDED-WING / VTOL LAYOUT ========================================
+    # All x_vtol_* longitudinal stations below are SEEDS. They are re-anchored to
+    # the two wing-LEMAC masters at runtime by stability_eval._resolve_dependents
+    # (front sections follow x_LEMAC_fw, aft sections follow x_LEMAC_aw, tip plate
+    # follows the wing-AC midpoint) using the offsets in the module-constant block.
     fold_hinge_eta_fw:    float = 0.70  # [-] front-wing hinge station / semi-span; update from spanwise hinge layout
     fold_hinge_eta_aw:    float = 0.70  # [-] aft-wing hinge station / semi-span; update from spanwise hinge layout
 
@@ -196,7 +201,7 @@ class WingletGeometry:
     taper_winglet:              float = 1.0 # [-]
     LE_sweep_winglet:           float = np.arctan(WingGeometry.stagger/WingGeometry.gap)  # [rad]
 
-    x_ac_winglet:               float = 4.125  # [m] longitudinal aerodynamic-centre location
+    x_ac_winglet:               float = 4.125  # [m] seed; DERIVED at runtime = midpoint of (x_ac_fw, x_ac_aw)
     z_ac_winglet:               float = 0.68  # [m] vertical aerodynamic-centre location
 
     airfoil_winglet:            str   = "NASA LANGLEY LS(1)-0417"  # [-]
@@ -368,8 +373,8 @@ class AerodynamicCoefficients:
     x_ac_fw_cruise:                     float = 0.313 # [m] as seen from the LEMAC of the front wing
     x_ac_aw_cruise:                     float = 0.313 # [m] as seen from the LEMAC of the aft wing
 
-    x_ac_fw:                            float = 1.60  # [m]
-    x_ac_aw:                            float = 6.65  # [m]
+    x_ac_fw:                            float = 1.60  # [m] absolute (mass-layout) AC; seed, DERIVED at runtime = x_LEMAC_fw + _AC_OFFSET_FW
+    x_ac_aw:                            float = 6.65  # [m] absolute (mass-layout) AC; seed, DERIVED at runtime = x_LEMAC_aw + _AC_OFFSET_AW
 
     x_ac_fw_approach:                   float = None  # [m]
     x_ac_aw_approach:                   float = None  # [m]
@@ -706,7 +711,28 @@ D_FUS    = FUSE_WIDTH     # [m]   equivalent-cylinder diameter (circular section
 X_CG_FUS = 0.45 * L_FUS   # [m]   shell CG slightly fwd of mid-length (light tailcone)  PLACEHOLDER
 Z_CG_FUS = 0.0            # [m]   shell CG on the centreline
 
+# -- Wing-position master/derived offsets -------------------------------------
+# The two wing LEMACs (WingGeometry.x_LEMAC_fw / x_LEMAC_aw) are the MASTER
+# longitudinal positions. Every other longitudinal station (the absolute wing
+# ACs, the winglet AC, the folded-wing / VTOL sections, and the rotor stations)
+# is DERIVED from them at runtime by stability_eval._resolve_dependents, using
+# the fixed offsets below (captured from today's drawing so the baseline geometry
+# is reproduced exactly). Front-mounted stations follow x_LEMAC_fw; aft-mounted
+# stations follow x_LEMAC_aw; the tip joiner follows the wing-AC midpoint.
+_AC_OFFSET_FW             = 1.0018  # [m] x_ac_fw  - x_LEMAC_fw  (front absolute-AC offset)
+_AC_OFFSET_AW             = 1.0518  # [m] x_ac_aw  - x_LEMAC_aw  (aft absolute-AC offset; keeps baseline stagger = 5.0)
+_VTOL_FW_FOLDED_OFFSET    = 3.10    # [m] x_vtol_fw_folded  - x_ac_fw
+_VTOL_AW_FOLDED_OFFSET    = 2.07    # [m] x_vtol_aw_folded  - x_ac_aw
+_VTOL_TIP_PLATE_FROM_MID  = 3.145   # [m] x_vtol_tip_plate  - x_ac_winglet (midpoint)
+_VTOL_ROTOR_FW_IN_OFFSET  = 1.20    # [m] x_vtol_rotor_fw_in   - x_ac_fw
+_VTOL_ROTOR_FW_OUT_OFFSET = 3.20    # [m] x_vtol_rotor_fw_out  - x_ac_fw
+_VTOL_ROTOR_RW_OFFSET     = 1.35    # [m] x_vtol_rotor_rw      - x_ac_aw
+
 # -- Wings (Prandtl pair) --
+# NOTE: X_WING_F/X_WING_R (and the X_*_VTOL / X_ROTOR_* constants below) are
+# IMPORT-TIME SEEDS. The optimiser path overrides them per-evaluation via the
+# mmoi_overrides bridge in stability_eval.evaluate_stability so they track the
+# wing-LEMAC masters; the seeds equal the baseline geometry for standalone callers.
 X_WING_F     = AerodynamicCoefficients.x_ac_fw                       # [m]  front-wing CG ~ x_LEMAC (vd: 1.0) + 0.4*MAC  PLACEHOLDER
 Z_WING_F     = WingGeometry.z_w_fw       # [m]  low-mounted front wing
 WING_STAGGER = WingGeometry.stagger      # [m]  longitudinal distance front -> rear wing

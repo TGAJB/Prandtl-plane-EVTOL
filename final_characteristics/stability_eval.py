@@ -79,6 +79,10 @@ from VTOL_cg_envelope_det import load_design_parameters
 # sheet (single master value).
 from parameters import VTOL_INFEASIBLE_PENALTY as _INFEASIBLE_PENALTY  # [m]
 
+# Wing-position master/derived offsets (the single source for re-anchoring every
+# longitudinal station to the two wing-LEMAC masters; see parameters.py).
+import parameters as _p
+
 # Single source of the Prandtl box-wing Oswald relation (Rizzo 2007 = report
 # eq 4.7); used to refresh e_hor_wings when the gap/span are overridden so the
 # Oswald factor is not left frozen at the sheet seed.
@@ -206,6 +210,8 @@ def _resolve_dependents(params):
     tg = params.tail_geometry
     wl = params.winglet_geometry
     fg = params.fuselage_geometry
+    aero = params.aerodynamics
+    prop = params.propulsion
 
     # Wing: the box-wing aft panel mirrors the front panel's span and taper (the
     # sheet defines b_aw = b_fw and taper_aw = taper_fw). calc_wing_geom() reads
@@ -217,6 +223,41 @@ def _resolve_dependents(params):
 
     # Wing: aft-wing vertical position tracks the front wing plus the gap.
     wg.z_w_aw = wg.z_w_fw + wg.gap
+
+    # ---- Longitudinal wing positions: two LEMAC masters -> everything else ---
+    # x_LEMAC_fw and x_LEMAC_aw are the independent MASTER stations. Moving the
+    # front LEMAC must NOT move the aft wing, so stagger is DERIVED here (not a
+    # fixed constant) and every dependent station re-anchors to its own master by
+    # the fixed offsets captured in parameters.py. This must run BEFORE the
+    # winglet-sweep recompute below (which reads wg.stagger).
+    #
+    # NOTE: two AC conventions coexist and are kept SEPARATE. The aero ACs
+    # aero.x_ac_fw_cruise / x_ac_aw_cruise (~0.313 m, measured from each wing's
+    # OWN LEMAC, and overwritten later by apply_vlm_aero) are NOT touched here.
+    # Only the ABSOLUTE mass-layout ACs aero.x_ac_fw / x_ac_aw are derived.
+    wg.stagger = wg.x_LEMAC_aw - wg.x_LEMAC_fw
+    aero.x_ac_fw = wg.x_LEMAC_fw + _p._AC_OFFSET_FW
+    aero.x_ac_aw = wg.x_LEMAC_aw + _p._AC_OFFSET_AW
+    wl.x_ac_winglet = 0.5 * (aero.x_ac_fw + aero.x_ac_aw)
+
+    # Folded / VTOL wing-section stations: fixed (unfolded) sections sit AT the
+    # cruise wing AC; folded outer sections and the tip joiner follow by offset.
+    wg.x_vtol_fw_fixed = aero.x_ac_fw
+    wg.x_vtol_aw_fixed = aero.x_ac_aw
+    wg.x_vtol_fw_folded = aero.x_ac_fw + _p._VTOL_FW_FOLDED_OFFSET
+    wg.x_vtol_aw_folded = aero.x_ac_aw + _p._VTOL_AW_FOLDED_OFFSET
+    wg.x_vtol_tip_plate = wl.x_ac_winglet + _p._VTOL_TIP_PLATE_FROM_MID
+
+    # Rotor stations: front rotors follow the front wing, rear rotor the aft wing.
+    wg.x_vtol_rotor_fw_in = aero.x_ac_fw + _p._VTOL_ROTOR_FW_IN_OFFSET
+    wg.x_vtol_rotor_fw_out = aero.x_ac_fw + _p._VTOL_ROTOR_FW_OUT_OFFSET
+    wg.x_vtol_rotor_rw = aero.x_ac_aw + _p._VTOL_ROTOR_RW_OFFSET
+
+    # Propulsion VTOL engine stations mirror the resolved rotor stations so the
+    # VTOL-OEI envelope path (which reads params.propulsion.x_vtol_*) follows too.
+    prop.x_vtol_1 = prop.x_vtol_2 = wg.x_vtol_rotor_fw_in
+    prop.x_vtol_3 = prop.x_vtol_4 = wg.x_vtol_rotor_fw_out
+    prop.x_vtol_5 = prop.x_vtol_6 = wg.x_vtol_rotor_rw
 
     # Oswald efficiency: the Prandtl box-wing Rizzo relation (report eq 4.7) is a
     # function of the vertical gap and span, so a swept gap/span must propagate to
@@ -365,6 +406,25 @@ def evaluate_stability(param_overrides=None, design_vars=None, mtow=None):
     # resolved split into the MMOI build-up so the cruise & VTOL c.g. respond to it,
     # consistent with the aero wing-split applied below. No-op at the baseline 0.5.
     mmoi_overrides["S_AFT_TO_S_TOTAL"] = s_aft
+    # The two wing-LEMAC masters drive every longitudinal layout station. MMOI
+    # reads those stations as module globals (frozen at import), so push the
+    # values just resolved on the dataclass (above) into the MMOI namespace
+    # around the build. Front stations follow x_LEMAC_fw, aft stations follow
+    # x_LEMAC_aw; the cruise tip plate (X_WING_F+X_WING_R)/2 follows automatically.
+    _wg = params.wing_geometry
+    _aero = params.aerodynamics
+    mmoi_overrides["X_WING_F"] = _aero.x_ac_fw
+    mmoi_overrides["X_WING_R"] = _aero.x_ac_aw
+    mmoi_overrides["X_ROTOR_FW"] = _aero.x_ac_fw - _p.X_ROTOR_OFFSET
+    mmoi_overrides["X_ROTOR_RW"] = _aero.x_ac_aw - _p.X_ROTOR_OFFSET
+    mmoi_overrides["X_TIP_PLATE_VTOL"] = _wg.x_vtol_tip_plate
+    mmoi_overrides["X_WING_F_FIXED_VTOL"] = _wg.x_vtol_fw_fixed
+    mmoi_overrides["X_WING_R_FIXED_VTOL"] = _wg.x_vtol_aw_fixed
+    mmoi_overrides["X_WING_F_FOLDED_VTOL"] = _wg.x_vtol_fw_folded
+    mmoi_overrides["X_WING_R_FOLDED_VTOL"] = _wg.x_vtol_aw_folded
+    mmoi_overrides["X_ROTOR_FW_IN_VTOL"] = _wg.x_vtol_rotor_fw_in
+    mmoi_overrides["X_ROTOR_FW_OUT_VTOL"] = _wg.x_vtol_rotor_fw_out
+    mmoi_overrides["X_ROTOR_RW_VTOL"] = _wg.x_vtol_rotor_rw
     _saved_mmoi = {name: getattr(mmoi, name) for name in mmoi_overrides}
     try:
         for name, value in mmoi_overrides.items():
