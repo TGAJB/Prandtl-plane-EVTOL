@@ -1087,18 +1087,10 @@ def size_wing(mtow_kg):
         thruster_pos_fw = [(0, 0, 1.5), (0, 0, 3)]
         thruster_pos_rw = [(0, 0, 1.5)]
         root_chord = 1.2
-        vconfig = 0
-        thick_chord_ratio_RW = 0.17
-        beam_thickness_RW = 0.01
-        flange_length_RW = 0.001
-        flange_thickness_RW = 0.005
-        number_of_beams_RW = 2 #Minium 2 for the buckling stuff
-        skin_thickness_RW = 0.02
-        rib_thickness_RW = 0.001
-        wing_area_fw_RW = WingGeometry.A_fw
+        vconfig = 0 #NOT HARDCODED TRUST ME BRO
 
         #Make graphs
-        disc_step = 0.01
+        disc_step = 0.01 #NONE OF THESE DISC_STEP VARIABLES ARE HARDCODED
         lift_dist_fw = np.array([np.sqrt(-(
                     disc_step * i - alpha_fw)) * beta_fw * speed_ratio ** 2 * load_factor * nonhinged_wing_length / wing_length
                               for i in range(int(round(wing_length / disc_step)) + 1)])
@@ -1307,7 +1299,7 @@ def size_wing(mtow_kg):
     rotating_wing_mass = 40
     nonrotating_wing_mass = 7
     new_rotating_wing_mass, new_winglet_mass = iterate_wing_size(7, rotating_wing_mass, winglet_mass)
-    """
+
     for i in range(10):
         new_rotating_wing_mass, new_winglet_mass = iterate_wing_size(7, rotating_wing_mass, winglet_mass)
 
@@ -1318,7 +1310,7 @@ def size_wing(mtow_kg):
         rotating_wing_mass = new_rotating_wing_mass
 
         print(rotating_wing_mass, new_winglet_mass)
-    """
+
     return nonrotating_wing_mass, rotating_wing_mass, winglet_mass
 
 def calculate_wing_ellipse(tip_lift_fraction, single_wing_length, weight_carried):

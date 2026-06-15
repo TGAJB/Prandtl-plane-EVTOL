@@ -766,16 +766,36 @@ WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out fo
                                          #      vertical tip joiners                      PLACEHOLDER
 # -- Winglets --
 WINGLET_TAPER_RATIO = WingletGeometry.taper_winglet  # [-] single source of truth (WingletGeometry.taper_winglet)
+thrust_props = 240
+w_propeller = (7.31 + 48.09) * G
+mtow_fraction_fw = 0.6
+mtow_fraction_rw = 1 - mtow_fraction_fw
+vmax = V_CRUISE*1.25
+load_factor = 1
+wing_length = (WING_SPAN - FuselageGeometry.body_depth_at_wing)/2
+nonhinged_wing_length = 2
+
+# -- Elliptical approx of wing:
+tip_lift_fraction = 0.3 #lift at the tip / lift at the root
+
+# -- Rotating Wing Structural Parameters --
+thick_chord_ratio_RW = 0.17
+beam_thickness_RW = 0.01
+flange_length_RW = 0.001
+flange_thickness_RW = 0.005
+number_of_beams_RW = 2  # Minium 2 for the buckling stuff
+skin_thickness_RW = 0.02
+rib_thickness_RW = 0.001
+wing_area_fw_RW = WingGeometry.A_fw
+
 
 # -- Hinge --
 HINGE_THETA = -45 # [deg]
 HINGE_PHI = 35.26438968 # [deg]
-HINGED_WING_LENGTH = 4 # [m] The length of the portion of the wing that is hinged
-FW_THRUSTER_POSITION_1 = (0.5, 0, 3) #The position of the thrusters in the forward wing w.r.t the wing axis (talk to Antonio if ur confused)
-FW_THRUSTER_POSITION_2 = (0.5, 0, 6)
+HINGED_WING_LENGTH = wing_length - nonhinged_wing_length # [m] The length of the portion of the wing that is hinged
+FW_THRUSTER_POSITION_1 = (0.5, 0, 1.5) #The position of the thrusters in the forward wing w.r.t the wing axis (talk to Antonio if ur confused)
+FW_THRUSTER_POSITION_2 = (0.5, 0, 4)
 
-# -- ANTONIO'S RANDOM BS
-vmax = V_CRUISE * 1.25
 
 
 ETA_FOLD_HINGE_FW = WingGeometry.fold_hinge_eta_fw  # [-] update from spanwise hinge layout if needed
