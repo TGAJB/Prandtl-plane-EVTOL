@@ -10,6 +10,10 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import plotly.graph_objects as go
 from pathlib import Path
+from VTOL_cg_envelope_det import (
+    VTOL_STATIC_MARGIN_GLOBAL_MAC,
+    get_vtol_oei_cg_envelope,
+)
 #from mpl_toolkits.mplot3d import Axes3D  # Required for 3D plotting
 
 def calc_wing_geom(ac, S, wing):
@@ -69,6 +73,7 @@ def main():
     allowable_aft_cg_lst = [] # Seen from the nose of the a/c in [m]
     C_M_alpha_outer_lst = [] # Normalised by the MAC
     cg_x_outer_lst = []  # CG locations from nose in [m]
+    MAC_fw_lst = [] # Front-wing MAC for each wing-area distribution
 
     for dist in S_aw_S_tot_ratio:
 
@@ -78,6 +83,7 @@ def main():
         MAC_1, A_1, S_e_1 = calc_wing_geom(ac, S_1, 1)
         MAC_2, A_2, S_e_2 = calc_wing_geom(ac, S_2, 2)
         MAC = (S_1 * MAC_1 + S_2 * MAC_2)/S_tot
+        MAC_fw_lst.append(MAC_1)
 
         # Update geometric properties of aircraft instance
         ac.params.wing_geometry.S_aw = S_2
@@ -126,6 +132,10 @@ def main():
     allowable_aft_cg_arr = np.array(allowable_aft_cg_lst)
     C_M_alpha_arr = np.array(C_M_alpha_outer_lst)
     cg_x_arr = np.array(cg_x_outer_lst)
+    MAC_fw_arr = np.array(MAC_fw_lst)
+    allowable_aft_cg_fw_mac_arr = (
+        (allowable_aft_cg_arr - ac.params.wing_geometry.x_LEMAC_fw) / MAC_fw_arr
+    )
 
     #print("C_M_alpha_arr dtype:", C_M_alpha_arr.dtype)
     #print("Any complex values:", np.iscomplexobj(C_M_alpha_arr))
@@ -140,7 +150,8 @@ def main():
     if 1:
         # PATH DEFINITION
         script_dir = Path(__file__).resolve().parent
-        plot_dir = script_dir / "plots" / "stat_long_stab"
+        plot_dir = script_dir / "plots" / "stat_long_stab_vtol_oei"
+        plot_dir.mkdir(parents=True, exist_ok=True)
 
         print("Saving plots to:", plot_dir)
         print("Folder exists:", plot_dir.exists())
@@ -198,9 +209,122 @@ def main():
         plt.close()
         #plt.show()
 
+        # ==================================================
+        # Plot 3: Wing area distribution vs allowable aft CG,
+        # with VTOL OEI static-margin CG envelope
+        # ==================================================
+
+        vtol_envelope = get_vtol_oei_cg_envelope()
+
+        plt.figure(figsize=(7, 5))
+
+        plt.plot(
+            S_aw_S_tot_ratio,
+            allowable_aft_cg_fw_mac_arr,
+            marker="o",
+            linestyle="-",
+            label=rf"$x_{{cg,aft}}$ with cruise SM = {SM:.2f}"
+        )
+
+        if vtol_envelope is not None:
+            vtol_allowable = vtol_envelope["allowable_with_static_margin"]
+            vtol_min = vtol_allowable["x_min_mac"]
+            vtol_max = vtol_allowable["x_max_mac"]
+
+            plt.axhline(
+                y=vtol_min,
+                color="tab:green",
+                linestyle="--",
+                linewidth=1.4,
+                label=rf"VTOL OEI forward limit, SM = {VTOL_STATIC_MARGIN_GLOBAL_MAC:.2f}"
+            )
+            plt.axhline(
+                y=vtol_max,
+                color="tab:red",
+                linestyle="--",
+                linewidth=1.4,
+                label=rf"VTOL OEI aft limit, SM = {VTOL_STATIC_MARGIN_GLOBAL_MAC:.2f}"
+            )
+
+            if not vtol_allowable["is_valid"]:
+                print(
+                    "VTOL OEI static-margin envelope is invalid. "
+                    "Reduce VTOL_STATIC_MARGIN_GLOBAL_MAC in VTOL_cg_envelope_det.py."
+                )
+                print(
+                    "Suggested maximum static margin:",
+                    f"{vtol_allowable['suggested_static_margin']:.4f}",
+                )
+        else:
+            print("VTOL OEI CG envelope is infeasible; no VTOL limits added to the plot.")
+
+        plt.xlabel(r"$S_{aw}/S_{tot}$ [-]")
+        plt.ylabel(r"$(x_{cg,aft} - x_{LEMAC,fw})/MAC_{fw}$ [-]")
+        plt.title("Allowable Aft CG vs Wing Area Distribution")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+
+        plt.savefig(
+            plot_dir / "wing_area_dist_vs_aft_cg_norm_with_vtol_oei.png",
+            dpi=300,
+            bbox_inches="tight"
+        )
+        plt.close()
+
 
         # ==================================================
-        # Plot 3: 3D plot of C_M_alpha
+        # Plot 4: Wing area distribution vs allowable aft CG
+        # from nose datum, with VTOL OEI static-margin CG envelope
+        # ==================================================
+
+        plt.figure(figsize=(7, 5))
+
+        plt.plot(
+            S_aw_S_tot_ratio,
+            allowable_aft_cg_arr,
+            marker="o",
+            linestyle="-",
+            label=rf"$x_{{cg,aft}}$ with cruise SM = {SM:.2f}"
+        )
+
+        if vtol_envelope is not None:
+            vtol_allowable = vtol_envelope["allowable_with_static_margin"]
+            vtol_min = vtol_allowable["x_min_nose"]
+            vtol_max = vtol_allowable["x_max_nose"]
+
+            plt.axhline(
+                y=vtol_min,
+                color="tab:green",
+                linestyle="--",
+                linewidth=1.4,
+                label=rf"VTOL OEI forward limit, SM = {VTOL_STATIC_MARGIN_GLOBAL_MAC:.2f}"
+            )
+            plt.axhline(
+                y=vtol_max,
+                color="tab:red",
+                linestyle="--",
+                linewidth=1.4,
+                label=rf"VTOL OEI aft limit, SM = {VTOL_STATIC_MARGIN_GLOBAL_MAC:.2f}"
+            )
+
+        plt.xlabel(r"$S_{aw}/S_{tot}$ [-]")
+        plt.ylabel(r"$x_{cg,aft}$ from nose [m]")
+        plt.title("Allowable Aft CG vs Wing Area Distribution")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+
+        plt.savefig(
+            plot_dir / "wing_area_dist_vs_aft_cg_nose_with_vtol_oei.png",
+            dpi=300,
+            bbox_inches="tight"
+        )
+        plt.close()
+
+
+        # ==================================================
+        # Plot 5: 3D plot of C_M_alpha
         # ==================================================
         
         # Create grid for wing area distribution
@@ -389,13 +513,13 @@ def main():
         #fig.show()
 
         # ==================================================
-        # Plot 4: C_M_alpha vs CG location for selected wing area distributions
+        # Plot 6: C_M_alpha vs CG location for selected wing area distributions
         # ==================================================
 
         plt.figure(figsize=(9, 6))
 
         # Select first, third, fifth, seventh, ninth, and eleventh item
-        selected_indices = [0, 2, 4, 6, 8, 10]
+        selected_indices = [3, 4, 5, 6, 7]
 
         # Colour-blind friendly colour cycle
         colors = plt.cm.tab10(np.linspace(0, 1, len(selected_indices)))

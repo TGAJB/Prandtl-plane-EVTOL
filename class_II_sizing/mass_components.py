@@ -12,8 +12,6 @@ import warnings
 from pathlib import Path
 from scipy.integrate import quad, cumulative_trapezoid
 
-from final_characteristics.structures.hinge_loading import *
-
 import numpy as np
 from scipy.optimize import minimize
 
@@ -50,39 +48,325 @@ from parameters import (
 from parameters import *
 
 # Fuselage
+#
+# Physics-based Class-II sizing of the same shape as the wing/tail methods below:
+# build the governing ULTIMATE bending moment, size the bending material (the shell
+# skin smeared around a thin-walled circular tube) from the section modulus, floor it
+# at min-gauge skin, then recover frames/floor/fittings with a primary fraction.
+#
+# The governing moment is the peak of a SUPERIMPOSED free-free beam diagram: per design
+# condition every coexisting load (the two wing reactions + the tail load + the
+# distributed inertia) acts at once, so their moment contributions stack along the
+# fuselage. Three distinct conditions are evaluated (symmetric pull-up, dive + max tail
+# load, hard landing) and the worst governs. The skin is sized for BOTH CFRP and
+# aluminium and the lighter is returned. FUS_MASS_METHOD ("physics" | "regression")
+# selects this method or the legacy empirical USAF/Nicolai formula; all constants live
+# in parameters.py.
 
-def fuselage_mass(mtow_kg):
+_FUS_MATERIALS = {
+    "CFRP": {"sigma": SIGMA_ALLOW_CFRP, "rho": RHO_CFRP, "t_min": T_SKIN_MIN_CFRP, "E": CFRP["E"]},
+    "AL":   {"sigma": SIGMA_ALLOW_AL,   "rho": RHO_AL,   "t_min": T_SKIN_MIN_AL,   "E": E_AL},
+}
+
+_FUS_N_STATIONS = 400   # beam discretisation along the fuselage length
+
+
+def _fus_inertia_load(x, mtow_kg, n_z):
+    """Downward distributed inertia line-load w(x) [N/m] over the fuselage at load
+    factor n_z. The fuselage-borne mass (FUS_BORNE_MASS_FRAC * MTOW) is split into the
+    payload box (M_PAYLOAD, concentrated over X_PAYLOAD +- L_PAYLOAD_BOX/2) and a
+    uniform structural/systems strip over the whole length; the rest of the aircraft
+    hangs on the wings and does not load the fuselage shell."""
+    m_borne = FUS_BORNE_MASS_FRAC * mtow_kg
+    m_uniform = max(m_borne - M_PAYLOAD, 0.0)
+    w = np.full_like(x, m_uniform * n_z * G / L_FUS)
+
+    box_lo = X_PAYLOAD - L_PAYLOAD_BOX / 2.0
+    box_hi = X_PAYLOAD + L_PAYLOAD_BOX / 2.0
+    w_pay = M_PAYLOAD * n_z * G / L_PAYLOAD_BOX
+    in_box = (x >= box_lo) & (x <= box_hi)
+    return w + np.where(in_box, w_pay, 0.0)
+
+
+def _solve_two_supports(x, w_down, applied_up, xs1, xs2):
+    """Two unknown upward reactions (R1 at xs1, R2 at xs2) of a statically determinate
+    free-free beam, from vertical + moment equilibrium. w_down is the distributed load
+    (N/m, down +); applied_up is a list of known (x_i, F_i) point loads (up +). With
+    both equilibrium equations satisfied the integrated moment closes to ~0 at the free
+    ends, so its interior peak is the true superimposed maximum."""
+    W = float(cumulative_trapezoid(w_down, x, initial=0.0)[-1])              # total down
+    Mw = float(cumulative_trapezoid(w_down * (x - xs1), x, initial=0.0)[-1])  # its moment about xs1
+    sum_f = sum(f for _, f in applied_up)
+    sum_fx = sum(f * (xi - xs1) for xi, f in applied_up)
+    R2 = (Mw - sum_fx) / (xs2 - xs1)
+    R1 = (W - sum_f) - R2
+    return R1, R2
+
+
+def _fus_beam_moment(x, w_down, point_loads_up):
+    """Shear V(x) [N] and bending moment M(x) [N.m] of the free-free fuselage beam from
+    the superimposed loading: distributed w_down (N/m, down +) plus point loads
+    point_loads_up = [(x_i, F_i), ...] (up +). Two cumulative-trapezoid passes, the same
+    shear->moment integration style as analyze_cantilever_distributed_load."""
+    V = -cumulative_trapezoid(w_down, x, initial=0.0)
+    for xi, fi in point_loads_up:
+        V = V + fi * (x >= xi)
+    M = cumulative_trapezoid(V, x, initial=0.0)
+    return V, M
+
+
+def _fus_condition(name, mtow_kg, n_z, applied_up, xs1, xs2):
+    """Build one design condition: lay the distributed inertia and the known external
+    point loads (applied_up) on the beam, solve the two support reactions, integrate to
+    the superimposed V/M diagram and record the peak |M|."""
+    x = np.linspace(0.0, L_FUS, _FUS_N_STATIONS)
+    w = _fus_inertia_load(x, mtow_kg, n_z)
+    R1, R2 = _solve_two_supports(x, w, applied_up, xs1, xs2)
+    loads = list(applied_up) + [(xs1, R1), (xs2, R2)]
+    V, M = _fus_beam_moment(x, w, loads)
+    return {
+        "name": name, "x": x, "w": w, "V": V, "M": M,
+        "peak": float(np.max(np.abs(M))), "n_z": n_z,
+        "applied": list(applied_up),
+        "supports": [(xs1, R1), (xs2, R2)],
+    }
+
+
+def _fus_conditions(mtow_kg):
+    """The three superimposed design conditions sizing the fuselage bending."""
+    conds = []
+
+    # C1 - Symmetric maneuver pull-up at the limit load factor: distributed inertia
+    #      reacted by the two wings; tail trim load is small in a steady pull-up (~0).
+    conds.append(_fus_condition(
+        "C1 maneuver pull-up (n=N_W)", mtow_kg, N_W, [], X_WING_F, X_WING_R))
+
+    # C2 - Dive at max tail load: the V-tail aero download (same q_dive*S_TAIL*C_N_TAIL_MAX
+    #      tail_mass uses, both fins, vertical component) STACKED with limit-load inertia.
+    q_dive = 0.5 * RHO_ORIGIN * (V_DIVE_FACTOR * V_CRUISE) ** 2
+    f_tail = 2.0 * q_dive * S_TAIL * C_N_TAIL_MAX * np.cos(np.radians(V_ANGLE))
+    conds.append(_fus_condition(
+        "C2 dive + max tail load", mtow_kg, N_W,
+        [(X_TAIL, -f_tail)], X_WING_F, X_WING_R))      # tail download -> down (-up)
+
+    # C3 - Hard landing / VTOL: the whole airframe decelerates at N_LIMIT on the skids.
+    #      The wing-borne mass pushes DOWN through the wing joints; the skid footprint
+    #      (two contact points) reacts everything; fuselage inertia is distributed.
+    m_wing_borne = max((1.0 - FUS_BORNE_MASS_FRAC) * mtow_kg, 0.0)
+    f_front = (1.0 - F_REAR_WING) * m_wing_borne * N_LIMIT * G
+    f_rear = F_REAR_WING * m_wing_borne * N_LIMIT * G
+    skid_lo = X_GEAR - L_SKID_RAIL / 2.0
+    skid_hi = X_GEAR + L_SKID_RAIL / 2.0
+    conds.append(_fus_condition(
+        "C3 hard landing (n=N_LIMIT)", mtow_kg, N_LIMIT,
+        [(X_WING_F, -f_front), (X_WING_R, -f_rear)], skid_lo, skid_hi))
+
+    return conds
+
+
+def _fus_design_moment(mtow_kg, return_conditions=False):
+    """Ultimate design bending moment [N.m] = STRUCT_SF * worst peak |M| across the
+    three superimposed conditions (scalar, for reporting)."""
+    conds = _fus_conditions(mtow_kg)
+    governing = max(conds, key=lambda c: c["peak"])
+    m_ult = STRUCT_SF * governing["peak"]
+    if return_conditions:
+        return m_ult, conds, governing
+    return m_ult
+
+
+def _fus_moment_envelope(conds):
+    """Per-STATION ultimate |M| envelope [N.m] across all conditions (shared x grid):
+    the worst moment seen at each fuselage station, so a variable-gauge skin can be
+    thinner where every condition is lightly loaded (nose/tail) and thicker at the peak."""
+    x = conds[0]["x"]
+    m_env = np.zeros_like(x)
+    for c in conds:
+        m_env = np.maximum(m_env, np.abs(c["M"]))
+    return x, STRUCT_SF * m_env
+
+
+def _fus_skin_profile(m_env, material):
+    """Required skin gauge [m] AT EACH STATION = max(min-gauge, yield, shell-buckling).
+
+    Thin cylinder in bending, radius R = D_FUS/2:
+      applied stress      sigma   = M / (pi R^2 t)
+      yield gauge         t_yield = M / (sigma_allow * pi R^2)            (material strength)
+      buckling allowable  sigma_cr= C E (t/R)  ->  t_buckle = sqrt(M / (pi R C E))
+    Buckling (not yield) governs a thin monocoque shell, and t_buckle ~ sqrt(M) ~ sqrt(MTOW),
+    so the loaded region grows with the aircraft while the ends stay at min gauge."""
+    r = D_FUS / 2.0
+    t_yield = m_env / (material["sigma"] * np.pi * r ** 2)
+    t_buckle = np.sqrt(m_env / (np.pi * r * FUS_SHELL_BUCKLING_C * material["E"]))
+    t_floor = np.full_like(m_env, material["t_min"])
+    t_skin = np.maximum.reduce([t_floor, t_yield, t_buckle])
+    return t_skin, t_yield, t_buckle
+
+
+def _fus_shell_mass(mtow_kg, material, conds=None):
+    """Structural mass [kg] of the variable-gauge thin-walled shell for one material set.
+
+    Sizes the skin gauge per station against the moment ENVELOPE (yield + buckling),
+    integrates the variable-thickness skin volume over the length, then recovers
+    frames/floor/fittings with FUS_PRIMARY_FRACTION. Buckling makes the loaded-region
+    gauge - and hence the mass - scale with MTOW."""
+    if conds is None:
+        _, conds, _ = _fus_design_moment(mtow_kg, return_conditions=True)
+    x, m_env = _fus_moment_envelope(conds)
+    t_skin, t_yield, t_buckle = _fus_skin_profile(m_env, material)
+
+    circ = np.pi * D_FUS * FUS_AREA_CONE_FACTOR                       # shell circumference [m]
+    vol_skin = circ * float(cumulative_trapezoid(t_skin, x, initial=0.0)[-1])
+    m_skin = material["rho"] * vol_skin
+
+    ipk = int(np.argmax(t_skin))                                     # mode setting the peak gauge
+    if t_buckle[ipk] >= max(material["t_min"], t_yield[ipk]):
+        governs = "buckling"
+    elif t_yield[ipk] >= material["t_min"]:
+        governs = "yield"
+    else:
+        governs = "min-gauge"
+
+    return {
+        "mass": m_skin / FUS_PRIMARY_FRACTION, "m_skin": m_skin,
+        "t_max": float(np.max(t_skin)), "t_min_gauge": material["t_min"],
+        "governs": governs, "x": x, "m_env": m_env,
+        "t_skin": t_skin, "t_yield": t_yield, "t_buckle": t_buckle,
+    }
+
+
+def _fuselage_mass_regression(mtow_kg):
+    """Legacy empirical fuselage weight (USAF/Nicolai-type GA regression, lb/ft -> kg).
+    Retained as the FUS_MASS_METHOD == 'regression' branch for fallback / A-B checks."""
     return (0.453592
             * (14.86 * ((mtow_kg * 2.20462) ** 0.144) * ((L_FUS * 3.28084) ** 0.778)
                / ((PER_FUS_MAX * 3.28084) ** 0.778))
             * ((L_FUS * 3.28084) ** 0.383) * N_PAX ** 0.455)
 
 
+def fuselage_mass(mtow_kg, method=None, return_details=False):
+    """Fuselage structural mass [kg].
+
+    method (default FUS_MASS_METHOD): "physics" sizes the thin-walled shell-beam for the
+    worst of three superimposed load conditions, evaluates CFRP and aluminium and returns
+    the lighter; "regression" returns the legacy empirical formula. return_details=True
+    returns the full sizing dict (winning material, governing condition, per-condition
+    V/M diagrams, per-material breakdown) instead of the float, like landing_gear_mass."""
+    method = method or FUS_MASS_METHOD
+
+    if method == "regression":
+        m = _fuselage_mass_regression(mtow_kg)
+        return {"mass": m, "method": "regression", "material": None} if return_details else m
+
+    m_design, conds, governing = _fus_design_moment(mtow_kg, return_conditions=True)
+    by_material = {
+        name: _fus_shell_mass(mtow_kg, mat, conds)
+        for name, mat in _FUS_MATERIALS.items()
+    }
+    best_name = min(by_material, key=lambda n: by_material[n]["mass"])
+    best = by_material[best_name]
+
+    if not return_details:
+        return best["mass"]
+    return {
+        "mass": best["mass"], "method": "physics", "material": best_name,
+        "m_design": m_design, "governing_condition": governing["name"],
+        "t_max": best["t_max"], "governs": best["governs"],
+        "conditions": conds, "by_material": by_material,
+    }
+
+
 # Wing (dynamic sizing from design-point W/S + Class II mass)
-def wing_geometry(mtow_kg):
-    # -- Geometry from selected design point: S = W / (W/S) --
-    weight_n = mtow_kg * G
-    total_area_m2 = weight_n / WING_LOADING_N
-    area_per_wing_m2 = total_area_m2 * AREA_SPLIT
-    aspect_ratio = WING_SPAN ** 2 / total_area_m2
+def _panel_geometry(area_per_wing_m2):
+    """Trapezoidal planform descriptors for ONE box-wing of the given area.
+
+    Both Prandtl box-wings share the span (b_aw = b_fw = WING_SPAN) and taper, so a
+    panel is fully fixed by its area: a bigger panel simply has a longer chord (and
+    a deeper spar). Returns the per-wing area, AR, mean/root/tip chord and MAC."""
     aspect_ratio_per_wing = WING_SPAN ** 2 / area_per_wing_m2
     mean_chord_m = WING_SPAN / aspect_ratio_per_wing
     root_chord_m = 2 * area_per_wing_m2 / ((1 + TAPER_W) * WING_SPAN)
     tip_chord_m = TAPER_W * root_chord_m
     mac_m = (2.0 / 3.0) * root_chord_m * ((1 + TAPER_W + TAPER_W ** 2) / (1 + TAPER_W))
-
     return {
-        "weight_n": weight_n,
-        "total_area_m2": total_area_m2,
         "area_per_wing_m2": area_per_wing_m2,
-        "span_m": WING_SPAN,
-        "aspect_ratio": aspect_ratio,
+        "aspect_ratio": aspect_ratio_per_wing,
         "mean_chord_m": mean_chord_m,
         "mac_m": mac_m,
         "root_chord_m": root_chord_m,
         "tip_chord_m": tip_chord_m,
     }
 
+
+def wing_geometry(mtow_kg):
+    # -- Total area from selected design point: S = W / (W/S) --
+    weight_n = mtow_kg * G
+    total_area_m2 = weight_n / WING_LOADING_N
+    aspect_ratio = WING_SPAN ** 2 / total_area_m2
+
+    # -- Front / aft areas from the aft/total split (S_AFT_TO_S_TOTAL). The two
+    #    box-wings size to DIFFERENT areas (hence chords/MACs) whenever the split
+    #    is off 0.5, so the aft/total split is what makes the wing mass below
+    #    respond to it. front = (1 - aft fraction). --
+    aft_area_m2   = total_area_m2 * S_AFT_TO_S_TOTAL
+    front_area_m2 = total_area_m2 - aft_area_m2
+    front = _panel_geometry(front_area_m2)
+    aft   = _panel_geometry(aft_area_m2)
+
+    # Aggregate descriptors keep describing the SYMMETRIC (equal-area) per-wing
+    # planform so the legacy printout / callers stay valid; they equal front/aft
+    # exactly at the baseline 50/50 split. Structural sizing uses front/aft.
+    half = _panel_geometry(total_area_m2 / 2.0)
+    return {
+        "weight_n": weight_n,
+        "total_area_m2": total_area_m2,
+        "span_m": WING_SPAN,
+        "aspect_ratio": aspect_ratio,
+        "front": front,
+        "aft": aft,
+        # ---- backward-compatible symmetric per-wing descriptors ----
+        "area_per_wing_m2": half["area_per_wing_m2"],
+        "mean_chord_m": half["mean_chord_m"],
+        "mac_m": half["mac_m"],
+        "root_chord_m": half["root_chord_m"],
+        "tip_chord_m": half["tip_chord_m"],
+    }
+def _panel_mass(mtow_kg, panel, f_lift, semi_span_m):
+    """Class-II structural mass [kg] of ONE box-wing carrying lift fraction f_lift.
+
+    Spar caps are sized for the elliptical-lift root moment (∫M dy = L·s²/8), the
+    spar depth following the panel's own mean chord; skins are min-gauge CFRP over
+    the panel area. The 0.76 primary fraction recovers ribs + secondary structure."""
+    h_spar_mean = TIP_TO_CHORD_W * panel["mean_chord_m"]   # spar depth [m]
+    l_wing = f_lift * N_W * mtow_kg * G
+
+    # Correct spar cap volume for elliptical lift distribution.
+    # vol_caps = STRUCT_SF · L·s² / (8·σ·h)
+    vol_caps = STRUCT_SF * l_wing * semi_span_m**2 / (8 * SIGMA_ALLOW_CFRP * h_spar_mean)
+    m_spar   = 1.4 * vol_caps * RHO_CFRP    # caps + web, CFRP
+
+    # Skins: min-gauge CFRP (8-ply prepreg), upper + lower surface
+    m_skin   = 2 * panel["area_per_wing_m2"] * T_SKIN_MIN_CFRP * RHO_CFRP
+
+    return (m_spar + m_skin) / 0.76
+
+
+def wing_mass(mtow_kg, geometry=None):
+    # -- Size front and rear box-wings independently. Each carries its lift
+    #    fraction (F_REAR_WING) on its OWN area/chord, so a non-0.5 area split
+    #    (S_AFT_TO_S_TOTAL) changes the per-wing spar depth + skin area and the
+    #    total wing mass responds to the split. --
+    if geometry is None:
+        geometry = wing_geometry(mtow_kg)
+
+    s = geometry["span_m"] / 2.0                        # semi-span [m]
+    # no h_eff correction: wing is horizontal, bending is about the chord axis
+    m_front = _panel_mass(mtow_kg, geometry["front"], 1.0 - F_REAR_WING, s)
+    m_rear  = _panel_mass(mtow_kg, geometry["aft"],   F_REAR_WING,       s)
+
+    ### Buckling calculations (from winglet)
+
+    return m_front + m_rear
 
 #Extra methods for sizing ribs n stuff
 def analyze_cantilever_distributed_load(L, w_func, plot=False, x_eval=None):
@@ -188,77 +472,15 @@ def calc_total_rib_spacing(max_stress_beam, wing_length, root_chord, thick_chord
     ribslst.append(wing_length)
 
     return ribslst
-
-
-def wing_mass(mtow_kg, geometry=None):
-
-
-
-
-    # -- Geometry (identical for front and rear wings) --
-    if geometry is None:
-        geometry = wing_geometry(mtow_kg)
-
-    b_w    = geometry["span_m"]                         # full wing span [m]
-    s      = b_w / 2                                    # semi-span [m]
-    s_wing = geometry["area_per_wing_m2"]              # planform area per wing [m²]
-    c_mean = geometry["mean_chord_m"]       # root chord [m]
-    h_spar_mean = TIP_TO_CHORD_W * c_mean                   # spar depth at root [m]
-    # no h_eff correction: wing is horizontal, bending is about the chord axis
-
-    # -- Size front and rear wings independently (general for F_REAR_WING ≠ 0.5) --
-    m_total = 0.0
-    for f_lift in [(1.0 - F_REAR_WING), F_REAR_WING]:
-        l_wing = f_lift * N_W * mtow_kg * G
-
-        # Correct spar cap volume for elliptical lift distribution.
-        # ∫ M(y) dy = L_wing·s²/8  (derived analytically from elliptical l(y))
-        # vol_caps = STRUCT_SF · L·s² / (8·σ·h)
-        vol_caps = STRUCT_SF * l_wing * s**2 / (8 * SIGMA_ALLOW_CFRP * h_spar_mean)
-        m_spar   = 1.4 * vol_caps * RHO_CFRP    # caps + web, CFRP
-
-        # Skins: min-gauge CFRP (8-ply prepreg), upper + lower surface
-        m_skin   = 2 * s_wing * T_SKIN_MIN_CFRP * RHO_CFRP
-
-        # Primary fraction 0.76 recovers ribs + secondary structure
-        m_total += (m_spar + m_skin) / 0.76
-
-    ### Buckling calculations (from winglet)
-
-    rib_thickness = 0.001
-    density = rho_propeller_hub
-
-    M = hinge_loading(1.2, (7.31 + 48.09) * 9.81, 240, 50*9.81, 1000, just_moment=True)["y"]
-    x = M[0]
-    M = M[1]
-
-    ribslst = calc_total_rib_spacing(max_stress_beam, HINGED_WING_LENGTH, root_chord, thick_chord_ratio, I, number_of_beams,
-                                     M, x, buckling_coeff, young_mod, winglet_skin_thickness, poisson_ratio)
-
-    surface_area = WingGeometry.S_fw / HINGED_WING_LENGTH
-
-    rib_surface_area = surface_area / ((
-                                               WingGeometry.taper_fw - 1) * 0.5 + 1) ** 2 * 0.6  # Assuming the rib area is 0.6 times the airfoil cross section due to holes & cutouts
-
-
-    # ribs_mass = rib_surface_area * density * rib_thickness * len(ribslst)
-    ribs_mass = 0
-
-    for rib_pos in ribslst:
-        point_taper = ((taper_ratio - 1) / winglet_length * rib_pos + 1)
-        rib_volume = surface_area * point_taper ** 2 * rib_thickness
-        ribs_mass += rib_volume * density
-
-    print(ribs_mass)
-
-
-    return m_total
 # Winglet sizing
-def winglet_mass(root_chord, front_wing_distribution, back_wing_distribution):
+def winglet_mass(root_chord):
     def winglet_lift(x):
         return front_wing_distribution - x * (front_wing_distribution + back_wing_distribution) / winglet_length
 
     ###PARAMETERS
+
+    front_wing_distribution = 500
+    back_wing_distribution = 300
 
     # Wing & Winglet dimensions
     thick_chord_ratio = TIP_TO_CHORD_W
@@ -326,45 +548,7 @@ def winglet_mass(root_chord, front_wing_distribution, back_wing_distribution):
 
     ###once the winglet dimensions have been done sizing #AAluminum currently being used for structure sizing
 
-def total_wing_mass(mtow_kg):
-    #ASSUMPTIONS
-    # both wings have the same shape of elliptical distribution (same tip fraction) but can have different alpha and beta
-    # The maximum load imposed on the wing is when the aircraft is going at its fastest speed, or vmax
-
-    #Params
-    tip_lift_fraction = TIP_LIFT_FRACTION
-    single_wing_length = wing_length
-
-    root_chord = 1.2
-
-    wing_weight = 50*G ###starting value for wing weight
-
-    speed_ratio = vmax/V_CRUISE
-    weight_carried_fw = mtow_kg * G * mtow_fraction_fw
-    weight_carried_rw = mtow_kg * G * mtow_fraction_rw
-    alpha_fw, beta_fw = calculate_wing_ellipse(tip_lift_fraction, single_wing_length, weight_carried_fw)
-    alpha_rw, beta_rw = calculate_wing_ellipse(tip_lift_fraction, single_wing_length, weight_carried_rw)
-
-    print("STARTING CALCULATIONS")
-    disc_step = 0.01
-    force_fw_nonhinged = [np.sqrt(-(disc_step*i - alpha_fw)) * beta_fw * speed_ratio**2 * load_factor - wing_weight * nonhinged_wing_length/wing_length for i in range(int(round(nonhinged_wing_length/disc_step)))]
-    force_rw_nonhinged = [np.sqrt(-(disc_step * i - alpha_rw)) * beta_rw * speed_ratio ** 2 * load_factor - wing_weight * nonhinged_wing_length/wing_length  for i in range(int(round(nonhinged_wing_length / disc_step)))]
-    x = [disc_step*i for i in range(int(round(nonhinged_wing_length/disc_step)))]
-
-    m_fw_hinged = hinge_loading(root_chord, wing_weight, weight_carried_fw, alpha_fw, beta_fw, just_moment=True)["y"]
-
-
-
-    plt.plot(x, force_fw_nonhinged)
-    plt.xlim(0, 6)
-    plt.show()
-
-
-
-if __name__ == "__main__":
-    total_wing_mass(1800)
-    #wing_mass(2000)
-    #winglet_mass(1.2)
+winglet_mass(1.2)
 
 
 
@@ -934,7 +1118,7 @@ def hub_mass(use_fusion=False, m_hub_fusion=None):
     return 0.0
 
 
-# Miscellaneous & hinge
+# Miscellaneous
 def misc_mass(mtow_kg):
     return 0.10 * mtow_kg + 32 #kg of the thermal battery management system 
 

@@ -1,7 +1,11 @@
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
+
+# NOTE: matplotlib is imported lazily inside main() so this module stays
+# import-light. It is the single source of the Prandtl box-wing Oswald relation
+# (Rizzo 2007, = Midterm report eq 4.7) and is imported by parameters.py and the
+# matching diagram; pulling matplotlib at import time there is undesirable.
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -21,6 +25,8 @@ def oswald_efficiency(height_m: np.ndarray, span_m: float) -> np.ndarray:
 
 
 def main() -> None:
+    import matplotlib.pyplot as plt
+
     h_values = np.linspace(0.0, H_MAX_M, N_POINTS)
     e_values = oswald_efficiency(h_values, B_SPAN_M)
     design_e = float(oswald_efficiency(np.array([DESIGN_GAP_M]), B_SPAN_M)[0])

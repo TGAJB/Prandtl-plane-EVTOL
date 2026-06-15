@@ -42,8 +42,10 @@ Component shape assumptions (all documented at the build site below)
 fuselage      thin-walled cylinder shell (structure mass lives at the skin; a solid
               cylinder would halve the roll term; contents are separate components;
               nose/tail taper ignored)
-wing x2       rectangular prism (see trade study); m_wing split 50/50 front/rear
-              (asserted against AREA_SPLIT) after carving out WINGLET_MASS_FRAC
+wing x2       rectangular prism (see trade study); m_wing split front/rear by the
+              aft/total area fraction S_AFT_TO_S_TOTAL (50/50 at the baseline equal-
+              area box-wing) after carving out WINGLET_MASS_FRAC, each prism using
+              its own MAC
 tip plates x2 flat plates in the x-z plane at y = +/- span/2, height H_GAP_WINGS,
               chord = wing tip chord; the real joiner runs diagonally over the
               stagger but its parallel-axis y^2 term dominates anyway
@@ -82,7 +84,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from parameters import (
-    AREA_SPLIT, WING_SPAN, TIP_TO_CHORD_W,
+    S_AFT_TO_S_TOTAL, WING_SPAN, TIP_TO_CHORD_W,
     S_TAIL, AR_T, TAPER_TAIL, V_ANGLE,
     N_PROP, N_MOTOR, D_PROP,
     L_FUS, D_FUS, X_CG_FUS, Z_CG_FUS,
@@ -95,7 +97,7 @@ from parameters import (
     ETA_ROTOR_FW_IN, ETA_ROTOR_FW_OUT, ETA_ROTOR_RW,
     X_ROTOR_FW, X_ROTOR_RW, Z_ROTOR_FW, Z_ROTOR_RW,
     X_ROTOR_FW_IN_VTOL, X_ROTOR_FW_OUT_VTOL, X_ROTOR_RW_VTOL,
-    L_BATT, W_BATT, H_BATT, X_BATT, Z_BATT,
+    X_BATT, X_BATT_VTOL, Z_BATT, battery_box_dimensions,
     X_PAYLOAD, Z_PAYLOAD, L_PAYLOAD_BOX, W_PAYLOAD_BOX, H_PAYLOAD_BOX,
     X_GEAR, Y_GEAR_RAIL, Z_GEAR, L_SKID_RAIL,
     X_MISC, Z_MISC, FAT_CYLINDER_SECTION
@@ -190,13 +192,15 @@ def _add_split_wing_vtol(add, name, total_mass, mac, span, z_pos, eta_hinge,
             (x_folded, -y_folded_cg, z_pos), folded_local)
 
 
-def _add_wings_vtol(add, breakdown, mac, span):
-    """VTOL/folded wing representation used for x_CG in VTOL configuration."""
-    m_wing_each = (1.0 - WINGLET_MASS_FRAC) * breakdown["wing"] / 2.0
-    _add_split_wing_vtol(add, "front", m_wing_each, mac, span, Z_WING_F,
+def _add_wings_vtol(add, m_wing_front, m_wing_rear, mac_front, mac_rear, span):
+    """VTOL/folded wing representation used for x_CG in VTOL configuration.
+
+    The per-wing structural masses (already split front/rear by the aft/total area
+    fraction in build_components) and each wing's own MAC are passed in."""
+    _add_split_wing_vtol(add, "front", m_wing_front, mac_front, span, Z_WING_F,
                          ETA_FOLD_HINGE_FW,
                          X_WING_F_FIXED_VTOL, X_WING_F_FOLDED_VTOL)
-    _add_split_wing_vtol(add, "rear", m_wing_each, mac, span, Z_WING_R,
+    _add_split_wing_vtol(add, "rear", m_wing_rear, mac_rear, span, Z_WING_R,
                          ETA_FOLD_HINGE_RW,
                          X_WING_R_FIXED_VTOL, X_WING_R_FOLDED_VTOL)
 
@@ -210,15 +214,17 @@ def build_components(breakdown, configuration="cruise"):
     Returns a list of dicts: {"name", "mass" [kg], "position" (3,) [m],
     "I_local" 3x3 [kg m^2]}.
     """
-    # The 50/50 front/rear wing split and the 4+2 rotor layout below are
-    # hard-wired to the current configuration.
-    assert AREA_SPLIT == 0.5, "wing mass split assumes equal front/rear wing areas"
+    # The 4+2 rotor layout below is hard-wired to the current configuration. The
+    # front/rear wing split follows the aft/total area fraction (S_AFT_TO_S_TOTAL),
+    # so it generalises past the baseline equal-area box-wing.
+    assert 0.0 < S_AFT_TO_S_TOTAL < 1.0, "aft/total wing-area split must lie in (0, 1)"
     assert N_PROP == 6 and N_MOTOR == 6, "rotor stations assume the 4 front + 2 rear layout"
 
     geom = breakdown["wing_geom"]
-    mac = geom["mac_m"]
     span = geom["span_m"]
     c_tip = geom["tip_chord_m"]
+    mac_front = geom["front"]["mac_m"]
+    mac_rear = geom["aft"]["mac_m"]
 
     comps = []
 
@@ -235,19 +241,24 @@ def build_components(breakdown, configuration="cruise"):
     add("fuselage", m_fus, (X_CG_FUS, 0.0, Z_CG_FUS),
         inertia_cylinder_shell(m_fus, D_FUS / 2.0, L_FUS*FAT_CYLINDER_SECTION))
 
-    # -- Wings: rectangular prisms, tip-joiner fraction carved out first.
-    #    Cruise is the original two-box model, unchanged. VTOL keeps the fixed
-    #    (unfolded) centre sections at the cruise CG stations and moves only
-    #    the folded outer sections to the drawing stations, split by the
-    #    spanwise fold-hinge eta fractions. --
+    # -- Wings: rectangular prisms, tip-joiner fraction carved out first, then
+    #    split front/rear by the aft/total area fraction (S_AFT_TO_S_TOTAL): the
+    #    larger wing carries proportionally more structural mass and uses its own
+    #    MAC. (50/50 + equal MAC at the baseline equal-area box-wing.) Cruise is
+    #    the two-box model; VTOL keeps the fixed (unfolded) centre sections at the
+    #    cruise CG stations and moves only the folded outer sections to the drawing
+    #    stations, split by the spanwise fold-hinge eta fractions. --
     config = configuration.lower().strip()
+    m_wing_struct = (1.0 - WINGLET_MASS_FRAC) * breakdown["wing"]
+    m_wing_rear = S_AFT_TO_S_TOTAL * m_wing_struct
+    m_wing_front = m_wing_struct - m_wing_rear
     if config in ("cruise", "cr"):
-        m_wing_each = (1.0 - WINGLET_MASS_FRAC) * breakdown["wing"] / 2.0
-        wing_local = inertia_solid_box(m_wing_each, mac, span, TIP_TO_CHORD_W * mac)
-        add("wing_front", m_wing_each, (X_WING_F, 0.0, Z_WING_F), wing_local)
-        add("wing_rear", m_wing_each, (X_WING_R, 0.0, Z_WING_R), wing_local)
+        add("wing_front", m_wing_front, (X_WING_F, 0.0, Z_WING_F),
+            inertia_solid_box(m_wing_front, mac_front, span, TIP_TO_CHORD_W * mac_front))
+        add("wing_rear", m_wing_rear, (X_WING_R, 0.0, Z_WING_R),
+            inertia_solid_box(m_wing_rear, mac_rear, span, TIP_TO_CHORD_W * mac_rear))
     elif config in ("vtol", "folded"):
-        _add_wings_vtol(add, breakdown, mac, span)
+        _add_wings_vtol(add, m_wing_front, m_wing_rear, mac_front, mac_rear, span)
     else:
         raise ValueError("configuration must be 'cruise' or 'vtol'")
 
@@ -302,10 +313,16 @@ def build_components(breakdown, configuration="cruise"):
         add(f"pod_{name}", m_pod, (x, y, z), np.zeros((3, 3)))
         add(f"prop_{name}", m_prop, (x, y, z), prop_local)
 
-    # -- Battery: solid underfloor box --
+    # -- Battery: solid underfloor flat-wide slab. TWO longitudinal stations: the
+    #    cruise station (X_BATT) for the cruise build-up, and the aft VTOL-emergency
+    #    station (X_BATT_VTOL) for the folded/VTOL build-up -- the sliding battery
+    #    deploys aft in a VTOL one-engine-out emergency to move the VTOL c.g. into
+    #    its OEI-balanceable envelope without disturbing the cruise c.g. --
     m_batt = breakdown["battery"]
-    add("battery", m_batt, (X_BATT, 0.0, Z_BATT),
-        inertia_solid_box(m_batt, L_BATT, W_BATT, H_BATT))
+    l_batt, w_batt, h_batt = battery_box_dimensions(m_batt)
+    x_batt = X_BATT_VTOL if config in ("vtol", "folded") else X_BATT
+    add("battery", m_batt, (x_batt, 0.0, Z_BATT),
+        inertia_solid_box(m_batt, l_batt, w_batt, h_batt))
 
     # -- Payload: solid cabin box --
     m_pay = breakdown["payload"]

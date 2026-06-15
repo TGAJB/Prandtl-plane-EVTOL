@@ -252,7 +252,7 @@ class Aircraft:
         wg = self.params.wing_geometry
         ac = self.params.aerodynamics
 
-        S  = self._require(wg.S_aw, "wing_geometry.S_aft")
+        S  = self._require(wg.S_aw, "wing_geometry.S_aw")
         b  = self._require(wg.b_aw, "wing_geometry.b_aft")
         LE_sweep_aw = self._require(wg.LE_sweep_aw, "wing_geometry.LE_sweep_aft")
 
@@ -270,16 +270,12 @@ class Aircraft:
 
         S = self._require(wg.S_fw, "wing_geometry.S_fw")
         b = self._require(wg.b_fw, "wing_geometry.b_fw")
-        x_ac_aw = self.x_ac_aw()
-        x_cg = self.x_cg()
-
-        l_h = x_ac_aw - x_cg
-        A = b**2 / S
+        A = self._require(wg.A_fw, "wing_geometry.A_fw")
         sweep_c4_fw = self._le_to_c4(np.radians(wg.LE_sweep_fw), A, wg.taper_fw)
 
         K_A = (1/A) - (1/(1 + A**1.7))
         K_lambda = (10 - 3*wg.taper_fw) / 7
-        K_H = (1 - (np.abs(wg.gap)/b))/(((2*l_h)/b)**(1/3))
+        K_H = (1 - (np.abs(wg.gap)/b))/(((2*wg.stagger)/b)**(1/3))
 
         beta = self.beta()
 
@@ -369,7 +365,7 @@ class Aircraft:
 
         S_ref, _, c_ref = self._ref()
         S_fw = self._require(wg.S_fw, "wing_geometry.S_fw")
-        S_aw = self._require(wg.S_aw, "wing_geometry.S_aft")
+        S_aw = self._require(wg.S_aw, "wing_geometry.S_aw")
         x_ac_fw = self.x_ac_fw()
         x_ac_aw = self.x_ac_aw()
         x_cg = self.x_cg()
@@ -462,7 +458,7 @@ class Aircraft:
         wg = self.params.wing_geometry
         ac = self.params.aerodynamics
 
-        S_aw = self._require(wg.S_aw, "wing_geometry.S_aft")
+        S_aw = self._require(wg.S_aw, "wing_geometry.S_aw")
         S_ref, _, c_ref = self._ref()
         x_ac_aw = self.x_ac_aw()
         x_cg = self.x_cg()
@@ -1313,23 +1309,54 @@ def print_results(obj):
     print("  C_l_beta<0, C_l_p<0, C_n_r<0. All derivatives per radian.".ljust(total))
     print(line + "\n")
 
+def apply_mmoi_mass_properties(params, verbose=False):
+    """Source the mass properties (c.g., inertias, MTOW) from the real MMOI
+    component mass build-up and write them onto ``params.mass``.
+
+    This is THE single method every vehicle-dynamics entry point uses so the c.g.
+    and inertias come from the component layout (class_II_sizing/MMOI.py), never a
+    hand-set sheet value. MMOI is dual-mode: the CRUISE build-up fills
+    ``params.mass`` (x_cg_opt, z_cg, inertias, mtow) and drives the cruise
+    analysis, while the VTOL build-up (wings folded, rotors repositioned) gives an
+    aft-shifted c.g. used by the VTOL-OEI envelope check.
+
+    Returns:
+        (cruise_x_cg, vtol_x_cg): the longitudinal c.g. stations [m, nose datum]
+        for the cruise and VTOL configurations.
+    """
+    cruise = as_mass_properties(aircraft_inertia(verbose=verbose, configuration="cruise"))
+    params.mass.mtow = cruise["mtow"]
+    params.mass.I_xx = cruise["I_xx"]
+    params.mass.I_yy = cruise["I_yy"]
+    params.mass.I_zz = cruise["I_zz"]
+    params.mass.I_xz = cruise["I_xz"]
+    params.mass.z_cg = cruise["z_cg"]
+    params.mass.x_cg_opt = cruise["x_cg"]
+
+    vtol_x_cg = float(as_mass_properties(aircraft_inertia(configuration="vtol"))["x_cg"])
+    return float(cruise["x_cg"]), vtol_x_cg
+
+
 def main_aircraft():
     params = AircraftParameters()
     charts = DatcomChartInputs()
     physical = Physical()
     fc = FlightCondition()
 
-    MMOI = as_mass_properties(aircraft_inertia(verbose=True))
-
-    params.mass.mtow = MMOI["mtow"]
-    params.mass.I_xx = MMOI["I_xx"]
-    params.mass.I_yy = MMOI["I_yy"]
-    params.mass.I_zz = MMOI["I_zz"]
-    params.mass.I_xz = MMOI["I_xz"]
-    params.mass.z_cg = MMOI["z_cg"]
-    params.mass.x_cg_opt = MMOI["x_cg"]
+    apply_mmoi_mass_properties(params, verbose=True)
 
     aircraft = Aircraft(params, physical, fc, charts)
+
+    # Use the design-point-consistent wing areas/MAC (W/S = design_point), the same
+    # geometry evaluate_stability() uses, instead of the dataclass S_* defaults
+    # (which imply a different W/S). Otherwise the dynamic-stability analysis runs
+    # on inconsistent, oversized wings. Deferred import avoids the circular import
+    # (stat_long_stab_anal_func imports aircraft).
+    from stat_long_stab_anal_func import (
+        _update_aircraft_for_wing_split,
+        DEFAULT_S_AFT_TO_S_TOTAL,
+    )
+    _update_aircraft_for_wing_split(aircraft, params.mass.mtow, DEFAULT_S_AFT_TO_S_TOTAL)
 
     solved = aircraft.solve()
     assert solved is aircraft.params

@@ -14,8 +14,21 @@
 # ============================================================================
 
 import math
-import numpy as np
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
+
+import numpy as np
+
+# Make the project root importable so the Prandtl box-wing Oswald relation
+# (single source of truth, support_files/oswaldefficiency.py) can be reused here
+# instead of hardcoding the Oswald factor. oswaldefficiency is import-light
+# (matplotlib is lazy), so this stays cheap even though parameters.py is imported
+# everywhere.
+_PROJECT_ROOT = Path(__file__).resolve().parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(_PROJECT_ROOT))
+from support_files.oswaldefficiency import oswald_efficiency
 
 # ============================================================================
 # Part 1 - VEHICLE DYNAMICS PARAMETER SHEET (single source of truth for
@@ -55,10 +68,10 @@ class WingGeometry:
     the position, size, and orientation of the front and aft horizontal wings.
     """
 
-    design_point:         float = 760.0  # [N/m^2] selected wing loading from matching diagram
+    design_point:         float = 765.6250  # [N/m^2] selected wing loading from matching diagram
 
-    S_fw:                 float = 12.91  # [m^2]
-    S_aw:                 float = 12.91  # [m^2]
+    S_fw:                 float = 11.619  # [m^2]
+    S_aw:                 float = 14.201  # [m^2]
     S_e_fw:               float = 9.685  # [m^2]
     S_e_aw:               float = 9.685  # [m^2]
     S_tot:                float = 25.82  # [m^2]
@@ -70,10 +83,10 @@ class WingGeometry:
     A_aw:                 float = b_aw**2/S_aw  # [-]
 
     gap:                  float = 2.1  # [m]
-    stagger:              float = 5.0  # [m]
+    stagger:              float = 5.0  # [m] seed; DERIVED at runtime by _resolve_dependents as (x_LEMAC_aw - x_LEMAC_fw)
 
-    MAC_fw:               float = 1.262  # [m]
-    MAC_aw:               float = 1.262  # [m]
+    MAC_fw:               float = 0.907  # [m] seed (converged value); recomputed at runtime by _update_aircraft_for_wing_split
+    MAC_aw:               float = 0.907  # [m] seed (converged value); recomputed at runtime by _update_aircraft_for_wing_split
 
     taper_fw:             float = 0.45      # [-] (merged value; consistent with the chords below)
     taper_aw:             float = taper_fw  # [-]
@@ -100,9 +113,9 @@ class WingGeometry:
 
     # ===== ADDED FOR DATCOM ==================================================
     # Reference quantities for non-dimensionalisation. EVERY aircraft-level derivative is referenced to these; they must match the EOM reference.
-    S_ref:                float = S_tot  # [m^2]
-    b_ref:                float = b_fw  # [m]
-    MAC_ref:              float = 1.262  # [m]
+    S_ref:                float = S_tot  # [m^2] seed; refreshed to live S_tot by _update_aircraft_for_wing_split
+    b_ref:                float = b_fw   # [m]   seed; refreshed to live b_fw by _update_aircraft_for_wing_split / _resolve_dependents
+    MAC_ref:              float = 0.907  # [m]   seed (converged value); recomputed at runtime by _update_aircraft_for_wing_split
 
     # Airfoil thickness and trailing-edge angle.
     # NOTE: the front/aft WING lift-curve slopes now use the aero department's
@@ -115,12 +128,17 @@ class WingGeometry:
 
     # Wing vertical position relative to body centreline (z positive up,
     # matching the MMOI layout: front wing low, aft wing one gap above it)
-    z_w_fw:               float = -0.5         # [m]
+    z_w_fw:               float = -0.2889         # [m]
     z_w_aw:               float = z_w_fw + gap  # [m]
 
-    x_LEMAC_fw:           float = 1 # [m] - very rough estimate
+    x_LEMAC_fw:           float = 0.5982 # [m] front-wing LEMAC, MASTER (optimiser design variable, bounds 0-1.5)
+    x_LEMAC_aw:           float = 5.5982 # [m] aft-wing LEMAC, MASTER (fixed, independent of front); = x_LEMAC_fw default + 5.0 so baseline stagger stays 5.0
 
     # ===== FOLDED-WING / VTOL LAYOUT ========================================
+    # All x_vtol_* longitudinal stations below are SEEDS. They are re-anchored to
+    # the two wing-LEMAC masters at runtime by stability_eval._resolve_dependents
+    # (front sections follow x_LEMAC_fw, aft sections follow x_LEMAC_aw, tip plate
+    # follows the wing-AC midpoint) using the offsets in the module-constant block.
     fold_hinge_eta_fw:    float = 0.70  # [-] front-wing hinge station / semi-span; update from spanwise hinge layout
     fold_hinge_eta_aw:    float = 0.70  # [-] aft-wing hinge station / semi-span; update from spanwise hinge layout
 
@@ -149,7 +167,7 @@ class TailGeometry:
     x_vert_tail:                float = 6.4  # [m]
     c_r_vert_tail:              float = 1.6  # [m]
     c_t_vert_tail:              float = 1.3  # [m]
-    b_vert_tail:                float = 1.6  # [m]
+    b_vert_tail:                float = 1.4485  # [m]
     S_vert_tail:                float = ((c_r_vert_tail + c_t_vert_tail)*b_vert_tail)/2  # [m^2]
     AR_vert_tail:               float = b_vert_tail**2/S_vert_tail  # [-]
     LE_sweep_vert_tail:         float = 0.31  # [rad]
@@ -182,7 +200,7 @@ class WingletGeometry:
     taper_winglet:              float = 1.0 # [-]
     LE_sweep_winglet:           float = np.arctan(WingGeometry.stagger/WingGeometry.gap)  # [rad]
 
-    x_ac_winglet:               float = 4.125  # [m] longitudinal aerodynamic-centre location
+    x_ac_winglet:               float = 4.125  # [m] seed; DERIVED at runtime = midpoint of (x_ac_fw, x_ac_aw)
     z_ac_winglet:               float = 0.68  # [m] vertical aerodynamic-centre location
 
     airfoil_winglet:            str   = "NASA LANGLEY LS(1)-0417"  # [-]
@@ -224,28 +242,67 @@ class ControlSurfaceGeometry:
     rudder_cf_c:         float = 0.2   # [-]
 
 
+def _converged_mtow_default():
+    """
+    Converged MTOW default for MassProperties.mtow.
+
+    Deferred import on purpose: parameters.py is imported BY
+    class_II_sizing/mtow_sizing.py, so importing the converger at module load
+    here would be circular. The import only runs when a MassProperties() is
+    actually instantiated, by which point mtow_sizing is fully imported and its
+    converged state is cached, so this is cheap and safe.
+    """
+    from class_II_sizing.mtow_sizing import load_final_design_state
+    return load_final_design_state()["mtow"]
+
+
+_MASS_PROPS_CACHE = {}
+
+
+def _converged_mass_property(key):
+    """Converged mass property from the MMOI component build-up (cruise config).
+
+    key in {'x_cg','z_cg','I_xx','I_yy','I_zz','I_xz'}. Deferred import + cached
+    for the same reason as _converged_mtow_default: parameters.py is imported BY
+    class_II_sizing/MMOI.py, so a top-level import would be circular. The import
+    runs only when a MassProperties() is first instantiated. One
+    aircraft_inertia('cruise') call is cached so the six fields below do not each
+    recompute it. MMOI reads only module-level layout constants (not
+    MassProperties), so this neither recurses nor goes stale; the real evaluation
+    paths overwrite these at runtime via aircraft.apply_mmoi_mass_properties().
+    """
+    if not _MASS_PROPS_CACHE:
+        from class_II_sizing.MMOI import aircraft_inertia, as_mass_properties
+        _MASS_PROPS_CACHE.update(as_mass_properties(aircraft_inertia(configuration="cruise")))
+    return _MASS_PROPS_CACHE[key]
+
+
 @dataclass
 class MassProperties:
     """
     Aircraft mass and inertia properties.
 
-    mtow here is a seed value for standalone VD runs; the converged class-II
-    design state (class_II_sizing/mtow_sizing.py) is authoritative.
+    mtow now defaults to the converged class-II design state
+    (class_II_sizing/mtow_sizing.py), which is authoritative.
     """
 
-    mtow:         float = 2000.0  # [kg]
+    mtow:         float = field(default_factory=_converged_mtow_default)  # [kg] converged value from mtow_sizing.py
     oew:          float = None    # [kg]
     payload_mass: float = 400.0   # [kg] fixed payload (4 pax + luggage)
 
     x_cg_min:     float = None  # [m]
     x_cg_max:     float = None  # [m]
-    x_cg_opt:     float = 3.311   # [m] - Optimal CG location during cruise
-    z_cg:         float = -0.162  # [m] - vertical CG (datum), used by moment arms
+    # c.g. and inertias come from the MMOI component build-up (class_II_sizing/
+    # MMOI.py), NOT hardcoded: linked via default_factory so they always track the
+    # converged design. aircraft.apply_mmoi_mass_properties() overwrites them at
+    # runtime with the (possibly overridden) live values on every evaluation path.
+    x_cg_opt:     float = field(default_factory=lambda: _converged_mass_property("x_cg"))   # [m] cruise c.g.
+    z_cg:         float = field(default_factory=lambda: _converged_mass_property("z_cg"))   # [m] vertical c.g.
 
-    I_xx:         float = 11458.0  # [kg m^2]
-    I_yy:         float = 9707.0  # [kg m^2]
-    I_zz:         float = 18196.0  # [kg m^2]
-    I_xz:         float = 1949.0  # [kg m^2]
+    I_xx:         float = field(default_factory=lambda: _converged_mass_property("I_xx"))   # [kg m^2]
+    I_yy:         float = field(default_factory=lambda: _converged_mass_property("I_yy"))   # [kg m^2]
+    I_zz:         float = field(default_factory=lambda: _converged_mass_property("I_zz"))   # [kg m^2]
+    I_xz:         float = field(default_factory=lambda: _converged_mass_property("I_xz"))   # [kg m^2]
 
 
 @dataclass
@@ -281,7 +338,13 @@ class AerodynamicCoefficients:
     CD0_fuselage:                       float = None  # [-]
 
     # Oswald efficiency factors
-    e_hor_wings:                         float = 1.34  # [-] (updated 11-06-2026) (DOES THE VALIDITY CHANGE WHEN HLDs ARE DEPLOYED?)
+    # Sourced from the Prandtl box-wing relation (Rizzo 2007 = Midterm report
+    # eq 4.7, support_files/oswaldefficiency.py) at the design vertical gap and
+    # span, NOT hardcoded: e = oswald_efficiency(gap, b_fw). At the baseline
+    # (gap 2.1 m, b 13 m) this evaluates to ~1.342, i.e. the previous 1.34. It is
+    # refreshed at runtime from the (possibly overridden) gap/span in
+    # stability_eval._resolve_dependents so a swept gap/span propagates.
+    e_hor_wings:                         float = float(oswald_efficiency(WingGeometry.gap, WingGeometry.b_fw))  # [-]
     e_vert_tail:                         float = None  # [-]
     e_winglet:                           float = None  # [-]
 
@@ -309,8 +372,8 @@ class AerodynamicCoefficients:
     x_ac_fw_cruise:                     float = 0.313 # [m] as seen from the LEMAC of the front wing
     x_ac_aw_cruise:                     float = 0.313 # [m] as seen from the LEMAC of the aft wing
 
-    x_ac_fw:                            float = 1.60  # [m]
-    x_ac_aw:                            float = 6.65  # [m]
+    x_ac_fw:                            float = 1.60  # [m] absolute (mass-layout) AC; seed, DERIVED at runtime = x_LEMAC_fw + _AC_OFFSET_FW
+    x_ac_aw:                            float = 6.65  # [m] absolute (mass-layout) AC; seed, DERIVED at runtime = x_LEMAC_aw + _AC_OFFSET_AW
 
     x_ac_fw_approach:                   float = None  # [m]
     x_ac_aw_approach:                   float = None  # [m]
@@ -405,32 +468,7 @@ class Propulsion:
     propulsive_efficiency:  float = 0.87  # [-]
 
     n_engines:              int   = 6  # [-] - Number of engines / rotors
-    max_thrust_per_engine:  float = 5500  # [N]
-
-    # Engine locations in CRUISE CONFIGURATION
-    x_cr_1:               float = None  # [m]
-    y_cr_1:               float = None  # [m]
-    z_cr_1:               float = None  # [m]
-
-    x_cr_2:               float = None  # [m]
-    y_cr_2:               float = None  # [m]
-    z_cr_2:               float = None  # [m]
-
-    x_cr_3:               float = None  # [m]
-    y_cr_3:               float = None  # [m]
-    z_cr_3:               float = None  # [m]
-
-    x_cr_4:               float = None  # [m]
-    y_cr_4:               float = None  # [m]
-    z_cr_4:               float = None  # [m]
-
-    x_cr_5:               float = None  # [m]
-    y_cr_5:               float = None  # [m]
-    z_cr_5:               float = None  # [m]
-
-    x_cr_6:               float = None  # [m]
-    y_cr_6:               float = None  # [m]
-    z_cr_6:               float = None  # [m]
+    max_thrust_per_engine:  float = 5500  # [N] short-duration OEI peak rating (see VTOL_cg_envelope_det.py)
 
     # Engine locations in VTOL CONFIGURATION
     # x-stations from the folding-layout drawing via WingGeometry:
@@ -512,10 +550,6 @@ RANGE_M          = Mission.minimum_range   # [m]   design range
 D_VERT_DESCENT   = 1676.0     # [m]   vertical descent distance
 V_CRUISE         = Mission.cruise_speed    # [m/s] cruise speed
 H_CRUISE         = Mission.cruise_altitude # [m]   cruise altitude
-H_TRANSITION     = Mission.transition_altitude  # [m] transition altitude
-RHO_CRUISE       = Mission.rho_cr          # [kg/m^3] ISA density at H_CRUISE
-T_CR_ISA         = Mission.T_cr            # [K]   ISA temperature at H_CRUISE
-T_SL_ISA         = Mission.T_SL            # [K]   ISA sea-level temperature
 M_CR             = Mission.M_cr            # [-]   cruise Mach number
 T_CRUISE         = 2194.7     # [s]   cruise segment
 T_TAKEOFF        = 5.0        # [s]   takeoff segment
@@ -534,7 +568,6 @@ VS_0             = D_VERT_DESCENT / T_DESCENT # [m/s]
 
 SIGMA_ALLOW_CFRP = 500e6   # [Pa]   UD CFRP compression allowable, B-basis (MIL-HDBK-17-1F)
 RHO_CFRP         = 1550.0  # [kg/m^3] CFRP density
-E_CFRP           = 100 * 10 ** 9 # [Pa] CFRP young modulus (TO BE UPDATED)
 
 SIGMA_ALLOW_AL = 260e6   # [Pa]   2024-T3 compression allowable (MMPDS-01)
 RHO_AL         = 2700.0  # [kg/m^3] aluminium alloy density
@@ -557,17 +590,45 @@ LD_CRUISE            = 14.7   # [-]   box-wing cruise L/D (preliminary)
 CD0                  = 0.0205 # [-]   zero-lift drag coefficient (preliminary)
 OSWALD_EFFICIENCY    = AerodynamicCoefficients.e_hor_wings  # [-] Oswald efficiency factor
 
+# Matching-diagram / design-point sizing inputs (cruise-configuration wing & power
+# loading). These are mission/requirement values used by
+# final_characteristics/matching_diagram.py to bound the wing loading W/S; they
+# are NOT aerodynamic models. The constraint equations themselves are the standard
+# ADSEE forms. Take-off/landing sizing is omitted (VTOL handles those vertically).
+STALL_SPEED_MAX  = 25.0   # [m/s] maximum allowable cruise-config stall speed (sets the W/S upper bound)
+CLIMB_RATE       = 3.0    # [m/s] required steady rate of climb (climb-rate constraint)
+CLIMB_GRADIENT   = 0.083  # [-]   required climb gradient c/V (CS/FAR 23.65, all engines operating)
+CL_MAX_CLIMB     = 1.8    # [-]   lift coefficient used in the climb-gradient constraint
+PROP_EFFICIENCY  = 0.80   # [-]   propeller efficiency for the matching diagram (conservative)
+
+# Longitudinal static-stability margins (fraction of the global MAC)
+# Master values for the two CG-envelope analyses in final_characteristics/
+# vehicle_dynamics; edit them here, not in those modules.
+CRUISE_STATIC_MARGIN   = 0.05  # [-] cruise aft-CG static margin (stat_long_stab_anal_func.py)
+VTOL_OEI_STATIC_MARGIN = 0.05  # [-] VTOL OEI CG-envelope static margin (VTOL_cg_envelope_det.py)
+
+# Penalty applied when the VTOL-OEI c.g. envelope is infeasible (no allowable c.g.
+# exists for a propeller-out case): the allowable limits are pushed out of reach
+# so both VTOL c.g. requirements fail with a big, finite violation.
+VTOL_INFEASIBLE_PENALTY = 1.0e6  # [m] (stability_eval.py)
+
+# Inertia-estimation placeholders (Roskam class-I radii-of-gyration method,
+# I = m*(Rbar*L_char/2)^2). Only used as a fallback when MMOI has not filled the
+# real inertias; the MMOI build-up (class_II_sizing/MMOI.py) supersedes these.
+INERTIA_RBAR_X        = 0.25  # [-] roll-inertia radius factor   (dyn_stab_analysis.py)
+INERTIA_RBAR_Y        = 0.35  # [-] pitch-inertia radius factor  (dyn_stab_analysis.py)
+INERTIA_RBAR_Z        = 0.40  # [-] yaw-inertia radius factor    (dyn_stab_analysis.py)
+INERTIA_XZ_TO_XX_RATIO = 0.05  # [-] I_xz as a fraction of I_xx   (dyn_stab_analysis.py)
+
 # Wing structural parameters
 
 NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing
-AREA_SPLIT          = WingGeometry.S_fw / WingGeometry.S_tot  # [-] fraction of total area assigned to one wing
+AREA_SPLIT          = WingGeometry.S_fw / WingGeometry.S_tot  # [-] front-wing fraction of total area (init sizing seed)
+S_AFT_TO_S_TOTAL    = WingGeometry.S_aw / WingGeometry.S_tot  # [-] aft-wing fraction of total area; design lever (optimiser), drives the front/aft wing-mass split
 WING_SPAN           = WingGeometry.b_fw          # [m]     span from the footprint constraint
 WING_LOADING_N      = WingGeometry.design_point  # [N/m^2] selected design-point wing loading from matching diagram
 TAPER_W             = WingGeometry.taper_fw      # [-]     wing chord taper ratio (c_tip / c_root)
 TIP_TO_CHORD_W      = WingGeometry.t_c_fw        # [-]     wing thickness-to-chord ratio
-LE_SWEEP_W          = math.radians(WingGeometry.LE_sweep_fw)         # [rad] wing leading edge sweep angle
-DIHEDRAL            = math.radians(WingGeometry.dihedral_front_wing) # [rad] wing dihedral angle
-TWIST               = math.radians(WingGeometry.twist_fw)            # [rad] wing twist angle NOT FINAL
 #    Class I parameters (OUTDATED - CLASS II AVAILABLE)
 S_W         = 30.0            # [m^2]   class I total wing reference area
 AR_W        = 5.63            # [-]     class I wing aspect ratio
@@ -601,7 +662,7 @@ AR_T        = TailGeometry.AR_vert_tail  # [-]    tail panel aspect ratio
 # Propulsion geometry
 
 N_PROP   = Propulsion.n_engines  # [-]  number of rotors
-N_MOTOR  = 6      # [-]  number of motors
+N_MOTOR  = N_PROP  # [-]  number of motors (one per rotor; linked so the two cannot diverge)
 N_BLADES = 8      # [-]  blades per rotor
 D_PROP   = 1.9    # [m]  rotor diameter
 A_DISK   = 2.84   # [m^2] rotor disk area per rotor
@@ -618,6 +679,17 @@ RESERVE_FRAC = 0.20     # [-]   20% energy reserve on (mission + aux)
 S_SERIES     = 235      # [-]   cells in series for the 800 V bus
 E_CELL_DENS_WH_KG = E_CELL_WH / M_CELL_KG   # = 386 Wh/kg (derived, do not edit)
 
+# Cell physical envelope (one pouch cell; supplier figure, 126 x 43 x 9 mm,
+# 100 g packaged). These drive ONLY the pack-box GEOMETRY (battery_box_dimensions
+# below / MMOI inertia). The ENERGY-sizing cell mass stays M_CELL_KG (97.3 g
+# datasheet) so the validated 386 Wh/kg and the battery mass build-up are
+# unchanged; the 100 g packaged figure is recorded here for traceability only.
+CELL_L_M       = 0.126  # [m]  cell length
+CELL_W_M       = 0.043  # [m]  cell width
+CELL_H_M       = 0.009  # [m]  cell thickness
+CELL_MASS_PACKAGED_KG = 0.100  # [kg] packaged cell mass (image) -- NOT used in sizing
+CELL_VOLUME_M3 = CELL_L_M * CELL_W_M * CELL_H_M  # [m^3] per-cell envelope (derived)
+
 # Airframe geometry
 
 L_FUS       = FuselageGeometry.fuselage_length  # [m]  fuselage length
@@ -625,6 +697,29 @@ FUSE_WIDTH  = FuselageGeometry.d_fw             # [m]  fuselage width (front vie
 PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
 FAT_CYLINDER_SECTION = 0.4 #this is for mmoi calculations on what we assume is the cylinder (rest of fus is neglected)
+
+# Fuselage Class-II structural sizing (mass_components.fuselage_mass physics method)
+#
+# The physics method models the fuselage as a thin-walled circular shell-beam
+# (radius D_FUS/2, length L_FUS): per design condition every coexisting load (wing
+# reactions + tail load + inertia) is superimposed onto ONE bending-moment diagram,
+# the skin is sized from the shell section modulus (floored at min gauge) for BOTH
+# CFRP and aluminium, and the lighter is kept. Flip FUS_MASS_METHOD to "regression"
+# to restore the legacy empirical USAF/Nicolai formula everywhere.
+FUS_MASS_METHOD      = "physics"  # [-]  "physics" | "regression" -> selects fuselage_mass branch
+FUS_PRIMARY_FRACTION = 0.60       # [-]  skin / primary-structure fraction (frames, floor, doors, fittings recovered); main tuning knob
+FUS_BORNE_MASS_FRAC  = 0.50       # [-]  fraction of MTOW carried as distributed fuselage inertia (payload + battery + systems + shell); the rest hangs on the wings
+FUS_AREA_CONE_FACTOR = 1.0        # [-]  shell wetted-area uplift for nose/tail cones beyond the bare cylinder (1.0 = bare cylinder)
+# Thin-shell BENDING-BUCKLING allowable sigma_cr = C * E * (t/R) (classical cylinder,
+# knocked down for imperfection sensitivity). This - not material yield - is the failure
+# mode that sizes a thin monocoque shell in bending, so the required gauge
+# t_buckle = sqrt(M / (pi*R*C*E)) scales with the load (hence with MTOW). C bundles the
+# classical coefficient (~0.6 axial / ~0.7 bending) with the design knockdown (~0.4-0.5).
+FUS_SHELL_BUCKLING_C = 0.30       # [-]  knocked-down cylinder bending-buckling coefficient
+# NOTE: PER_FUS_MAX = 12.0 m is geometrically inconsistent with the 2.0 m circular
+#       section (pi*D_FUS ~ 6.28 m) and is NOT used by the physics method (it uses
+#       pi*D_FUS*L_FUS for the shell area). Review PER_FUS_MAX; only the legacy
+#       "regression" branch still consumes it.
 
 # MMOI component layout (class_II_sizing/MMOI.py)
 #
@@ -638,7 +733,28 @@ D_FUS    = FUSE_WIDTH     # [m]   equivalent-cylinder diameter (circular section
 X_CG_FUS = 0.45 * L_FUS   # [m]   shell CG slightly fwd of mid-length (light tailcone)  PLACEHOLDER
 Z_CG_FUS = 0.0            # [m]   shell CG on the centreline
 
+# -- Wing-position master/derived offsets -------------------------------------
+# The two wing LEMACs (WingGeometry.x_LEMAC_fw / x_LEMAC_aw) are the MASTER
+# longitudinal positions. Every other longitudinal station (the absolute wing
+# ACs, the winglet AC, the folded-wing / VTOL sections, and the rotor stations)
+# is DERIVED from them at runtime by stability_eval._resolve_dependents, using
+# the fixed offsets below (captured from today's drawing so the baseline geometry
+# is reproduced exactly). Front-mounted stations follow x_LEMAC_fw; aft-mounted
+# stations follow x_LEMAC_aw; the tip joiner follows the wing-AC midpoint.
+_AC_OFFSET_FW             = 1.0018  # [m] x_ac_fw  - x_LEMAC_fw  (front absolute-AC offset)
+_AC_OFFSET_AW             = 1.0518  # [m] x_ac_aw  - x_LEMAC_aw  (aft absolute-AC offset; keeps baseline stagger = 5.0)
+_VTOL_FW_FOLDED_OFFSET    = 3.10    # [m] x_vtol_fw_folded  - x_ac_fw
+_VTOL_AW_FOLDED_OFFSET    = 2.07    # [m] x_vtol_aw_folded  - x_ac_aw
+_VTOL_TIP_PLATE_FROM_MID  = 3.145   # [m] x_vtol_tip_plate  - x_ac_winglet (midpoint)
+_VTOL_ROTOR_FW_IN_OFFSET  = 1.20    # [m] x_vtol_rotor_fw_in   - x_ac_fw
+_VTOL_ROTOR_FW_OUT_OFFSET = 3.20    # [m] x_vtol_rotor_fw_out  - x_ac_fw
+_VTOL_ROTOR_RW_OFFSET     = 1.35    # [m] x_vtol_rotor_rw      - x_ac_aw
+
 # -- Wings (Prandtl pair) --
+# NOTE: X_WING_F/X_WING_R (and the X_*_VTOL / X_ROTOR_* constants below) are
+# IMPORT-TIME SEEDS. The optimiser path overrides them per-evaluation via the
+# mmoi_overrides bridge in stability_eval.evaluate_stability so they track the
+# wing-LEMAC masters; the seeds equal the baseline geometry for standalone callers.
 X_WING_F     = AerodynamicCoefficients.x_ac_fw                       # [m]  front-wing CG ~ x_LEMAC (vd: 1.0) + 0.4*MAC  PLACEHOLDER
 Z_WING_F     = WingGeometry.z_w_fw       # [m]  low-mounted front wing
 WING_STAGGER = WingGeometry.stagger      # [m]  longitudinal distance front -> rear wing
@@ -648,7 +764,7 @@ Z_WING_R     = WingGeometry.z_w_aw       # [m]  high rear wing (= z_w_fw + gap)
 WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out for the two
                                          #      vertical tip joiners                      PLACEHOLDER
 # -- Winglets --
-WINGLET_TAPER_RATIO = 1
+WINGLET_TAPER_RATIO = WingletGeometry.taper_winglet  # [-] single source of truth (WingletGeometry.taper_winglet)
 
 ###Most stuff still needed to complete the wing sizing
 
@@ -702,16 +818,60 @@ X_ROTOR_RW = X_WING_R - X_ROTOR_OFFSET  # [m]  rear-rotor station (derived)
 Z_ROTOR_FW = Z_WING_F                   # [m]  rotors carried at front-wing height
 Z_ROTOR_RW = Z_WING_R                   # [m]  rotors carried at rear-wing height
 
-# -- Optimal cruise CG (from the VD sheet) --
-X_CG_OPT = MassProperties.x_cg_opt  # [m]  optimal CG location during cruise
-
-# -- Battery (underfloor box) --
-L_BATT = 3.0    # [m]  box length ~ cabin floor length                                  PLACEHOLDER
-W_BATT = 1.2    # [m]  box width between cabin floor beams                              PLACEHOLDER
-H_BATT = 0.25   # [m]  underfloor bay depth                                             PLACEHOLDER
-X_BATT = 2.7  # [m]  box mid-length at the cruise-optimal CG so the
-                   #      heaviest item is CG-neutral
+# -- Battery (underfloor box) : TWO longitudinal positions --
+# A sliding battery deploys AFT only during a VTOL one-engine-out (OEI) emergency,
+# moving the VTOL c.g. into the OEI-balanceable envelope WITHOUT disturbing the
+# cruise c.g. (cruise uses the forward station; the emergency uses the aft one).
+# The optimiser tunes both stations (see optimiser.py); MMOI uses X_BATT_CRUISE for
+# the cruise build-up and X_BATT_VTOL for the folded/VTOL build-up.
+X_BATT_CRUISE = 2.7438   # [m]  cruise station (box mid-length near the cruise c.g.)
+X_BATT_VTOL   = 6.5612   # [m]  VTOL-emergency station (slid aft; optimiser-tuned)
+X_BATT        = X_BATT_CRUISE  # [m]  default/alias used by the cruise MMOI build-up
 Z_BATT = -0.7   # [m]  below the cabin floor (floor ~ -0.5 m for the 2.0 m section)
+
+# Volumetric packing efficiency = (summed cell volume) / (box volume).
+# Value for the firmed-up flat-slab integrated pack (cells edge-cooled in a wide,
+# shallow tray; busbars/BMS/structure in the remaining ~60%). A tighter pack also
+# shortens the box so the emergency slide reaches the VTOL-OEI envelope.
+BATT_VOL_PACK_FRAC = 0.40  # [-]
+
+# Underfloor bay cross-section the flat-wide battery slab fills. These set the box
+# fore-aft LENGTH (hence how far it can slide aft before its aft face reaches the
+# tail), from the 2.0 m fuselage section.
+BATT_BAY_WIDTH = 1.4   # [m]  usable underfloor width (under the cabin floor)
+BATT_BAY_DEPTH = 0.35  # [m]  usable underfloor depth (floor to belly clearance)
+
+
+def battery_box_dimensions(m_batt_kg):
+    """Underfloor battery-box (L, W, H) in metres: a FLAT, WIDE slab.
+
+    The box volume tracks the installed cells, V = n_cells * cell_volume /
+    BATT_VOL_PACK_FRAC. To keep the box SHORT in the fore-aft (x) direction -- the
+    direction the emergency sliding battery travels -- the slab is spread to the
+    underfloor bay width and depth (BATT_BAY_WIDTH x BATT_BAY_DEPTH) and the
+    remaining volume sets the (short) length. This flat-wide arrangement (vs an
+    isometric 126:43:9 box) is what lets a given pack slide far enough aft to move
+    the VTOL-OEI c.g. into its envelope. The cell count is back-computed from the
+    pack mass through the cell-to-pack mass fraction using the 97.3 g energy-sizing
+    cell mass (M_CELL_KG), consistent with the battery mass build-up.
+    """
+    n_cells = m_batt_kg * CELL_TO_PACK / M_CELL_KG
+    v_box = n_cells * CELL_VOLUME_M3 / BATT_VOL_PACK_FRAC
+    w = BATT_BAY_WIDTH
+    h = BATT_BAY_DEPTH
+    l = v_box / (w * h)
+    return l, w, h
+
+
+def battery_vtol_slide_range(m_batt_kg):
+    """(min, max) aft station [m, nose datum] for the sliding VTOL battery.
+
+    The box centre can travel from the cruise station back to where the slab's
+    aft face reaches the fuselage tail (so it stays inside the airframe). Used to
+    bound the optimiser's VTOL-battery-position design variable.
+    """
+    l_box, _, _ = battery_box_dimensions(m_batt_kg)
+    return X_BATT_CRUISE, L_FUS - l_box / 2.0
 
 # -- Payload (pax + luggage cabin box) --
 X_PAYLOAD     = 2.7  # [m]  pax + luggage centred on the target CG
@@ -860,12 +1020,5 @@ GEAR_OPT_BOUNDS = {
 
 # Miscellaneous design constants
 
-gust_speed               = 0      # [m/s]  design gust speed
-cabin_noise_req          = 0      # [dB]   cabin noise requirement
-propulsion_type          = 0      # [-]    propulsion type flag
-contingency_energy_reserve = 0    # [kWh]  energy reserve
-vehicle_lifetime         = 0      # [years]
-aircraft_person_proximity  = 0    # [m]
-aircraft_building_proximity = 0   # [m]
 rho_propeller_hub        = 2700.0 # [kg/m^3] hub material density (aluminium)
 rho_propeller_blade      = 1550.0 # [kg/m^3] blade material density (CFRP)
