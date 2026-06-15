@@ -571,6 +571,7 @@ SIGMA_ALLOW_CFRP = 500e6   # [Pa]   UD CFRP compression allowable, B-basis (MIL-
 RHO_CFRP         = 1550.0  # [kg/m^3] CFRP density
 
 SIGMA_ALLOW_AL = 260e6   # [Pa]   2024-T3 compression allowable (MMPDS-01)
+POISSON_AL = 0.33 # [-] poisson ratio for aluminum
 RHO_AL         = 2700.0  # [kg/m^3] aluminium alloy density
 E_AL           = 73.1 * 10 ** 9   # [Pa] aluminium young modulus
 
@@ -788,6 +789,16 @@ skin_thickness_RW = 0.02
 rib_thickness_RW = 0.001
 wing_area_fw_RW = WingGeometry.A_fw
 
+# -- Stringer geometry --
+h = 0.01
+L1 = 0.019
+L2 = 0.01
+t_stringers = 0.001
+num_of_stringers_RW = 10
+
+# -- Winglet geometry --
+BUCKLING_COEFF_WINGLETS = 4 # [-]
+IBEAM_SPACING_WINGLETS = 0.5 #[m]
 
 # -- Hinge --
 HINGE_THETA = -45 # [deg]

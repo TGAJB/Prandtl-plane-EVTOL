@@ -933,14 +933,14 @@ def size_winglet(root_chord, front_wing_distribution, back_wing_distribution):
     beam_thickness = WINGLET_SPAR_BEAM_THICKNESS  # m
 
     # For new stringer buckling
-    Ibeam_spacing = 0.5 #m
+    Ibeam_spacing = IBEAM_SPACING_WINGLETS
 
     # Material characteristics
-    allowable_stress = 278e6 * 0.8
-    poisson_ratio = 0.33
-    buckling_coeff = 4
-    young_mod = 70e9
-    density = 2700
+    allowable_stress = SIGMA_ALLOW_AL
+    poisson_ratio = POISSON_AL
+    buckling_coeff = BUCKLING_COEFF_WINGLETS
+    young_mod = E_AL
+    density = RHO_AL
 
     I = calculate_Ibeam_moment_of_inertia(root_chord, thick_chord_ratio, flange_length, flange_thickness,
                                           beam_thickness)
@@ -1178,20 +1178,13 @@ def size_wing(mtow_kg):
         #Now that we have x and wing_moment_x for the wing, we can do the same thing we did for the winglets!
         def size_rotating_wing(x, M, wing_area):
             # Material characteristics
-            allowable_stress = 278e6 * 0.8
-            poisson_ratio = 0.33
-            buckling_coeff = 4
-            young_mod = 70e9
-            density = 2700
-            allowable_stress = 270e6
+            allowable_stress = SIGMA_ALLOW_AL
+            poisson_ratio = POISSON_AL
+            young_mod = E_AL
+            density = RHO_AL
+            allowable_stress = SIGMA_ALLOW_AL
 
-            #Stringers params
-            h = 0.01
-            L1 = 0.019
-            L2 = 0.01
-            t_stringers = 0.001
-            num_of_stringers_RW = 10
-            plates_height = root_chord*thick_chord_ratio_RW/2
+            plates_height = root_chord * thick_chord_ratio_RW / 2
 
             M_max = float(np.max(np.abs(M)))
 
