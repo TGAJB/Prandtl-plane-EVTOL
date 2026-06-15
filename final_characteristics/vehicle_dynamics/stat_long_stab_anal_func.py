@@ -59,7 +59,7 @@ def _check_ratio(s_aft_to_s_total):
         raise ValueError("s_aft_to_s_total must be between 0 and 1.")
 
 
-def _update_aircraft_for_wing_split(ac, mtow, s_aft_to_s_total):
+def _update_aircraft_for_wing_split(ac, mtow, s_aft_to_s_total, x_LEMAC_fw):
     """
     Update the aircraft parameter object for the requested MTOW and wing split.
 
@@ -76,6 +76,7 @@ def _update_aircraft_for_wing_split(ac, mtow, s_aft_to_s_total):
     MAC_fw, A_fw, S_e_fw = calc_wing_geom(ac, S_fw, 1)
     MAC_aw, A_aw, S_e_aw = calc_wing_geom(ac, S_aw, 2)
     MAC_global = (S_fw*MAC_fw + S_aw*MAC_aw)/S_tot
+    stagger = ac.params.aerodynamics.x_ac_aw - (x_LEMAC_fw + 0.25*MAC_fw)
 
     wg = ac.params.wing_geometry
     wg.S_tot = S_tot
@@ -88,6 +89,7 @@ def _update_aircraft_for_wing_split(ac, mtow, s_aft_to_s_total):
     wg.A_aw = A_aw
     wg.S_e_fw = S_e_fw
     wg.S_e_aw = S_e_aw
+    wg.stagger = stagger
 
     return {
         "S_tot": S_tot,
@@ -101,6 +103,7 @@ def _update_aircraft_for_wing_split(ac, mtow, s_aft_to_s_total):
         "A_aw": A_aw,
         "S_e_fw": S_e_fw,
         "S_e_aw": S_e_aw,
+        "stagger": stagger,
     }
 
 
@@ -183,6 +186,7 @@ def analyse_configuration(
     cg_vtol_nose,
     cg_cruise_nose,
     mtow,
+    x_LEMAC_fw,
     s_aft_to_s_total=DEFAULT_S_AFT_TO_S_TOTAL,
     cruise_static_margin=DEFAULT_CRUISE_STATIC_MARGIN,
     failed_cases=None,
@@ -209,7 +213,7 @@ def analyse_configuration(
     charts = aircraft.DatcomChartInputs()
     ac = aircraft.Aircraft(params, physical, fc, charts)
 
-    wing = _update_aircraft_for_wing_split(ac, mtow, s_aft_to_s_total)
+    wing = _update_aircraft_for_wing_split(ac, mtow, s_aft_to_s_total, x_LEMAC_fw)
     wg = ac.params.wing_geometry
     aero = ac.params.aerodynamics
 
@@ -217,7 +221,7 @@ def analyse_configuration(
     aircraft_lift_curve_slope = _as_real(ac.CL_alpha_aircraft(), "CL_alpha_aircraft")
     CL_alpha_aw = ac.params.aerodynamics.CL_alpha_aw
     CL_2_CL_ratio = CL_alpha_aw * (1 - downwash_grad) / aircraft_lift_curve_slope
-    aft_wing_volume = (wing["S_aw"] * wg.stagger) / (wing["S_tot"] * wing["MAC_global"])
+    aft_wing_volume = (wing["S_aw"] * wing["stagger"]) / (wing["S_tot"] * wing["MAC_global"])
 
     x_np_front_mac = (
         aero.x_ac_fw_cruise / wing["MAC_fw"]

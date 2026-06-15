@@ -99,6 +99,7 @@ class WingGeometry:
     z_w_aw:               float = 2.1   # [m]
 
     x_LEMAC_fw:           float = 1 # [m] - very rough estimate
+    x_LEMAC_aw:           float = 6.5 # [m]
 
 
 @dataclass
