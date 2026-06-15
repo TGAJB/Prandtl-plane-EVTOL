@@ -785,7 +785,7 @@ tip_lift_fraction = 0.3 #lift at the tip / lift at the root
 # -- Hinge --
 HINGE_THETA = -45 # [deg]
 HINGE_PHI = 35.26438968 # [deg]
-HINGED_WING_LENGTH = 4 # [m] The length of the portion of the wing that is hinged
+HINGED_WING_LENGTH = wing_length - nonhinged_wing_length # [m] The length of the portion of the wing that is hinged
 FW_THRUSTER_POSITION_1 = (0.5, 0, 1.5) #The position of the thrusters in the forward wing w.r.t the wing axis (talk to Antonio if ur confused)
 FW_THRUSTER_POSITION_2 = (0.5, 0, 4)
 
