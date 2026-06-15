@@ -57,62 +57,96 @@ def fuselage_mass(mtow_kg):
 
 
 # Wing (dynamic sizing from design-point W/S + Class II mass)
-def wing_geometry(mtow_kg):
-    # -- Geometry from selected design point: S = W / (W/S) --
-    weight_n = mtow_kg * G
-    total_area_m2 = weight_n / WING_LOADING_N
-    area_per_wing_m2 = total_area_m2 * AREA_SPLIT
-    aspect_ratio = WING_SPAN ** 2 / total_area_m2
+def _panel_geometry(area_per_wing_m2):
+    """Trapezoidal planform descriptors for ONE box-wing of the given area.
+
+    Both Prandtl box-wings share the span (b_aw = b_fw = WING_SPAN) and taper, so a
+    panel is fully fixed by its area: a bigger panel simply has a longer chord (and
+    a deeper spar). Returns the per-wing area, AR, mean/root/tip chord and MAC."""
     aspect_ratio_per_wing = WING_SPAN ** 2 / area_per_wing_m2
     mean_chord_m = WING_SPAN / aspect_ratio_per_wing
     root_chord_m = 2 * area_per_wing_m2 / ((1 + TAPER_W) * WING_SPAN)
     tip_chord_m = TAPER_W * root_chord_m
     mac_m = (2.0 / 3.0) * root_chord_m * ((1 + TAPER_W + TAPER_W ** 2) / (1 + TAPER_W))
-
     return {
-        "weight_n": weight_n,
-        "total_area_m2": total_area_m2,
         "area_per_wing_m2": area_per_wing_m2,
-        "span_m": WING_SPAN,
-        "aspect_ratio": aspect_ratio,
+        "aspect_ratio": aspect_ratio_per_wing,
         "mean_chord_m": mean_chord_m,
         "mac_m": mac_m,
         "root_chord_m": root_chord_m,
         "tip_chord_m": tip_chord_m,
     }
+
+
+def wing_geometry(mtow_kg):
+    # -- Total area from selected design point: S = W / (W/S) --
+    weight_n = mtow_kg * G
+    total_area_m2 = weight_n / WING_LOADING_N
+    aspect_ratio = WING_SPAN ** 2 / total_area_m2
+
+    # -- Front / aft areas from the aft/total split (S_AFT_TO_S_TOTAL). The two
+    #    box-wings size to DIFFERENT areas (hence chords/MACs) whenever the split
+    #    is off 0.5, so the aft/total split is what makes the wing mass below
+    #    respond to it. front = (1 - aft fraction). --
+    aft_area_m2   = total_area_m2 * S_AFT_TO_S_TOTAL
+    front_area_m2 = total_area_m2 - aft_area_m2
+    front = _panel_geometry(front_area_m2)
+    aft   = _panel_geometry(aft_area_m2)
+
+    # Aggregate descriptors keep describing the SYMMETRIC (equal-area) per-wing
+    # planform so the legacy printout / callers stay valid; they equal front/aft
+    # exactly at the baseline 50/50 split. Structural sizing uses front/aft.
+    half = _panel_geometry(total_area_m2 / 2.0)
+    return {
+        "weight_n": weight_n,
+        "total_area_m2": total_area_m2,
+        "span_m": WING_SPAN,
+        "aspect_ratio": aspect_ratio,
+        "front": front,
+        "aft": aft,
+        # ---- backward-compatible symmetric per-wing descriptors ----
+        "area_per_wing_m2": half["area_per_wing_m2"],
+        "mean_chord_m": half["mean_chord_m"],
+        "mac_m": half["mac_m"],
+        "root_chord_m": half["root_chord_m"],
+        "tip_chord_m": half["tip_chord_m"],
+    }
+def _panel_mass(mtow_kg, panel, f_lift, semi_span_m):
+    """Class-II structural mass [kg] of ONE box-wing carrying lift fraction f_lift.
+
+    Spar caps are sized for the elliptical-lift root moment (∫M dy = L·s²/8), the
+    spar depth following the panel's own mean chord; skins are min-gauge CFRP over
+    the panel area. The 0.76 primary fraction recovers ribs + secondary structure."""
+    h_spar_mean = TIP_TO_CHORD_W * panel["mean_chord_m"]   # spar depth [m]
+    l_wing = f_lift * N_W * mtow_kg * G
+
+    # Correct spar cap volume for elliptical lift distribution.
+    # vol_caps = STRUCT_SF · L·s² / (8·σ·h)
+    vol_caps = STRUCT_SF * l_wing * semi_span_m**2 / (8 * SIGMA_ALLOW_CFRP * h_spar_mean)
+    m_spar   = 1.4 * vol_caps * RHO_CFRP    # caps + web, CFRP
+
+    # Skins: min-gauge CFRP (8-ply prepreg), upper + lower surface
+    m_skin   = 2 * panel["area_per_wing_m2"] * T_SKIN_MIN_CFRP * RHO_CFRP
+
+    return (m_spar + m_skin) / 0.76
+
+
 def wing_mass(mtow_kg, geometry=None):
-    # -- Geometry (identical for front and rear wings) --
+    # -- Size front and rear box-wings independently. Each carries its lift
+    #    fraction (F_REAR_WING) on its OWN area/chord, so a non-0.5 area split
+    #    (S_AFT_TO_S_TOTAL) changes the per-wing spar depth + skin area and the
+    #    total wing mass responds to the split. --
     if geometry is None:
         geometry = wing_geometry(mtow_kg)
 
-    b_w    = geometry["span_m"]                         # full wing span [m]
-    s      = b_w / 2                                    # semi-span [m]
-    s_wing = geometry["area_per_wing_m2"]              # planform area per wing [m²]
-    c_mean = geometry["mean_chord_m"]       # root chord [m]
-    h_spar_mean = TIP_TO_CHORD_W * c_mean                   # spar depth at root [m]
+    s = geometry["span_m"] / 2.0                        # semi-span [m]
     # no h_eff correction: wing is horizontal, bending is about the chord axis
-
-    # -- Size front and rear wings independently (general for F_REAR_WING ≠ 0.5) --
-    m_total = 0.0
-    for f_lift in [(1.0 - F_REAR_WING), F_REAR_WING]:
-        l_wing = f_lift * N_W * mtow_kg * G
-
-        # Correct spar cap volume for elliptical lift distribution.
-        # ∫ M(y) dy = L_wing·s²/8  (derived analytically from elliptical l(y))
-        # vol_caps = STRUCT_SF · L·s² / (8·σ·h)
-        vol_caps = STRUCT_SF * l_wing * s**2 / (8 * SIGMA_ALLOW_CFRP * h_spar_mean)
-        m_spar   = 1.4 * vol_caps * RHO_CFRP    # caps + web, CFRP
-
-        # Skins: min-gauge CFRP (8-ply prepreg), upper + lower surface
-        m_skin   = 2 * s_wing * T_SKIN_MIN_CFRP * RHO_CFRP
-
-        # Primary fraction 0.76 recovers ribs + secondary structure
-        m_total += (m_spar + m_skin) / 0.76
+    m_front = _panel_mass(mtow_kg, geometry["front"], 1.0 - F_REAR_WING, s)
+    m_rear  = _panel_mass(mtow_kg, geometry["aft"],   F_REAR_WING,       s)
 
     ### Buckling calculations (from winglet)
 
-
-    return m_total
+    return m_front + m_rear
 
 #Extra methods for sizing ribs n stuff
 def analyze_cantilever_distributed_load(L, w_func, plot=False, x_eval=None):
@@ -864,7 +898,7 @@ def hub_mass(use_fusion=False, m_hub_fusion=None):
     return 0.0
 
 
-# Miscellaneous & hinge
+# Miscellaneous
 def misc_mass(mtow_kg):
     return 0.10 * mtow_kg + 32 #kg of the thermal battery management system 
 

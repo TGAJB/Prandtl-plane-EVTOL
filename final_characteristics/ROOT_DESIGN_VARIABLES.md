@@ -48,15 +48,22 @@ the *a-priori* expectation — the measured ranking is in the regenerated
 | Root | loc | MTOW-coupled | Primarily drives | Leverage |
 |---|---|---|---|---|
 | `wing_geometry.design_point` (W/S) | :59 | **yes** `WING_LOADING_N` | `S_tot` → every area ratio → `C_M_alpha`, `C_L_q`/`C_M_q`, lateral derivs; `MAC`→cg envelope; wing/battery mass | **high** (MTOW **and** stability) |
-| `s_aft_to_s_total` (area split) | pseudo-key | no¹ | front/aft balance → `C_M_alpha`, cg aft limit, `C_Y_beta`/`C_N_beta`, all area ratios | **high** (longitudinal) |
+| `s_aft_to_s_total` (area split) | pseudo-key | **yes**¹ `S_AFT_TO_S_TOTAL` | front/aft balance → `C_M_alpha`, cg aft limit, `C_Y_beta`/`C_N_beta`, all area ratios; per-wing spar/skin mass → MTOW; front/rear wing-mass split → cg | **high** (longitudinal **and** MTOW) |
 | `wing_geometry.taper_fw` | :79 | **yes** `TAPER_W` | sweep_c4 / AR effects → `C_L_beta`, `C_N_p`, `C_L_r`; `MAC`→cg; spar mass | med |
 | `wing_geometry.b_fw` (span) | :67 | **yes** `WING_SPAN` | AR → `C_L_p`, `C_L_beta`, `C_N_p`, `C_L_r`; wing structural mass | **high** — *but see²* |
 
-¹ `s_aft_to_s_total` is left **MTOW-neutral** in the sweep on purpose: the
-converger global `AREA_SPLIT` is the *per-wing* area fraction used for structural
-mass ([`mass_components.wing_geometry`](../class_II_sizing/mass_components.py)),
-not the aft/total split, so the mapping is not 1:1. Its mass effect is second-
-order; resolve the exact relation before coupling it.
+¹ `s_aft_to_s_total` is now **MTOW-coupled** via its own converger global
+`S_AFT_TO_S_TOTAL` (parameters.py): [`mass_components.wing_geometry`/`wing_mass`]
+(../class_II_sizing/mass_components.py) size the front and aft box-wings to their
+own areas/chords from it, so the per-wing spar/skin mass — and hence MTOW —
+respond to the split, and [`MMOI`](../class_II_sizing/MMOI.py) splits the wing
+mass front/rear by the same fraction so the c.g. moves with it.
+`AREA_SPLIT` is retained only as the *front-wing* fraction seed for the standalone
+initial sizing. The mass effect is second-order; the split is quantised to a
+coarse grid in the optimiser so the converged-MTOW cache still holds.
+The standalone sensitivity sweep (`stability_sensitivity.py`) still lists it
+MTOW-neutral for speed — flip its converger column to `S_AFT_TO_S_TOTAL` to couple
+it there too.
 
 ² `b_fw` is a high-leverage root but is **not** in the tool's default sweep: the
 box-wing reference fields it feeds (`b_ref`, and the reference area `S_ref` used

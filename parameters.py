@@ -69,10 +69,10 @@ class WingGeometry:
     the position, size, and orientation of the front and aft horizontal wings.
     """
 
-    design_point:         float = 760.0  # [N/m^2] selected wing loading from matching diagram
+    design_point:         float = 765.6250  # [N/m^2] selected wing loading from matching diagram
 
-    S_fw:                 float = 12.91  # [m^2]
-    S_aw:                 float = 12.91  # [m^2]
+    S_fw:                 float = 11.619  # [m^2]
+    S_aw:                 float = 14.201  # [m^2]
     S_e_fw:               float = 9.685  # [m^2]
     S_e_aw:               float = 9.685  # [m^2]
     S_tot:                float = 25.82  # [m^2]
@@ -129,11 +129,11 @@ class WingGeometry:
 
     # Wing vertical position relative to body centreline (z positive up,
     # matching the MMOI layout: front wing low, aft wing one gap above it)
-    z_w_fw:               float = -0.5         # [m]
+    z_w_fw:               float = -0.2889         # [m]
     z_w_aw:               float = z_w_fw + gap  # [m]
 
-    x_LEMAC_fw:           float = 1 # [m] - very rough estimate
-
+    x_LEMAC_fw:           float = 0.5982 # [m] - very rough estimate
+    
     # ===== FOLDED-WING / VTOL LAYOUT ========================================
     fold_hinge_eta_fw:    float = 0.70  # [-] front-wing hinge station / semi-span; update from spanwise hinge layout
     fold_hinge_eta_aw:    float = 0.70  # [-] aft-wing hinge station / semi-span; update from spanwise hinge layout
@@ -163,7 +163,7 @@ class TailGeometry:
     x_vert_tail:                float = 6.4  # [m]
     c_r_vert_tail:              float = 1.6  # [m]
     c_t_vert_tail:              float = 1.3  # [m]
-    b_vert_tail:                float = 1.6  # [m]
+    b_vert_tail:                float = 1.4485  # [m]
     S_vert_tail:                float = ((c_r_vert_tail + c_t_vert_tail)*b_vert_tail)/2  # [m^2]
     AR_vert_tail:               float = b_vert_tail**2/S_vert_tail  # [-]
     LE_sweep_vert_tail:         float = 0.31  # [rad]
@@ -619,7 +619,8 @@ INERTIA_XZ_TO_XX_RATIO = 0.05  # [-] I_xz as a fraction of I_xx   (dyn_stab_anal
 # Wing structural parameters
 
 NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing
-AREA_SPLIT          = WingGeometry.S_fw / WingGeometry.S_tot  # [-] fraction of total area assigned to one wing
+AREA_SPLIT          = WingGeometry.S_fw / WingGeometry.S_tot  # [-] front-wing fraction of total area (init sizing seed)
+S_AFT_TO_S_TOTAL    = WingGeometry.S_aw / WingGeometry.S_tot  # [-] aft-wing fraction of total area; design lever (optimiser), drives the front/aft wing-mass split
 WING_SPAN           = WingGeometry.b_fw          # [m]     span from the footprint constraint
 WING_LOADING_N      = WingGeometry.design_point  # [N/m^2] selected design-point wing loading from matching diagram
 TAPER_W             = WingGeometry.taper_fw      # [-]     wing chord taper ratio (c_tip / c_root)
@@ -759,8 +760,8 @@ Z_ROTOR_RW = Z_WING_R                   # [m]  rotors carried at rear-wing heigh
 # cruise c.g. (cruise uses the forward station; the emergency uses the aft one).
 # The optimiser tunes both stations (see optimiser.py); MMOI uses X_BATT_CRUISE for
 # the cruise build-up and X_BATT_VTOL for the folded/VTOL build-up.
-X_BATT_CRUISE = 2.7   # [m]  cruise station (box mid-length near the cruise c.g.)
-X_BATT_VTOL   = 2.7   # [m]  VTOL-emergency station (slid aft; optimiser-tuned)
+X_BATT_CRUISE = 2.7438   # [m]  cruise station (box mid-length near the cruise c.g.)
+X_BATT_VTOL   = 6.5612   # [m]  VTOL-emergency station (slid aft; optimiser-tuned)
 X_BATT        = X_BATT_CRUISE  # [m]  default/alias used by the cruise MMOI build-up
 Z_BATT = -0.7   # [m]  below the cabin floor (floor ~ -0.5 m for the 2.0 m section)
 

@@ -84,6 +84,10 @@ from parameters import VTOL_INFEASIBLE_PENALTY as _INFEASIBLE_PENALTY  # [m]
 # Oswald factor is not left frozen at the sheet seed.
 from support_files.oswaldefficiency import oswald_efficiency
 
+# Live, geometry-driven aero inputs (AeroSandbox VLM + NeuralFoil). Replaces the
+# frozen XFLR5 point values with values computed from the current wing geometry.
+from final_characteristics.aero_model import apply_vlm_aero
+
 
 # ===========================================================================
 # 0. CONVERGED MTOW WITH GEOMETRY OVERRIDES  (so MTOW responds to the roots)
@@ -356,6 +360,11 @@ def evaluate_stability(param_overrides=None, design_vars=None, mtow=None):
         mmoi_overrides["X_BATT"] = design_vars["x_batt_cruise"]
     if "x_batt_vtol" in design_vars:
         mmoi_overrides["X_BATT_VTOL"] = design_vars["x_batt_vtol"]
+    # The aft/total wing-area split redistributes structural mass front<->rear (the
+    # two wings sit at different x stations), so it MOVES the c.g.: feed the same
+    # resolved split into the MMOI build-up so the cruise & VTOL c.g. respond to it,
+    # consistent with the aero wing-split applied below. No-op at the baseline 0.5.
+    mmoi_overrides["S_AFT_TO_S_TOTAL"] = s_aft
     _saved_mmoi = {name: getattr(mmoi, name) for name in mmoi_overrides}
     try:
         for name, value in mmoi_overrides.items():
@@ -373,6 +382,15 @@ def evaluate_stability(param_overrides=None, design_vars=None, mtow=None):
     fc = aircraft.FlightCondition()
     ac = aircraft.Aircraft(params, physical, fc, charts)
     wing = _update_aircraft_for_wing_split(ac, mtow, s_aft)
+
+    # --- Live, geometry-driven aero inputs (VLM + NeuralFoil) --------------
+    # Overwrite the frozen XFLR5 point values (CL_alpha_fw/aw, x_ac_*_cruise,
+    # cl_alpha_fw/aw, C_M_ac_*) with values computed from the LIVE wing geometry,
+    # so they respond to W/S / AR / taper / sweep instead of describing the old
+    # inconsistent S=15.67 m^2 wing. Runs after the wing-area split (live S/chords)
+    # and before solve(); the DATCOM derivative build below consumes them
+    # unchanged. No-op when aero_model.USE_VLM_AERO is False. Cached per geometry.
+    apply_vlm_aero(ac.params)
 
     # --- Derivatives (override-aware): solve() fills stability + controls --
     solved = ac.solve()

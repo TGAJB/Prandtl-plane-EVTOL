@@ -62,6 +62,7 @@ from final_characteristics.stability_eval import (
     REQUIREMENT_NAMES,
     converged_mtow,
     evaluate_stability,
+    _nominal_margin_scales,   # per-requirement |baseline margin| scales (shared with the objective)
 )
 # Matching diagram: supplies the W/S (wing-loading) search range (stall upper
 # bound, fraction-of-stall lower bound) and the cruise/climb power-feasibility +
@@ -94,15 +95,40 @@ _XBATT_VTOL_BOUNDS = _p.battery_vtol_slide_range(_BATT_MASS)
 # and the cruise c.g. is balanceable; aft bound is the cruise station.
 _XBATT_CRUISE_BOUNDS = (1.5, _p.X_BATT_CRUISE + 0.3)
 
+# Aft/total wing-area split (S_aw / S_tot). Centred on the current equal-area
+# box-wing (S_aw/S_tot from parameters.py, = 0.5) and constrained to +/-0.10 so
+# both Prandtl box-wings keep a balanced, valid area share. It is a TRUE design
+# lever: it feeds the aero wing-split (stability) AND, via the converger global
+# mass_components.S_AFT_TO_S_TOTAL, the per-wing structural mass -> MTOW.
+_S_AFT_BASELINE = _WG.S_aw / _WG.S_tot
+_S_AFT_BOUNDS = (_S_AFT_BASELINE - 0.10, _S_AFT_BASELINE + 0.10)
+
+# Vertical-tail span search range. It trades directional stability against tail
+# structural MASS, so it is converger-coupled (see COUPLE_TAIL_MASS): a smaller
+# tail lowers MTOW. Kept as an explicit, documented range (the matching diagram
+# does not bound it).
+_B_TAIL_BOUNDS = (1.4, 1.6)
+
 # Wing loading W/S search range, straight from the matching diagram: the stall
 # constraint sets the hard UPPER bound, a fraction of it the lower bound.
 _WS_BOUNDS = _md.feasible_wing_loading_range()
 # W/S is converger-coupled (sets wing AREA -> wing mass -> MTOW), so every
-# distinct W/S reconverges the MTOW (~23 s). MTOW depends ONLY on W/S, so we
-# QUANTISE W/S to a grid before evaluating: the converged-MTOW cache then holds
+# distinct W/S reconverges the MTOW (~23 s). The converged MTOW depends only on the
+# two converger-coupled levers, W/S and the aft/total split (see below), so we
+# QUANTISE both to a grid before evaluating: the converged-MTOW cache then holds
 # across the GA, and the mass area stays consistent with the stability area
 # (both use the quantised value).
 W_S_CACHE_STEP = 10.0   # [N/m^2] W/S quantisation grid (caches the reconverge)
+# The aft/total split is now ALSO converger-coupled (it sets the per-wing
+# structural mass via mass_components.S_AFT_TO_S_TOTAL), so it likewise reconverges
+# the MTOW. Quantise it to a coarse grid so the converged-MTOW cache holds: the
+# MTOW now keys on the (W/S, split) pair, and only the distinct grid points pay the
+# reconverge. Its mass effect is second-order, so a coarse 0.05 grid is plenty.
+S_AFT_CACHE_STEP = 0.05   # [-] aft/total-split quantisation grid (caches the reconverge)
+# The vertical-tail span is also converger-coupled (sets S_TAIL/AR_T -> tail mass
+# -> MTOW; see COUPLE_TAIL_MASS), so it likewise reconverges the MTOW. Quantise it
+# to a grid so the converged-MTOW cache holds across the (W/S, split, tail) key.
+B_TAIL_CACHE_STEP = 0.02   # [m] vertical-tail-span quantisation grid (caches the reconverge)
 # Hover-sized installed power [W] (baseline) -- reference for the matching-diagram
 # power-feasibility constraint. It is ~7x the cruise/climb requirement and grows
 # only weakly with MTOW, so the baseline value is an adequate, documented constant.
@@ -120,9 +146,34 @@ def _quantize_wing_loading(w_s):
     q = round(w_s / W_S_CACHE_STEP) * W_S_CACHE_STEP
     return min(max(q, _WS_BOUNDS[0]), _WS_BOUNDS[1])
 
-# Couple the vertical-tail span to the MTOW converger (tail mass)? Off by default
-# for speed (each coupled eval reconverges the MTOW, ~6 s). See evaluate_design.
-COUPLE_TAIL_MASS = False
+
+def _quantize_s_aft(s_aft):
+    """Snap the aft/total split to the cache grid (mirrors _quantize_wing_loading).
+
+    The same quantised value feeds BOTH the converger (per-wing structural mass /
+    MTOW) and the aero wing-split + MMOI c.g. in stability_eval, keeping the mass
+    area consistent with the stability area. Clipped to the split bounds AFTER
+    snapping so it never leaves the reasonable Prandtl range."""
+    q = round(s_aft / S_AFT_CACHE_STEP) * S_AFT_CACHE_STEP
+    return min(max(q, _S_AFT_BOUNDS[0]), _S_AFT_BOUNDS[1])
+
+
+def _quantize_b_tail(b_tail):
+    """Snap the vertical-tail span to the cache grid (mirrors _quantize_wing_loading).
+
+    The same quantised value feeds BOTH the converger (tail mass / MTOW) and the
+    stability override (directional derivatives), so a Pareto design reproduces its
+    reported MTOW exactly when its tail span is baked back into the sheet."""
+    q = round(b_tail / B_TAIL_CACHE_STEP) * B_TAIL_CACHE_STEP
+    return min(max(q, _B_TAIL_BOUNDS[0]), _B_TAIL_BOUNDS[1])
+
+# Couple the vertical-tail span to the MTOW converger (tail mass)? ON: b_vert_tail
+# is the one layout lever with a real MASS effect, so leaving it off made the
+# optimiser optimise a smaller tail for stability while still charging the baseline
+# (bigger) tail mass to MTOW -- the reported MTOW then dropped when the optimal tail
+# was baked into the sheet. The span is quantised (B_TAIL_CACHE_STEP) so the
+# converged-MTOW cache absorbs the extra reconverges. See evaluate_design.
+COUPLE_TAIL_MASS = True
 
 # pymoo: the NSGA-II implementation used in Phase 2.
 from pymoo.core.problem import Problem
@@ -144,7 +195,9 @@ from pymoo.operators.mutation.pm import PM
 #                  "override:<dotted>"  -> stability_eval param_overrides[<dotted>]
 #   converger -- name of a class_II_sizing.mass_components module global to
 #                override before reconverging the MTOW (None = does not affect the
-#                converged mass). Only "wing_loading" does today.
+#                converged mass). "WING_LOADING_N" (W/S) and "S_AFT_TO_S_TOTAL"
+#                (aft/total area split) do today -- a var may carry BOTH a route and
+#                a converger entry (the split does: aero AND mass).
 #
 # NOTE: the c.g. is NOT a design variable. It is an EMERGENT output of the
 # component mass build-up, computed by MMOI (cruise + VTOL) inside
@@ -152,7 +205,7 @@ from pymoo.operators.mutation.pm import PM
 # constraints; promote the layout roots that MOVE the c.g. (e.g. x_LEMAC_fw,
 # x_vert_tail, battery/payload stations) rather than tuning the c.g. directly.
 #
-# The six tunable levers the team can manipulate (the c.g. is NOT one: it emerges
+# The seven tunable levers the team can manipulate (the c.g. is NOT one: it emerges
 # from the layout + the sliding battery). All ranges come from parameters.py.
 #
 # DEFERRED: the rear-rotor SPANWISE lever (ETA_ROTOR_RW -> folded rotor further aft
@@ -172,7 +225,9 @@ DESIGN_VARIABLES = {
     "z_w_fw":        {"bounds": _ZWFW_BOUNDS,          "route": "override:wing_geometry.z_w_fw",     "converger": None},
     # vertical-tail span (also feeds the MTOW converger via the tail mass, so
     # shrinking it trades directional stability against mass -- see evaluate_design).
-    "b_vert_tail":   {"bounds": (1.4, 1.6),            "route": "override:tail_geometry.b_vert_tail", "converger": None},
+    # converger=None here: the S_TAIL/AR_T coupling is wired separately in
+    # evaluate_design (COUPLE_TAIL_MASS) because it sets TWO converger globals.
+    "b_vert_tail":   {"bounds": _B_TAIL_BOUNDS,        "route": "override:tail_geometry.b_vert_tail", "converger": None},
     # wing loading W/S: sets the wing AREA -> wing mass -> converged MTOW
     # (converger-coupled via WING_LOADING_N) AND the stability reference area
     # (S_tot = mtow*g/design_point). The lever that makes MTOW a live objective.
@@ -181,6 +236,12 @@ DESIGN_VARIABLES = {
     # entry sets mass_components.WING_LOADING_N for the mass build-up -- BOTH are
     # needed because they are independent module copies of W/S.
     "design_point":  {"bounds": _WS_BOUNDS,            "route": "override:wing_geometry.design_point", "converger": "WING_LOADING_N"},
+    # aft/total wing-area split (S_aw/S_tot): sizes the front vs aft box-wing area.
+    # The design_var route feeds the aero wing-split (-> C_M_alpha, area ratios, cg
+    # aft limit, MMOI c.g. via stability_eval); the converger entry sets
+    # mass_components.S_AFT_TO_S_TOTAL so the per-wing STRUCTURAL mass -> MTOW
+    # responds too. Range +/-0.10 around the equal-area baseline (Prandtl-valid).
+    "s_aft_to_s_total": {"bounds": _S_AFT_BOUNDS,      "route": "design_var:s_aft_to_s_total",         "converger": "S_AFT_TO_S_TOTAL"},
 }
 DESIGN_VARIABLE_NAMES = list(DESIGN_VARIABLES.keys())
 
@@ -199,6 +260,7 @@ def default_design_vector():
         "z_w_fw":        0.5 * (_ZWFW_BOUNDS[0] + _ZWFW_BOUNDS[1]),
         "b_vert_tail":   1.6,
         "design_point":  _p.WING_LOADING_N,   # current sheet W/S (760)
+        "s_aft_to_s_total": _S_AFT_BASELINE,  # current equal-area split (0.5)
     }
 
 
@@ -221,6 +283,10 @@ def evaluate_design(design_vars=None):
     design_vars = dict(design_vars)
     if "design_point" in design_vars:
         design_vars["design_point"] = _quantize_wing_loading(design_vars["design_point"])
+    if "s_aft_to_s_total" in design_vars:
+        design_vars["s_aft_to_s_total"] = _quantize_s_aft(design_vars["s_aft_to_s_total"])
+    if "b_vert_tail" in design_vars:
+        design_vars["b_vert_tail"] = _quantize_b_tail(design_vars["b_vert_tail"])
 
     # Split the design vars by where they go.
     param_overrides = {}
@@ -237,10 +303,10 @@ def evaluate_design(design_vars=None):
             geometry_overrides[spec["converger"]] = value
 
     # The vertical-tail span also drives the tail MASS in the converger (S_TAIL,
-    # AR_T); shrinking it lowers MTOW slightly. That coupling is left OFF by
-    # default because it forces a ~6 s MTOW reconverge on every evaluation for a
-    # tail-mass effect of only ~10-20 kg. Set COUPLE_TAIL_MASS = True to trade
-    # speed for a true min-MTOW gradient on the tail span.
+    # AR_T): shrinking it lowers MTOW. Coupling it (COUPLE_TAIL_MASS, on by default)
+    # uses the SAME quantised b_vert_tail that stability sees, so the reported MTOW
+    # reflects the optimal tail and reproduces exactly when the span is baked into
+    # the sheet. (S_TAIL/AR_T mirror TailGeometry.S_vert_tail/AR_vert_tail.)
     if COUPLE_TAIL_MASS and "b_vert_tail" in design_vars:
         b = design_vars["b_vert_tail"]
         s_tail = (_TG.c_r_vert_tail + _TG.c_t_vert_tail) * b / 2.0
@@ -302,7 +368,9 @@ class DesignProblem(Problem):
                      magnitude, so robustness tracks RELATIVE slack) is the second
                      objective -> a real Pareto trade of mass against stability slack.
     n_constr = stability requirements + 2 matching-diagram feasibility constraints
-               (cruise/climb power, cruise CL); all in pymoo's "g <= 0 = OK" form
+               (cruise/climb power, cruise CL); all in pymoo's "g <= 0 = OK" form,
+               all normalised to ~O(1) so the constraint-violation pull is balanced
+               across requirements (see _evaluate)
     xl / xu  = bounds from DESIGN_VARIABLES
     """
 
@@ -318,6 +386,12 @@ class DesignProblem(Problem):
         )
 
     def _evaluate(self, X, out, *args, **kwargs):
+        # Per-requirement |baseline margin| scales (computed once, cached). The
+        # SAME scales normalise the robustness objective; using them on the
+        # constraints too keeps the two consistent and puts every requirement on a
+        # common O(1) scale (see the CONSTRAINTS note below).
+        scales = _nominal_margin_scales()
+
         objective_rows = []
         constraint_rows = []
         for x in X:
@@ -335,9 +409,17 @@ class DesignProblem(Problem):
             objective_rows.append([results["mtow"], results["worst_margin"]])
 
             # CONSTRAINTS (all "g(x) <= 0 means satisfied"):
-            #   - each stability requirement's signed margin (raw), plus
-            #   - the matching-diagram feasibility constraints, normalised so they
-            #     are O(1) and never swamp the requirement margins in pymoo's CV:
+            #   - each stability requirement's signed margin, NORMALISED by its
+            #     |baseline margin| (the same scales the objective uses). The raw
+            #     margins span ~O(100) (C_M_q) down to ~O(0.01) (C_Y_p) and the cg
+            #     limits in metres (~O(0.1)); feeding them raw lets pymoo's
+            #     constraint-violation aggregate be dominated by the large-magnitude
+            #     derivatives (which already pass) and barely feel the cg-envelope
+            #     margins that actually bind. Dividing by the baseline scale puts
+            #     every requirement on a common ~O(1) RELATIVE-slack scale so the
+            #     feasibility pull is balanced across them.
+            #   - the matching-diagram feasibility constraints, already normalised
+            #     to O(1) the same way:
             #       g_power = (required cruise/climb power - installed) / installed
             #       g_cl    = (cruise CL - CL_max_operational) / CL_max_operational
             #     Both are deeply slack for this hover-power-dominated eVTOL, but
@@ -347,7 +429,8 @@ class DesignProblem(Problem):
             g_power = (_md.required_power_W(w_s, results["mtow"]) - _P_INSTALLED_W) / _P_INSTALLED_W
             g_cl = (_md.cruise_lift_coefficient(w_s) - _p.CL_MAX_OPERATIONAL) / _p.CL_MAX_OPERATIONAL
             constraint_rows.append(
-                [results["margins"][name] for name in REQUIREMENT_NAMES] + [g_power, g_cl]
+                [results["margins"][name] / scales[name] for name in REQUIREMENT_NAMES]
+                + [g_power, g_cl]
             )
 
         out["F"] = np.array(objective_rows)
@@ -360,12 +443,13 @@ def run_phase_2():
 
     problem = DesignProblem()
 
-    # W/S (design_point) reconverges the MTOW (~23 s), but MTOW depends ONLY on
-    # W/S and W/S is quantised to a grid (W_S_CACHE_STEP), so the converged-MTOW
-    # cache holds: only the ~30 distinct grid points pay the reconverge once, and
-    # every other evaluation is cheap (~0.3 s). The healthy population/generation
-    # count is therefore still affordable (the VTOL-OEI constraint needs the
-    # sliding battery near its aft travel, so the search benefits from it).
+    # The two converger-coupled levers (W/S and the aft/total split) reconverge the
+    # MTOW (~23 s), but both are quantised to a grid (W_S_CACHE_STEP /
+    # S_AFT_CACHE_STEP), so the converged-MTOW cache holds: only the distinct
+    # (W/S, split) grid points pay the reconverge once (~30 W/S x ~5 split, far
+    # fewer in practice), and every other evaluation is cheap (~0.3 s). The healthy
+    # population/generation count is therefore still affordable (the VTOL-OEI
+    # constraint needs the sliding battery near its aft travel, so it benefits).
     algorithm = NSGA2(
         pop_size=24,
         sampling=FloatRandomSampling(),
