@@ -1,0 +1,6 @@
+# Dev-only tooling (not needed to run the design pipeline).
+# Architecture diagrams: tools/architecture_diagram.py
+#   - The .dot/.mmd text outputs need only the standard library.
+#   - Raster (.svg/.png) output additionally needs the Graphviz SYSTEM binary `dot`
+#     on PATH (Windows: `winget install graphviz`; Debian/Ubuntu: `apt install graphviz`).
+graphviz>=0.20
