@@ -12,6 +12,8 @@ import warnings
 from pathlib import Path
 from scipy.integrate import quad, cumulative_trapezoid
 
+from final_characteristics.structures.hinge_loading import *
+
 import numpy as np
 from scipy.optimize import minimize
 
@@ -80,39 +82,7 @@ def wing_geometry(mtow_kg):
         "root_chord_m": root_chord_m,
         "tip_chord_m": tip_chord_m,
     }
-def wing_mass(mtow_kg, geometry=None):
-    # -- Geometry (identical for front and rear wings) --
-    if geometry is None:
-        geometry = wing_geometry(mtow_kg)
 
-    b_w    = geometry["span_m"]                         # full wing span [m]
-    s      = b_w / 2                                    # semi-span [m]
-    s_wing = geometry["area_per_wing_m2"]              # planform area per wing [m²]
-    c_mean = geometry["mean_chord_m"]       # root chord [m]
-    h_spar_mean = TIP_TO_CHORD_W * c_mean                   # spar depth at root [m]
-    # no h_eff correction: wing is horizontal, bending is about the chord axis
-
-    # -- Size front and rear wings independently (general for F_REAR_WING ≠ 0.5) --
-    m_total = 0.0
-    for f_lift in [(1.0 - F_REAR_WING), F_REAR_WING]:
-        l_wing = f_lift * N_W * mtow_kg * G
-
-        # Correct spar cap volume for elliptical lift distribution.
-        # ∫ M(y) dy = L_wing·s²/8  (derived analytically from elliptical l(y))
-        # vol_caps = STRUCT_SF · L·s² / (8·σ·h)
-        vol_caps = STRUCT_SF * l_wing * s**2 / (8 * SIGMA_ALLOW_CFRP * h_spar_mean)
-        m_spar   = 1.4 * vol_caps * RHO_CFRP    # caps + web, CFRP
-
-        # Skins: min-gauge CFRP (8-ply prepreg), upper + lower surface
-        m_skin   = 2 * s_wing * T_SKIN_MIN_CFRP * RHO_CFRP
-
-        # Primary fraction 0.76 recovers ribs + secondary structure
-        m_total += (m_spar + m_skin) / 0.76
-
-    ### Buckling calculations (from winglet)
-
-
-    return m_total
 
 #Extra methods for sizing ribs n stuff
 def analyze_cantilever_distributed_load(L, w_func, plot=False, x_eval=None):
@@ -218,15 +188,77 @@ def calc_total_rib_spacing(max_stress_beam, wing_length, root_chord, thick_chord
     ribslst.append(wing_length)
 
     return ribslst
+
+
+def wing_mass(mtow_kg, geometry=None):
+
+
+
+
+    # -- Geometry (identical for front and rear wings) --
+    if geometry is None:
+        geometry = wing_geometry(mtow_kg)
+
+    b_w    = geometry["span_m"]                         # full wing span [m]
+    s      = b_w / 2                                    # semi-span [m]
+    s_wing = geometry["area_per_wing_m2"]              # planform area per wing [m²]
+    c_mean = geometry["mean_chord_m"]       # root chord [m]
+    h_spar_mean = TIP_TO_CHORD_W * c_mean                   # spar depth at root [m]
+    # no h_eff correction: wing is horizontal, bending is about the chord axis
+
+    # -- Size front and rear wings independently (general for F_REAR_WING ≠ 0.5) --
+    m_total = 0.0
+    for f_lift in [(1.0 - F_REAR_WING), F_REAR_WING]:
+        l_wing = f_lift * N_W * mtow_kg * G
+
+        # Correct spar cap volume for elliptical lift distribution.
+        # ∫ M(y) dy = L_wing·s²/8  (derived analytically from elliptical l(y))
+        # vol_caps = STRUCT_SF · L·s² / (8·σ·h)
+        vol_caps = STRUCT_SF * l_wing * s**2 / (8 * SIGMA_ALLOW_CFRP * h_spar_mean)
+        m_spar   = 1.4 * vol_caps * RHO_CFRP    # caps + web, CFRP
+
+        # Skins: min-gauge CFRP (8-ply prepreg), upper + lower surface
+        m_skin   = 2 * s_wing * T_SKIN_MIN_CFRP * RHO_CFRP
+
+        # Primary fraction 0.76 recovers ribs + secondary structure
+        m_total += (m_spar + m_skin) / 0.76
+
+    ### Buckling calculations (from winglet)
+
+    rib_thickness = 0.001
+    density = rho_propeller_hub
+
+    M = hinge_loading(1.2, (7.31 + 48.09) * 9.81, 240, 50*9.81, 1000, just_moment=True)["y"]
+    x = M[0]
+    M = M[1]
+
+    ribslst = calc_total_rib_spacing(max_stress_beam, HINGED_WING_LENGTH, root_chord, thick_chord_ratio, I, number_of_beams,
+                                     M, x, buckling_coeff, young_mod, winglet_skin_thickness, poisson_ratio)
+
+    surface_area = WingGeometry.S_fw / HINGED_WING_LENGTH
+
+    rib_surface_area = surface_area / ((
+                                               WingGeometry.taper_fw - 1) * 0.5 + 1) ** 2 * 0.6  # Assuming the rib area is 0.6 times the airfoil cross section due to holes & cutouts
+
+
+    # ribs_mass = rib_surface_area * density * rib_thickness * len(ribslst)
+    ribs_mass = 0
+
+    for rib_pos in ribslst:
+        point_taper = ((taper_ratio - 1) / winglet_length * rib_pos + 1)
+        rib_volume = surface_area * point_taper ** 2 * rib_thickness
+        ribs_mass += rib_volume * density
+
+    print(ribs_mass)
+
+
+    return m_total
 # Winglet sizing
-def winglet_mass(root_chord):
+def winglet_mass(root_chord, front_wing_distribution, back_wing_distribution):
     def winglet_lift(x):
         return front_wing_distribution - x * (front_wing_distribution + back_wing_distribution) / winglet_length
 
     ###PARAMETERS
-
-    front_wing_distribution = 500
-    back_wing_distribution = 300
 
     # Wing & Winglet dimensions
     thick_chord_ratio = TIP_TO_CHORD_W
@@ -294,7 +326,45 @@ def winglet_mass(root_chord):
 
     ###once the winglet dimensions have been done sizing #AAluminum currently being used for structure sizing
 
-winglet_mass(1.2)
+def total_wing_mass(mtow_kg):
+    #ASSUMPTIONS
+    # both wings have the same shape of elliptical distribution (same tip fraction) but can have different alpha and beta
+    # The maximum load imposed on the wing is when the aircraft is going at its fastest speed, or vmax
+
+    #Params
+    tip_lift_fraction = TIP_LIFT_FRACTION
+    single_wing_length = wing_length
+
+    root_chord = 1.2
+
+    wing_weight = 50*G ###starting value for wing weight
+
+    speed_ratio = vmax/V_CRUISE
+    weight_carried_fw = mtow_kg * G * mtow_fraction_fw
+    weight_carried_rw = mtow_kg * G * mtow_fraction_rw
+    alpha_fw, beta_fw = calculate_wing_ellipse(tip_lift_fraction, single_wing_length, weight_carried_fw)
+    alpha_rw, beta_rw = calculate_wing_ellipse(tip_lift_fraction, single_wing_length, weight_carried_rw)
+
+    print("STARTING CALCULATIONS")
+    disc_step = 0.01
+    force_fw_nonhinged = [np.sqrt(-(disc_step*i - alpha_fw)) * beta_fw * speed_ratio**2 * load_factor - wing_weight * nonhinged_wing_length/wing_length for i in range(int(round(nonhinged_wing_length/disc_step)))]
+    force_rw_nonhinged = [np.sqrt(-(disc_step * i - alpha_rw)) * beta_rw * speed_ratio ** 2 * load_factor - wing_weight * nonhinged_wing_length/wing_length  for i in range(int(round(nonhinged_wing_length / disc_step)))]
+    x = [disc_step*i for i in range(int(round(nonhinged_wing_length/disc_step)))]
+
+    m_fw_hinged = hinge_loading(root_chord, wing_weight, weight_carried_fw, alpha_fw, beta_fw, just_moment=True)["y"]
+
+
+
+    plt.plot(x, force_fw_nonhinged)
+    plt.xlim(0, 6)
+    plt.show()
+
+
+
+if __name__ == "__main__":
+    total_wing_mass(1800)
+    #wing_mass(2000)
+    #winglet_mass(1.2)
 
 
 
