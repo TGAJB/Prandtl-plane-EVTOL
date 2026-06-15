@@ -380,7 +380,7 @@ class ControlDerivatives:
     coefficient change per control-surface deflection.
     """
 
-    C_L_delta_e: float = None  # [1/rad]
+    C_L_delta_e: float = +0.688  # [1/rad]
     C_M_delta_e: float = None  # [1/rad]
     C_Z_delta_e: float = None  # [1/rad]
     C_X_delta_e: float = None  # [1/rad]
