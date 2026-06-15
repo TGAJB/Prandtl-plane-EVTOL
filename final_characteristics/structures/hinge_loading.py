@@ -1304,7 +1304,7 @@ def size_wing(mtow_kg):
 
         print(rotating_wing_mass, new_winglet_mass)
 
-    return nonrotating_wing_mass, rotating_wing_mass, winglet_mass
+    return nonrotating_wing_mass + rotating_wing_mass + winglet_mass
 
 def calculate_wing_ellipse(tip_lift_fraction, single_wing_length, weight_carried):
     alpha = single_wing_length/(1 - tip_lift_fraction**2)
