@@ -933,6 +933,23 @@ AL    = {"E": 71.7e9, "sy": 503e6,  "rho": 2810, "eu": 0.11,  "Gc": 0}
 STEEL = {"E": 200e9,  "sy": 1200e6, "rho": 7850, "eu": 0.06,  "Gc": 0}
 CFRP  = {"E": 70e9,   "sy": 600e6,  "rho": 1600, "eu": 0.015, "Gc": 1500}
 
+# -- Wing/winglet STRUCTURAL material (detailed size_wing / size_winglet sizing) --
+# The detailed wing+winglet structural sizing in mass_components.size_wing() and
+# hinge_loading.size_winglet() builds the spar/stringers/ribs/skin in this material.
+# Default CFRP (consistent with the analytical wing_mass()); to revert to aluminium
+# set these to SIGMA_ALLOW_AL / E_AL / RHO_AL.
+RHO_WING         = RHO_CFRP          # [kg/m^3] spar caps / ribs / skin density
+E_WING           = CFRP["E"]         # [Pa]     modulus (winglet skin plate-buckling)
+SIGMA_ALLOW_WING = SIGMA_ALLOW_CFRP  # [Pa]     spar compression allowable (overstress check)
+
+# The wing STRINGERS are sized by COLUMN BUCKLING, a metallic failure mode. A CFRP
+# stringer would fail by a different mode (fibre compression / crippling /
+# delamination) that this Euler-style analysis does NOT capture, so the stringers
+# -- and the modulus used in the buckling calc that sets rib spacing -- stay
+# ALUMINIUM even when the spar/ribs/skin are CFRP.
+RHO_STRINGER     = RHO_AL            # [kg/m^3] stringer density (aluminium)
+E_STRINGER       = E_AL              # [Pa]     modulus for the stringer-buckling rib spacing
+
 # -- Gear architecture: how many parallel units form the full gear --
 N_SKID          = 2      # [-]   longitudinal ground rails
 # -- Skid-rail tube geometry (hollow aluminium round tube, density RHO_AL) --

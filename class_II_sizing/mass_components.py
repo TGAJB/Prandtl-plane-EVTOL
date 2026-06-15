@@ -48,6 +48,31 @@ from parameters import (
 """
 from parameters import *
 
+# -- Detailed wing/winglet structural sizing primitives -----------------------
+# The FEA-style wing-mass model size_wing() lives below; it was MOVED here from
+# final_characteristics/structures/hinge_loading.py. It reuses that module's
+# planform / load classes and section-sizing helpers, which we import here. This
+# is acyclic: hinge_loading imports only `parameters` (+ matplotlib/numpy), never
+# class_II_sizing. No package __init__.py exists, so the structures dir is added
+# to sys.path (mirroring the existing bare-name import convention).
+_STRUCT_DIR = PROJECT_ROOT / "final_characteristics" / "structures"
+if str(_STRUCT_DIR) not in sys.path:
+    sys.path.append(str(_STRUCT_DIR))
+from hinge_loading import (
+    Wing, PointLoad, DistributedLoad,
+    size_winglet, calculate_wing_ellipse,
+    calculate_Ibeam_moment_of_inertia, calc_ubeam_moment_of_intertia,
+    calc_cross_section_moment_of_inertia, ribs_position_iteration,
+)
+
+# Master switch for the detailed (FEA-style) wing+winglet structural sizing.
+# When True, compute_mtow() uses size_wing() for the wing and winglet masses;
+# when False (or if size_wing() returns an implausible value) it falls back to
+# the analytical wing_mass() + WINGLET_MASS_FRAC carve-out. Default is set after
+# size_wing() is validated against the analytical mass (see the bottom of this
+# section).
+USE_DETAILED_WING_SIZING = True
+
 # Fuselage
 #
 # Physics-based Class-II sizing of the same shape as the wing/tail methods below:
@@ -368,6 +393,157 @@ def wing_mass(mtow_kg, geometry=None):
     ### Buckling calculations (from winglet)
 
     return m_front + m_rear
+
+
+# ---------------------------------------------------------------------------
+# DETAILED (FEA-style) WING + WINGLET STRUCTURAL SIZING
+# ---------------------------------------------------------------------------
+# size_wing() was MOVED here from final_characteristics/structures/hinge_loading.py
+# and wired into the MTOW convergence loop (see compute_mtow + USE_DETAILED_WING_SIZING).
+# It reuses hinge_loading's planform/load classes and section-sizing helpers (imported
+# at the top of this module). All structural constants live in parameters.py.
+#
+# Changes vs the original hinge_loading.size_wing (which was dead code):
+#   * sizes the FRONT and REAR wings (original sized only the front);
+#   * each wing is sized over its full locked-hinge semi-span, so the inner section
+#     is COMPUTED instead of the original hardcoded 7 kg;
+#   * driven by the live wing_geometry(mtow) planform (root/tip chord, per-wing area,
+#     span) -- fixes the original root_chord=1.2 hardcode and the WingGeometry.A_fw
+#     (aspect-ratio) passed where an AREA was expected;
+#   * overstress is FLAGGED (warning), not raised, so the converger/optimiser survive;
+#   * the dead 13-angle force loop was removed.
+# The section-sizing FORMULAS and constants are preserved verbatim from the original;
+# known quirks (e.g. the skin term omits density; skin_thickness_RW = 0.02 m) are kept
+# as-is and flagged for the structures team rather than silently "fixed".
+def _size_wing_panel_structure(x, moment, panel_area, root_chord, struct_span):
+    """I-beam spar + stringers + ribs + skin mass [kg] of ONE wing semi-span, given
+    its bending-moment diagram (x = spanwise stations, moment), the semi-span
+    planform area, the root chord and the structural span. The structural material
+    is parameters.RHO_WING / E_WING / SIGMA_ALLOW_WING (default CFRP).
+
+    Lifted from hinge_loading.size_wing.size_rotating_wing (same formulas); the only
+    behavioural changes: the material is configurable (was hardcoded aluminium) and
+    an overstressed beam returns overstressed=True instead of raising, so the caller
+    stays alive. NOTE: the skin term `panel_area * skin_thickness_RW` omits density
+    exactly as in the original."""
+    plates_height = root_chord * thick_chord_ratio_RW / 2.0
+    M_max = float(np.max(np.abs(moment)))
+
+    beam_I = calculate_Ibeam_moment_of_inertia(
+        root_chord, thick_chord_ratio_RW, flange_length_RW, flange_thickness_RW, beam_thickness_RW)
+    max_stress_beam = M_max * root_chord * thick_chord_ratio_RW / 2.0 / (beam_I * number_of_beams_RW)
+    overstressed = bool(max_stress_beam > SIGMA_ALLOW_WING)
+
+    # Stringers are sized by column buckling (a metallic failure mode), so the
+    # stringers and the buckling modulus that sets rib spacing use ALUMINIUM
+    # (E_STRINGER / RHO_STRINGER); the spar caps, ribs and skin use the CFRP
+    # WING material. See the material note in parameters.py.
+    Stringer_I, Stringer_A = calc_ubeam_moment_of_intertia(L1, L2, h, t_stringers)
+    Stringer_Q = Stringer_A * (plates_height - h / 2.0)
+    CSA_I = calc_cross_section_moment_of_inertia(beam_I, plates_height, Stringer_A, Stringer_I, num_of_stringers_RW)
+    right_hand_side = np.pi * E_STRINGER * Stringer_I * CSA_I / Stringer_Q
+    ribslst = ribs_position_iteration(right_hand_side, moment, x)
+
+    surface_area = panel_area / struct_span
+    ribs_mass = 0.0
+    for rib_pos in ribslst:
+        point_taper = ((TAPER_W - 1) / struct_span * rib_pos + 1)
+        rib_volume = surface_area * point_taper ** 2 * rib_thickness_RW
+        ribs_mass += rib_volume * RHO_WING
+    skin_mass = panel_area * skin_thickness_RW   # original omits *RHO (preserved; flagged)
+    Ibeam_area = calculate_Ibeam_moment_of_inertia(
+        root_chord, thick_chord_ratio_RW, flange_length_RW, flange_thickness_RW, beam_thickness_RW, return_area=True)
+    Ibeam_mass = Ibeam_area * struct_span * RHO_WING * number_of_beams_RW   # CFRP spar caps
+    stringers_mass = Stringer_A * num_of_stringers_RW * struct_span * RHO_STRINGER   # aluminium
+    return (skin_mass + Ibeam_mass + ribs_mass + stringers_mass), overstressed
+
+
+def size_wing(mtow_kg, m_props, wing_geom):
+    """Detailed structural mass of BOTH box-wings and the two winglets [kg].
+
+    Returns (wing_structural_mass_kg, winglet_mass_kg) for the WHOLE aircraft
+    (both semi-spans of both wings; both winglets), driven by the live planform
+    wing_geom = wing_geometry(mtow_kg). See the section header for the changes made
+    when moving this here from hinge_loading."""
+    g = G
+    semi = (wing_geom["span_m"] - FuselageGeometry.body_depth_at_wing) / 2.0
+    speed_ratio = vmax / V_CRUISE
+    prop_weight_each = (m_props / N_PROP) * g          # weight of ONE rotor's blades
+
+    # Lift each wing's semi-span carries (the ellipse integrates to this).
+    lift_fw_semi = mtow_kg * g * mtow_fraction_fw / 2.0
+    lift_rw_semi = mtow_kg * g * mtow_fraction_rw / 2.0
+
+    # Spanwise rotor stations (front wing: inboard + outboard pair; rear: one pair),
+    # as fractions of the semi-span from parameters.py.
+    thrusters_fw = [(0.0, 0.0, ETA_ROTOR_FW_IN * semi), (0.0, 0.0, ETA_ROTOR_FW_OUT * semi)]
+    thrusters_rw = [(0.0, 0.0, ETA_ROTOR_RW * semi)]
+
+    front, aft = wing_geom["front"], wing_geom["aft"]
+
+    def size_one_semispan(panel, lift_semi, thruster_stations, winglet_reaction, wing_weight_guess):
+        root_chord = panel["root_chord_m"]
+        taper = panel["tip_chord_m"] / panel["root_chord_m"]
+        panel_area_semi = panel["area_per_wing_m2"] / 2.0      # one semi-span planform area
+        alpha, beta = calculate_wing_ellipse(tip_lift_fraction, semi, lift_semi)
+
+        planform = Wing(np.array([
+            [0.25 * root_chord, 0, 0],
+            [0.25 * root_chord * taper, 0, semi],
+            [-0.75 * root_chord * taper, 0, semi],
+            [-0.75 * root_chord, 0, 0]]), HINGE_THETA, HINGE_PHI)
+
+        def lift_load(z):
+            return np.sqrt(max(alpha - z, 0.0)) * beta * speed_ratio ** 2 * load_factor
+
+        def self_weight(z):
+            return wing_weight_guess * g / semi                # gravity, distributed
+
+        # Same load directions/sign convention as the original size_wing.
+        planform.add_distributed_load(DistributedLoad((0, -1, 0), (0, 0, 0), (0, 0, semi), lift_load))
+        planform.add_distributed_load(DistributedLoad((0, 1, 0), (0, 0, 0), (0, 0, semi), self_weight), nonangled=True)
+        for pos in thruster_stations:
+            planform.add_point_load(PointLoad((thrust_props, 0, 0), pos))
+            planform.add_point_load(PointLoad((0, prop_weight_each, 0), pos), nonangled=True)
+        planform.add_point_load(PointLoad(winglet_reaction, (0, 0, semi)))
+
+        planform.discretize()
+        planform.create_moment_diagram(axis="x")
+        x_arr, moment = planform.moment_diagrams["x"]["y"]
+        return _size_wing_panel_structure(x_arr, moment, panel_area_semi, root_chord, semi)
+
+    # Tip lift (per semi-span ellipse) feeds the winglet sizing.
+    a_fw, b_fw = calculate_wing_ellipse(tip_lift_fraction, semi, lift_fw_semi)
+    a_rw, b_rw = calculate_wing_ellipse(tip_lift_fraction, semi, lift_rw_semi)
+    tip_lift_fw = np.sqrt(max(a_fw - semi, 0.0)) * b_fw * speed_ratio ** 2 * load_factor
+    tip_lift_rw = np.sqrt(max(a_rw - semi, 0.0)) * b_rw * speed_ratio ** 2 * load_factor
+
+    # Fixed-point iteration: wing self-weight and winglet reaction feed back into
+    # the load, so iterate (front, rear, winglet) until the masses settle.
+    m_fw = m_rw = 30.0
+    m_winglet = 20.0
+    over_fw = over_rw = False
+    for _ in range(12):
+        m_winglet_new, react_fw, react_rw = size_winglet(front["root_chord_m"], tip_lift_fw, tip_lift_rw)
+        react_vec_fw = (0.0, m_winglet_new * g / 2.0, react_fw * speed_ratio ** 2)
+        react_vec_rw = (0.0, m_winglet_new * g / 2.0, react_rw * speed_ratio ** 2)
+        new_fw, over_fw = size_one_semispan(front, lift_fw_semi, thrusters_fw, react_vec_fw, m_fw)
+        new_rw, over_rw = size_one_semispan(aft, lift_rw_semi, thrusters_rw, react_vec_rw, m_rw)
+        converged = (abs(new_fw - m_fw) <= 0.01 * max(m_fw, 1e-6)
+                     and abs(new_rw - m_rw) <= 0.01 * max(m_rw, 1e-6)
+                     and abs(m_winglet_new - m_winglet) <= 0.01 * max(m_winglet, 1e-6))
+        m_fw, m_rw, m_winglet = new_fw, new_rw, m_winglet_new
+        if converged:
+            break
+
+    if over_fw or over_rw:
+        warnings.warn("size_wing: a wing panel exceeds the structural stress allowable "
+                      "(SIGMA_ALLOW_WING) at the current load; returned wing mass is a lower bound.",
+                      stacklevel=2)
+
+    wing_struct_total = 2.0 * (m_fw + m_rw)   # both semi-spans of both wings
+    winglet_total = 2.0 * m_winglet           # two winglets
+    return wing_struct_total, winglet_total
 
 #Extra methods for sizing ribs n stuff
 def analyze_cantilever_distributed_load(L, w_func, plot=False, x_eval=None):

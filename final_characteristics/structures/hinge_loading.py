@@ -935,12 +935,13 @@ def size_winglet(root_chord, front_wing_distribution, back_wing_distribution):
     # For new stringer buckling
     Ibeam_spacing = IBEAM_SPACING_WINGLETS
 
-    # Material characteristics
-    allowable_stress = SIGMA_ALLOW_AL
+    # Material characteristics (wing/winglet structural material; default CFRP via
+    # parameters.RHO_WING / E_WING / SIGMA_ALLOW_WING). Poisson stays the metal value.
+    allowable_stress = SIGMA_ALLOW_WING
     poisson_ratio = POISSON_AL
     buckling_coeff = BUCKLING_COEFF_WINGLETS
-    young_mod = E_AL
-    density = RHO_AL
+    young_mod = E_WING
+    density = RHO_WING
 
     I = calculate_Ibeam_moment_of_inertia(root_chord, thick_chord_ratio, flange_length, flange_thickness,
                                           beam_thickness)
@@ -1069,246 +1070,6 @@ def ribs_position_iteration(right_hand_side, M, x):
             starting_x = min[0]
     return ribslst
 
-def size_wing(mtow_kg, m_props, wing_geometry):
-
-    #ASSUMPTIONS
-    # both wings have the same shape of elliptical distribution (same tip fraction) but can have different alpha and beta
-    # The maximum load imposed on the wing is when the aircraft is going at its fastest speed, or vmax
-    # The winglet c.gs are exactly between the wings (Reaction forces due to weight are the same)
-    # The winglet can be assumed to be a simply supported beam
-    # All the stringers in the main load bearing section are the same y distance from the c.g
-    # All thin walled assumptions for I beam and area calculation (t^2 = 0)
-
-    root_chord = wing_geometry["root_chord_m"]
-    taper = wing_geometry["tip_chord_m"]/wing_geometry["root_chord_m"]
-    propeller_weight = m_props * G
-
-    wing_length = (wing_geometry["span_m"] - FuselageGeometry.body_depth_at_wing) / 2
-
-    def iterate_wing_size(nonrotating_wing_weight, rotating_wing_weight, winglet_weight):
-
-
-        #Find alpha and beta
-        alpha_fw, beta_fw = calculate_wing_ellipse(tip_lift_fraction, wing_length, weight_carried_fw)
-        alpha_rw, beta_rw = calculate_wing_ellipse(tip_lift_fraction, wing_length, weight_carried_rw)
-        thruster_pos_fw = [(0, 0, 1.5), (0, 0, 3)]
-        thruster_pos_rw = [(0, 0, 1.5)]
-        root_chord = 1.2
-        vconfig = 0 #NOT HARDCODED TRUST ME BRO
-
-        #Make graphs
-        disc_step = 0.01 #NONE OF THESE DISC_STEP VARIABLES ARE HARDCODED
-        lift_dist_fw = np.array([np.sqrt(-(
-                    disc_step * i - alpha_fw)) * beta_fw * speed_ratio ** 2 * load_factor * nonhinged_wing_length / wing_length
-                              for i in range(int(round(wing_length / disc_step)) + 1)])
-        lift_dist_rw = np.array([np.sqrt(-(
-                    disc_step * i - alpha_rw)) * beta_rw * speed_ratio ** 2 * load_factor * nonhinged_wing_length / wing_length
-                              for i in range(int(round(wing_length / disc_step) + 1))])
-        x = [disc_step * i for i in range(int(round(wing_length / disc_step) + 1))]
-
-        #Get lift at wingtips (aka parameters for winglet lift dist.)
-        wingtip_lift_fw, wingtip_lift_rw = lift_dist_fw[x.index(wing_length)], lift_dist_rw[x.index(wing_length)]
-
-        #For these reactions, positive means pointing outwards
-        new_winglet_mass, winglet_reaction_fw, winglet_reaction_rw = size_winglet(root_chord, wingtip_lift_fw, wingtip_lift_rw)
-        #print(f"winglet mass: {new_winglet_mass}")
-
-
-
-
-
-        #vmax and vconfig are different!! vmax is the max speed expected to be experienced, vconfig is the speed at various points during transition
-
-        def total_winglet_reaction_fw(vconfig):
-            return (0, new_winglet_mass*G/2, winglet_reaction_fw * (vconfig/V_CRUISE)**2)
-        def total_winglet_reaction_rw(vconfig):
-            return (0, new_winglet_mass*G/2, winglet_reaction_rw * (vconfig/V_CRUISE)**2)
-
-        #print(f"Reactions, fw: {winglet_reaction_fw}, rw: {winglet_reaction_rw}")
-
-        """
-        plt.plot(x, lift_dist_fw)
-        plt.plot(x, lift_dist_rw)
-        plt.ylim(bottom = 0)
-        plt.show()
-        """
-
-        #With the reaction forces at the winglets, we can start setting up the rotating wing planform
-        def setup_wing_planform(total_winglet_reaction, alpha, beta, thruster_pos_lst, rotating_wing_weight):
-
-            ###INITIALIZE WING
-            wing_planform = Wing(
-                np.array(
-                    [[0.25 * root_chord, 0, 0], [0.25 * root_chord * taper, 0, wing_length - nonhinged_wing_length],
-                     [-0.75 * root_chord * taper, 0, wing_length - nonhinged_wing_length], [-0.75 * root_chord, 0, 0]]),
-                HINGE_THETA,
-                HINGE_PHI)
-
-            def wing_loading(x):  # THIS NEEDS TO BE SCALED TO ACCOUNT FOR HALFSPAN
-                # Alpha and beta are derived from these constraints:
-                # The integral of this formula along the span must equal the weight the wing is expected to carry
-                # The lifting force at the wingtip must be the winglet lift fraction * the force at the chord
-                return np.sqrt(-(x + nonhinged_wing_length - alpha)) * beta * (vconfig / V_CRUISE) ** 2 * load_factor
-
-            def wing_weight(x):
-                return rotating_wing_weight / (wing_length - nonhinged_wing_length) * G
-
-            # lift acts on the quarter-chord line, which for this geometry lies at x = 0 along the whole span
-            wing_planform.add_distributed_load(
-                DistributedLoad((0, -1, 0), (0, 0, 0), (0, 0, wing_length - nonhinged_wing_length), wing_loading))
-
-            wing_planform.add_distributed_load(
-                DistributedLoad((0, 1, 0), (0, 0, 0), (-0, 0, wing_length - nonhinged_wing_length), wing_weight,
-                                color="blue"), nonangled=True)
-
-            ###PROPELLER THRUST FORCES (wing-fixed) AND WEIGHTS (gravity-fixed, hence nonangled)
-            for pos in thruster_pos_lst:
-                wing_planform.add_point_load(PointLoad((thrust_props, 0, 0), pos, color="orange"))
-                wing_planform.add_point_load(PointLoad((0, propeller_weight, 0), pos, color="brown"), nonangled=True)
-
-            wing_planform.add_point_load(PointLoad(total_winglet_reaction, (0, 0, wing_length - nonhinged_wing_length), color="orange"))
-
-            return wing_planform
-
-        #Now we analyse the moment diagram around the x axis to size the wing!
-        vconfig = vmax
-        wing_planform = setup_wing_planform(total_winglet_reaction_fw(vconfig), alpha_fw, beta_fw, [(0, 0, 1.5)], rotating_wing_weight)
-
-        wing_planform.discretize()
-        wing_planform.create_moment_diagram(axis="x")
-
-        x_fw, wing_moment_x_fw = wing_planform.moment_diagrams["x"]["y"]
-
-        #Now that we have x and wing_moment_x for the wing, we can do the same thing we did for the winglets!
-        def size_rotating_wing(x, M, wing_area):
-            # Material characteristics
-            allowable_stress = SIGMA_ALLOW_AL
-            poisson_ratio = POISSON_AL
-            young_mod = E_AL
-            density = RHO_AL
-            allowable_stress = SIGMA_ALLOW_AL
-
-            plates_height = root_chord * thick_chord_ratio_RW / 2
-
-            M_max = float(np.max(np.abs(M)))
-
-            beam_I = calculate_Ibeam_moment_of_inertia(root_chord, thick_chord_ratio_RW, flange_length_RW, flange_thickness_RW,
-                                                  beam_thickness_RW)
-
-            max_stress_beam = M_max * root_chord * thick_chord_ratio_RW / 2 / (beam_I * number_of_beams_RW)
-
-            if max_stress_beam > allowable_stress:
-                raise ValueError("BEAM CANNOT HANDLE LOAD!!")
-
-            #print("")
-            #print("COMMENCE BUCKLING CALC")
-
-            ###EXTRA PARAMS
-
-            ###Stuff for buckling
-
-            Stringer_I, Stringer_A = calc_ubeam_moment_of_intertia(L1, L2, h, t_stringers)
-
-            Stringer_Q = Stringer_A * (plates_height - h / 2)
-
-            CSA_I = calc_cross_section_moment_of_inertia(beam_I, plates_height, Stringer_A, Stringer_I, num_of_stringers_RW)
-
-            #print(f"Stringer_I: {Stringer_I}, CSA_I: {CSA_I}, Stringer Q: {Stringer_Q}")
-
-            right_hand_side = np.pi * young_mod * Stringer_I * CSA_I/Stringer_Q
-            #print(f"right hand : {right_hand_side}")
-
-            ###Now that we have the right hand side of the equation, we must find the rib spacings across the wing!
-
-            #Perform the loop
-            ribslst = ribs_position_iteration(right_hand_side, M, x)
-
-
-
-            #print(f"rib positions: {ribslst}")
-
-            surface_area = wing_area / (wing_length - nonhinged_wing_length)
-
-            rib_surface_area = surface_area / ((TAPER_W - 1) * 0.5 + 1) ** 2 * 0.6  # Assuming the rib area is 0.6 times the airfoil cross section due to holes & cutouts
-
-            # ribs_mass = rib_surface_area * density * rib_thickness * len(ribslst)
-            ribs_mass = 0
-            #print(rib_surface_area * density * rib_thickness_RW)
-
-            for rib_pos in ribslst:
-                point_taper = ((TAPER_W - 1) / (wing_length - nonhinged_wing_length) * rib_pos + 1)
-                rib_volume = surface_area * point_taper ** 2 * rib_thickness_RW
-                ribs_mass += rib_volume * density
-
-            # print(ribs_mass)
-            skin_mass = wing_area * skin_thickness_RW
-
-            Ibeam_area = calculate_Ibeam_moment_of_inertia(root_chord, thick_chord_ratio_RW, flange_length_RW,
-                                                           flange_thickness_RW,
-                                                           beam_thickness_RW, return_area=True)
-            Ibeam_mass = Ibeam_area * (wing_length - nonhinged_wing_length) * density * number_of_beams_RW
-
-            stringers_mass = Stringer_A * num_of_stringers_RW * (wing_length - nonhinged_wing_length) * density
-
-            #print(f"final masses: {skin_mass, Ibeam_mass, ribs_mass, stringers_mass}")
-
-            return (skin_mass + Ibeam_mass + ribs_mass + stringers_mass)
-
-        new_rotating_wing_mass = size_rotating_wing(x_fw, wing_moment_x_fw, WingGeometry.A_fw)
-
-        #Now we must find the maximum reaction forces on the tip of the nonrotating wing
-
-        angle_cases = [10*i for i in range(13)]
-        v_cases = [(120 - angle) ** 2 * V_CRUISE/120**2 for angle in angle_cases]
-
-        forces_lst = []
-
-        for i in range(len(angle_cases)):
-            vconfig = v_cases[i]
-            wing_planform = setup_wing_planform(total_winglet_reaction_fw(vconfig), alpha_fw, beta_fw, [(0, 0, 1.5)],
-                                                rotating_wing_weight)
-
-            wing_planform.angle = angle_cases[i]
-            v_actual = v_cases[i]
-
-            wing_planform.discretize()
-
-            rx = wing_planform.create_loading_diagram(force_direction="x", path_direction="z")
-            ry = wing_planform.create_loading_diagram(force_direction="y", path_direction="z")
-            rz = wing_planform.create_loading_diagram(force_direction="z", path_direction="y")
-
-            resultant_force = np.array([rx, ry, rz])
-            resultant_force = transform_vector(resultant_force, wing_planform.wing_axes, np.eye(3))
-
-            forces_lst.append(resultant_force)
-
-
-        print("HA")
-
-        return new_rotating_wing_mass, new_winglet_mass
-
-    #params
-    speed_ratio = vmax/V_CRUISE
-    weight_carried_fw = mtow_kg * G * mtow_fraction_fw
-    weight_carried_rw = mtow_kg * G * mtow_fraction_rw
-
-    winglet_mass = 20
-    rotating_wing_mass = 40
-    nonrotating_wing_mass = 7
-    new_rotating_wing_mass, new_winglet_mass = iterate_wing_size(7, rotating_wing_mass, winglet_mass)
-
-    for i in range(10):
-        new_rotating_wing_mass, new_winglet_mass = iterate_wing_size(7, rotating_wing_mass, winglet_mass)
-
-        if np.abs(new_rotating_wing_mass - rotating_wing_mass)/rotating_wing_mass < 0.01 and np.abs(new_winglet_mass - winglet_mass)/winglet_mass < 0.01:
-            break
-
-        winglet_mass = new_winglet_mass
-        rotating_wing_mass = new_rotating_wing_mass
-
-        print(rotating_wing_mass, new_winglet_mass)
-
-    return nonrotating_wing_mass + rotating_wing_mass, nonrotating_wing_mass + rotating_wing_mass, winglet_mass
 
 def calculate_wing_ellipse(tip_lift_fraction, single_wing_length, weight_carried):
     alpha = single_wing_length/(1 - tip_lift_fraction**2)
@@ -1318,6 +1079,10 @@ def calculate_wing_ellipse(tip_lift_fraction, single_wing_length, weight_carried
 if __name__ == "__main__":
     #mom = hinge_loading(1.2, (7.31 + 48.09) * 9.81, 240, 50*9.81, 1000, just_moment=True)["y"]
 
-    print(size_wing(1800))
+    # size_wing() was MOVED to class_II_sizing/mass_components.py and wired into the
+    # MTOW convergence loop. The planform/load classes and section-sizing helpers it
+    # uses (Wing, size_winglet, calculate_wing_ellipse, the I-beam/stringer/rib
+    # helpers) remain here and are imported by mass_components.
+    pass
 
     #print(calc_ubeam_moment_of_intertia(0.05, 0, 0.3, 0.001))

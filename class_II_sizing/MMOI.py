@@ -249,7 +249,16 @@ def build_components(breakdown, configuration="cruise"):
     #    cruise CG stations and moves only the folded outer sections to the drawing
     #    stations, split by the spanwise fold-hinge eta fractions. --
     config = configuration.lower().strip()
-    m_wing_struct = (1.0 - WINGLET_MASS_FRAC) * breakdown["wing"]
+    # compute_mtow now returns the wing structure and the winglet mass SEPARATELY
+    # ("wing" excludes the winglet, "winglet" holds the two tip joiners). Fall back
+    # to the legacy WINGLET_MASS_FRAC carve-out only for older breakdowns that lack
+    # the "winglet" key.
+    if "winglet" in breakdown:
+        m_wing_struct = breakdown["wing"]
+        m_winglet_total = breakdown["winglet"]
+    else:
+        m_wing_struct = (1.0 - WINGLET_MASS_FRAC) * breakdown["wing"]
+        m_winglet_total = WINGLET_MASS_FRAC * breakdown["wing"]
     m_wing_rear = S_AFT_TO_S_TOTAL * m_wing_struct
     m_wing_front = m_wing_struct - m_wing_rear
     if config in ("cruise", "cr"):
@@ -263,7 +272,7 @@ def build_components(breakdown, configuration="cruise"):
         raise ValueError("configuration must be 'cruise' or 'vtol'")
 
     # -- Tip plates: vertical flat plates at mid-stagger, y = +/- span/2 --
-    m_plate = WINGLET_MASS_FRAC * breakdown["wing"] / 2.0
+    m_plate = m_winglet_total / 2.0
     plate_local = inertia_solid_box(m_plate, c_tip, 0.0, H_GAP_WINGS)
     if config in ("vtol", "folded"):
         # Winglet / Prandtl tip-joiner CG station in the folded configuration,
