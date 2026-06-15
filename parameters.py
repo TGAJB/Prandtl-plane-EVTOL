@@ -774,6 +774,9 @@ HINGED_WING_LENGTH = 4 # [m] The length of the portion of the wing that is hinge
 FW_THRUSTER_POSITION_1 = (0.5, 0, 3) #The position of the thrusters in the forward wing w.r.t the wing axis (talk to Antonio if ur confused)
 FW_THRUSTER_POSITION_2 = (0.5, 0, 6)
 
+# -- ANTONIO'S RANDOM BS
+vmax = V_CRUISE * 1.25
+
 
 ETA_FOLD_HINGE_FW = WingGeometry.fold_hinge_eta_fw  # [-] update from spanwise hinge layout if needed
 ETA_FOLD_HINGE_RW = WingGeometry.fold_hinge_eta_aw  # [-] update from spanwise hinge layout if needed
