@@ -773,6 +773,7 @@ mtow_fraction_fw = 0.6
 mtow_fraction_rw = 1 - mtow_fraction_fw
 vmax = V_CRUISE*1.25
 load_factor = 1
+wing_length = (WING_SPAN - FuselageGeometry.body_depth_at_wing)/2
 nonhinged_wing_length = 2
 
 # -- Elliptical approx of wing:
