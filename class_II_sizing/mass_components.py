@@ -11,6 +11,7 @@ import sys
 import warnings
 from pathlib import Path
 from scipy.integrate import quad, cumulative_trapezoid
+from mtow_sizing import *
 
 import numpy as np
 from scipy.optimize import minimize

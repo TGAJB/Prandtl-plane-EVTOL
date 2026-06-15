@@ -1069,7 +1069,7 @@ def ribs_position_iteration(right_hand_side, M, x):
             starting_x = min[0]
     return ribslst
 
-def size_wing(mtow_kg):
+def size_wing(mtow_kg, m_props, wing_geometry):
 
     #ASSUMPTIONS
     # both wings have the same shape of elliptical distribution (same tip fraction) but can have different alpha and beta
@@ -1079,7 +1079,14 @@ def size_wing(mtow_kg):
     # All the stringers in the main load bearing section are the same y distance from the c.g
     # All thin walled assumptions for I beam and area calculation (t^2 = 0)
 
+    root_chord = wing_geometry["root_chord_m"]
+    taper = wing_geometry["tip_chord_m"]/wing_geometry["root_chord_m"]
+    propeller_weight = m_props * G
+
+    wing_length = (wing_geometry["span_m"] - FuselageGeometry.body_depth_at_wing) / 2
+
     def iterate_wing_size(nonrotating_wing_weight, rotating_wing_weight, winglet_weight):
+
 
         #Find alpha and beta
         alpha_fw, beta_fw = calculate_wing_ellipse(tip_lift_fraction, wing_length, weight_carried_fw)
@@ -1128,9 +1135,6 @@ def size_wing(mtow_kg):
 
         #With the reaction forces at the winglets, we can start setting up the rotating wing planform
         def setup_wing_planform(total_winglet_reaction, alpha, beta, thruster_pos_lst, rotating_wing_weight):
-            root_chord = 1
-            taper = 1
-            propeller_weight = 300
 
             ###INITIALIZE WING
             wing_planform = Wing(

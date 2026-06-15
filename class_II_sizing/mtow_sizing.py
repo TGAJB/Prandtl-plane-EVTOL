@@ -54,6 +54,7 @@ def compute_mtow(mtow_kg, verbose=True):
     m_lg = lg["m_gear"] if lg is not None else 0.03 * mtow_kg
     m_tail = tail_mass(mtow_kg)
     m_motors = motor_mass(max_power_kw)
+
     m_props = propeller_mass(max_power_kw, USE_FUSION_PROP, M_BLADE_FUSION)
     m_hubs = hub_mass(USE_FUSION_HUB, M_HUB_FUSION)
     m_batt = battery_mass(mtow_kg)
