@@ -1193,6 +1193,14 @@ def size_wing(mtow_kg):
             density = 2700
             allowable_stress = 270e6
 
+            #Stringers params
+            h = 0.01
+            L1 = 0.019
+            L2 = 0.01
+            t_stringers = 0.001
+            num_of_stringers_RW = 10
+            plates_height = root_chord*thick_chord_ratio_RW/2
+
             M_max = float(np.max(np.abs(M)))
 
             beam_I = calculate_Ibeam_moment_of_inertia(root_chord, thick_chord_ratio_RW, flange_length_RW, flange_thickness_RW,
@@ -1207,12 +1215,6 @@ def size_wing(mtow_kg):
             #print("COMMENCE BUCKLING CALC")
 
             ###EXTRA PARAMS
-            h = 0.01
-            L1 = 0.019
-            L2 = 0.01
-            t_stringers = 0.001
-            num_of_stringers_RW = 10
-            plates_height = root_chord*thick_chord_ratio_RW/2
 
             ###Stuff for buckling
 
