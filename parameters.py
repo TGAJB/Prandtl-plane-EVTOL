@@ -322,6 +322,12 @@ class AerodynamicCoefficients:
     z_ac_fw_approach:                   float = None  # [m]
     z_ac_aw_approach:                   float = None  # [m]
 
+    #Control Surface max. deflections [deg]
+    max_delta_e:                        float = 50.0  # [deg]
+    max_delta_a_inner:                  float = 90.0  # [deg]
+    max_delta_a_outer:                  float = 50.0  # [deg]
+    max_delta_r:                        float = 30.0  # [deg]
+
 
 @dataclass
 class StabilityDerivatives:
