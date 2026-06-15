@@ -48,12 +48,232 @@ from parameters import (
 from parameters import *
 
 # Fuselage
+#
+# Physics-based Class-II sizing of the same shape as the wing/tail methods below:
+# build the governing ULTIMATE bending moment, size the bending material (the shell
+# skin smeared around a thin-walled circular tube) from the section modulus, floor it
+# at min-gauge skin, then recover frames/floor/fittings with a primary fraction.
+#
+# The governing moment is the peak of a SUPERIMPOSED free-free beam diagram: per design
+# condition every coexisting load (the two wing reactions + the tail load + the
+# distributed inertia) acts at once, so their moment contributions stack along the
+# fuselage. Three distinct conditions are evaluated (symmetric pull-up, dive + max tail
+# load, hard landing) and the worst governs. The skin is sized for BOTH CFRP and
+# aluminium and the lighter is returned. FUS_MASS_METHOD ("physics" | "regression")
+# selects this method or the legacy empirical USAF/Nicolai formula; all constants live
+# in parameters.py.
 
-def fuselage_mass(mtow_kg):
+_FUS_MATERIALS = {
+    "CFRP": {"sigma": SIGMA_ALLOW_CFRP, "rho": RHO_CFRP, "t_min": T_SKIN_MIN_CFRP, "E": CFRP["E"]},
+    "AL":   {"sigma": SIGMA_ALLOW_AL,   "rho": RHO_AL,   "t_min": T_SKIN_MIN_AL,   "E": E_AL},
+}
+
+_FUS_N_STATIONS = 400   # beam discretisation along the fuselage length
+
+
+def _fus_inertia_load(x, mtow_kg, n_z):
+    """Downward distributed inertia line-load w(x) [N/m] over the fuselage at load
+    factor n_z. The fuselage-borne mass (FUS_BORNE_MASS_FRAC * MTOW) is split into the
+    payload box (M_PAYLOAD, concentrated over X_PAYLOAD +- L_PAYLOAD_BOX/2) and a
+    uniform structural/systems strip over the whole length; the rest of the aircraft
+    hangs on the wings and does not load the fuselage shell."""
+    m_borne = FUS_BORNE_MASS_FRAC * mtow_kg
+    m_uniform = max(m_borne - M_PAYLOAD, 0.0)
+    w = np.full_like(x, m_uniform * n_z * G / L_FUS)
+
+    box_lo = X_PAYLOAD - L_PAYLOAD_BOX / 2.0
+    box_hi = X_PAYLOAD + L_PAYLOAD_BOX / 2.0
+    w_pay = M_PAYLOAD * n_z * G / L_PAYLOAD_BOX
+    in_box = (x >= box_lo) & (x <= box_hi)
+    return w + np.where(in_box, w_pay, 0.0)
+
+
+def _solve_two_supports(x, w_down, applied_up, xs1, xs2):
+    """Two unknown upward reactions (R1 at xs1, R2 at xs2) of a statically determinate
+    free-free beam, from vertical + moment equilibrium. w_down is the distributed load
+    (N/m, down +); applied_up is a list of known (x_i, F_i) point loads (up +). With
+    both equilibrium equations satisfied the integrated moment closes to ~0 at the free
+    ends, so its interior peak is the true superimposed maximum."""
+    W = float(cumulative_trapezoid(w_down, x, initial=0.0)[-1])              # total down
+    Mw = float(cumulative_trapezoid(w_down * (x - xs1), x, initial=0.0)[-1])  # its moment about xs1
+    sum_f = sum(f for _, f in applied_up)
+    sum_fx = sum(f * (xi - xs1) for xi, f in applied_up)
+    R2 = (Mw - sum_fx) / (xs2 - xs1)
+    R1 = (W - sum_f) - R2
+    return R1, R2
+
+
+def _fus_beam_moment(x, w_down, point_loads_up):
+    """Shear V(x) [N] and bending moment M(x) [N.m] of the free-free fuselage beam from
+    the superimposed loading: distributed w_down (N/m, down +) plus point loads
+    point_loads_up = [(x_i, F_i), ...] (up +). Two cumulative-trapezoid passes, the same
+    shear->moment integration style as analyze_cantilever_distributed_load."""
+    V = -cumulative_trapezoid(w_down, x, initial=0.0)
+    for xi, fi in point_loads_up:
+        V = V + fi * (x >= xi)
+    M = cumulative_trapezoid(V, x, initial=0.0)
+    return V, M
+
+
+def _fus_condition(name, mtow_kg, n_z, applied_up, xs1, xs2):
+    """Build one design condition: lay the distributed inertia and the known external
+    point loads (applied_up) on the beam, solve the two support reactions, integrate to
+    the superimposed V/M diagram and record the peak |M|."""
+    x = np.linspace(0.0, L_FUS, _FUS_N_STATIONS)
+    w = _fus_inertia_load(x, mtow_kg, n_z)
+    R1, R2 = _solve_two_supports(x, w, applied_up, xs1, xs2)
+    loads = list(applied_up) + [(xs1, R1), (xs2, R2)]
+    V, M = _fus_beam_moment(x, w, loads)
+    return {
+        "name": name, "x": x, "w": w, "V": V, "M": M,
+        "peak": float(np.max(np.abs(M))), "n_z": n_z,
+        "applied": list(applied_up),
+        "supports": [(xs1, R1), (xs2, R2)],
+    }
+
+
+def _fus_conditions(mtow_kg):
+    """The three superimposed design conditions sizing the fuselage bending."""
+    conds = []
+
+    # C1 - Symmetric maneuver pull-up at the limit load factor: distributed inertia
+    #      reacted by the two wings; tail trim load is small in a steady pull-up (~0).
+    conds.append(_fus_condition(
+        "C1 maneuver pull-up (n=N_W)", mtow_kg, N_W, [], X_WING_F, X_WING_R))
+
+    # C2 - Dive at max tail load: the V-tail aero download (same q_dive*S_TAIL*C_N_TAIL_MAX
+    #      tail_mass uses, both fins, vertical component) STACKED with limit-load inertia.
+    q_dive = 0.5 * RHO_ORIGIN * (V_DIVE_FACTOR * V_CRUISE) ** 2
+    f_tail = 2.0 * q_dive * S_TAIL * C_N_TAIL_MAX * np.cos(np.radians(V_ANGLE))
+    conds.append(_fus_condition(
+        "C2 dive + max tail load", mtow_kg, N_W,
+        [(X_TAIL, -f_tail)], X_WING_F, X_WING_R))      # tail download -> down (-up)
+
+    # C3 - Hard landing / VTOL: the whole airframe decelerates at N_LIMIT on the skids.
+    #      The wing-borne mass pushes DOWN through the wing joints; the skid footprint
+    #      (two contact points) reacts everything; fuselage inertia is distributed.
+    m_wing_borne = max((1.0 - FUS_BORNE_MASS_FRAC) * mtow_kg, 0.0)
+    f_front = (1.0 - F_REAR_WING) * m_wing_borne * N_LIMIT * G
+    f_rear = F_REAR_WING * m_wing_borne * N_LIMIT * G
+    skid_lo = X_GEAR - L_SKID_RAIL / 2.0
+    skid_hi = X_GEAR + L_SKID_RAIL / 2.0
+    conds.append(_fus_condition(
+        "C3 hard landing (n=N_LIMIT)", mtow_kg, N_LIMIT,
+        [(X_WING_F, -f_front), (X_WING_R, -f_rear)], skid_lo, skid_hi))
+
+    return conds
+
+
+def _fus_design_moment(mtow_kg, return_conditions=False):
+    """Ultimate design bending moment [N.m] = STRUCT_SF * worst peak |M| across the
+    three superimposed conditions (scalar, for reporting)."""
+    conds = _fus_conditions(mtow_kg)
+    governing = max(conds, key=lambda c: c["peak"])
+    m_ult = STRUCT_SF * governing["peak"]
+    if return_conditions:
+        return m_ult, conds, governing
+    return m_ult
+
+
+def _fus_moment_envelope(conds):
+    """Per-STATION ultimate |M| envelope [N.m] across all conditions (shared x grid):
+    the worst moment seen at each fuselage station, so a variable-gauge skin can be
+    thinner where every condition is lightly loaded (nose/tail) and thicker at the peak."""
+    x = conds[0]["x"]
+    m_env = np.zeros_like(x)
+    for c in conds:
+        m_env = np.maximum(m_env, np.abs(c["M"]))
+    return x, STRUCT_SF * m_env
+
+
+def _fus_skin_profile(m_env, material):
+    """Required skin gauge [m] AT EACH STATION = max(min-gauge, yield, shell-buckling).
+
+    Thin cylinder in bending, radius R = D_FUS/2:
+      applied stress      sigma   = M / (pi R^2 t)
+      yield gauge         t_yield = M / (sigma_allow * pi R^2)            (material strength)
+      buckling allowable  sigma_cr= C E (t/R)  ->  t_buckle = sqrt(M / (pi R C E))
+    Buckling (not yield) governs a thin monocoque shell, and t_buckle ~ sqrt(M) ~ sqrt(MTOW),
+    so the loaded region grows with the aircraft while the ends stay at min gauge."""
+    r = D_FUS / 2.0
+    t_yield = m_env / (material["sigma"] * np.pi * r ** 2)
+    t_buckle = np.sqrt(m_env / (np.pi * r * FUS_SHELL_BUCKLING_C * material["E"]))
+    t_floor = np.full_like(m_env, material["t_min"])
+    t_skin = np.maximum.reduce([t_floor, t_yield, t_buckle])
+    return t_skin, t_yield, t_buckle
+
+
+def _fus_shell_mass(mtow_kg, material, conds=None):
+    """Structural mass [kg] of the variable-gauge thin-walled shell for one material set.
+
+    Sizes the skin gauge per station against the moment ENVELOPE (yield + buckling),
+    integrates the variable-thickness skin volume over the length, then recovers
+    frames/floor/fittings with FUS_PRIMARY_FRACTION. Buckling makes the loaded-region
+    gauge - and hence the mass - scale with MTOW."""
+    if conds is None:
+        _, conds, _ = _fus_design_moment(mtow_kg, return_conditions=True)
+    x, m_env = _fus_moment_envelope(conds)
+    t_skin, t_yield, t_buckle = _fus_skin_profile(m_env, material)
+
+    circ = np.pi * D_FUS * FUS_AREA_CONE_FACTOR                       # shell circumference [m]
+    vol_skin = circ * float(cumulative_trapezoid(t_skin, x, initial=0.0)[-1])
+    m_skin = material["rho"] * vol_skin
+
+    ipk = int(np.argmax(t_skin))                                     # mode setting the peak gauge
+    if t_buckle[ipk] >= max(material["t_min"], t_yield[ipk]):
+        governs = "buckling"
+    elif t_yield[ipk] >= material["t_min"]:
+        governs = "yield"
+    else:
+        governs = "min-gauge"
+
+    return {
+        "mass": m_skin / FUS_PRIMARY_FRACTION, "m_skin": m_skin,
+        "t_max": float(np.max(t_skin)), "t_min_gauge": material["t_min"],
+        "governs": governs, "x": x, "m_env": m_env,
+        "t_skin": t_skin, "t_yield": t_yield, "t_buckle": t_buckle,
+    }
+
+
+def _fuselage_mass_regression(mtow_kg):
+    """Legacy empirical fuselage weight (USAF/Nicolai-type GA regression, lb/ft -> kg).
+    Retained as the FUS_MASS_METHOD == 'regression' branch for fallback / A-B checks."""
     return (0.453592
             * (14.86 * ((mtow_kg * 2.20462) ** 0.144) * ((L_FUS * 3.28084) ** 0.778)
                / ((PER_FUS_MAX * 3.28084) ** 0.778))
             * ((L_FUS * 3.28084) ** 0.383) * N_PAX ** 0.455)
+
+
+def fuselage_mass(mtow_kg, method=None, return_details=False):
+    """Fuselage structural mass [kg].
+
+    method (default FUS_MASS_METHOD): "physics" sizes the thin-walled shell-beam for the
+    worst of three superimposed load conditions, evaluates CFRP and aluminium and returns
+    the lighter; "regression" returns the legacy empirical formula. return_details=True
+    returns the full sizing dict (winning material, governing condition, per-condition
+    V/M diagrams, per-material breakdown) instead of the float, like landing_gear_mass."""
+    method = method or FUS_MASS_METHOD
+
+    if method == "regression":
+        m = _fuselage_mass_regression(mtow_kg)
+        return {"mass": m, "method": "regression", "material": None} if return_details else m
+
+    m_design, conds, governing = _fus_design_moment(mtow_kg, return_conditions=True)
+    by_material = {
+        name: _fus_shell_mass(mtow_kg, mat, conds)
+        for name, mat in _FUS_MATERIALS.items()
+    }
+    best_name = min(by_material, key=lambda n: by_material[n]["mass"])
+    best = by_material[best_name]
+
+    if not return_details:
+        return best["mass"]
+    return {
+        "mass": best["mass"], "method": "physics", "material": best_name,
+        "m_design": m_design, "governing_condition": governing["name"],
+        "t_max": best["t_max"], "governs": best["governs"],
+        "conditions": conds, "by_material": by_material,
+    }
 
 
 # Wing (dynamic sizing from design-point W/S + Class II mass)

@@ -699,6 +699,29 @@ PER_FUS_MAX = 12.0   # [m]   fuselage maximum perimeter
 N_PAX       = 4      # [-]   passenger count
 FAT_CYLINDER_SECTION = 0.4 #this is for mmoi calculations on what we assume is the cylinder (rest of fus is neglected)
 
+# Fuselage Class-II structural sizing (mass_components.fuselage_mass physics method)
+#
+# The physics method models the fuselage as a thin-walled circular shell-beam
+# (radius D_FUS/2, length L_FUS): per design condition every coexisting load (wing
+# reactions + tail load + inertia) is superimposed onto ONE bending-moment diagram,
+# the skin is sized from the shell section modulus (floored at min gauge) for BOTH
+# CFRP and aluminium, and the lighter is kept. Flip FUS_MASS_METHOD to "regression"
+# to restore the legacy empirical USAF/Nicolai formula everywhere.
+FUS_MASS_METHOD      = "physics"  # [-]  "physics" | "regression" -> selects fuselage_mass branch
+FUS_PRIMARY_FRACTION = 0.60       # [-]  skin / primary-structure fraction (frames, floor, doors, fittings recovered); main tuning knob
+FUS_BORNE_MASS_FRAC  = 0.50       # [-]  fraction of MTOW carried as distributed fuselage inertia (payload + battery + systems + shell); the rest hangs on the wings
+FUS_AREA_CONE_FACTOR = 1.0        # [-]  shell wetted-area uplift for nose/tail cones beyond the bare cylinder (1.0 = bare cylinder)
+# Thin-shell BENDING-BUCKLING allowable sigma_cr = C * E * (t/R) (classical cylinder,
+# knocked down for imperfection sensitivity). This - not material yield - is the failure
+# mode that sizes a thin monocoque shell in bending, so the required gauge
+# t_buckle = sqrt(M / (pi*R*C*E)) scales with the load (hence with MTOW). C bundles the
+# classical coefficient (~0.6 axial / ~0.7 bending) with the design knockdown (~0.4-0.5).
+FUS_SHELL_BUCKLING_C = 0.30       # [-]  knocked-down cylinder bending-buckling coefficient
+# NOTE: PER_FUS_MAX = 12.0 m is geometrically inconsistent with the 2.0 m circular
+#       section (pi*D_FUS ~ 6.28 m) and is NOT used by the physics method (it uses
+#       pi*D_FUS*L_FUS for the shell area). Review PER_FUS_MAX; only the legacy
+#       "regression" branch still consumes it.
+
 # MMOI component layout (class_II_sizing/MMOI.py)
 #
 # Datum: nose tip. x positive aft, y positive starboard, z positive up, origin on the
