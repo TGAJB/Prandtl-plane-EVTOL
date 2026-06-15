@@ -118,7 +118,9 @@ _WS_BOUNDS = _md.feasible_wing_loading_range()
 # QUANTISE both to a grid before evaluating: the converged-MTOW cache then holds
 # across the GA, and the mass area stays consistent with the stability area
 # (both use the quantised value).
-W_S_CACHE_STEP = 10.0   # [N/m^2] W/S quantisation grid (caches the reconverge)
+W_S_CACHE_STEP = 5.0    # [N/m^2] W/S quantisation grid (caches the reconverge); finer
+                        # = more distinct MTOW levels -> a richer Pareto front (n_nds),
+                        # at the cost of more first-touch reconverges (each cached).
 # The aft/total split is now ALSO converger-coupled (it sets the per-wing
 # structural mass via mass_components.S_AFT_TO_S_TOTAL), so it likewise reconverges
 # the MTOW. Quantise it to a coarse grid so the converged-MTOW cache holds: the
@@ -182,6 +184,17 @@ from pymoo.optimize import minimize
 from pymoo.operators.sampling.rnd import FloatRandomSampling
 from pymoo.operators.crossover.sbx import SBX
 from pymoo.operators.mutation.pm import PM
+from pymoo.termination.default import DefaultMultiObjectiveTermination
+
+# Phase-2 termination knobs. A convergence-based termination replaces a fixed
+# generation count: the GA runs until the Pareto front stops moving (relative
+# change < FTOL, sustained over TERMINATION_PERIOD generations) instead of always
+# burning exactly N generations -- so it neither under-runs (stopping while the
+# front is still improving) nor wastes evaluations after it has converged. The
+# n_max_gen cap bounds the worst case.
+TERMINATION_FTOL = 0.0025   # [-] relative change in normalised objective space
+TERMINATION_PERIOD = 10     # generations the tolerance must hold before stopping
+TERMINATION_MAX_GEN = 60    # hard cap on generations (safety bound)
 
 
 # ===========================================================================
@@ -437,28 +450,60 @@ class DesignProblem(Problem):
         out["G"] = np.array(constraint_rows)
 
 
+class AftBatterySeededSampling(FloatRandomSampling):
+    """Random initial population, but with the VTOL-emergency battery biased into
+    the AFT end of its travel.
+
+    cg_vtol_fwd_ok is the single binding requirement, and it is only satisfiable
+    with the sliding VTOL battery near its aft travel bound -- the feasible region
+    is a thin sliver there. Seeding x_batt_vtol into the aft fraction of its travel
+    starts the population inside (or right next to) that corner, so the GA does not
+    have to discover it by chance. Every OTHER design variable is left fully random,
+    so global diversity is preserved where it actually matters.
+    """
+    AFT_FRACTION = 0.2   # seed x_batt_vtol within the aft 20% of its travel
+
+    def _do(self, problem, n_samples, *args, random_state=None, **kwargs):
+        X = super()._do(problem, n_samples, *args, random_state=random_state, **kwargs)
+        i = DESIGN_VARIABLE_NAMES.index("x_batt_vtol")
+        lo, hi = problem.xl[i], problem.xu[i]
+        # Reuse the RNG pymoo threaded through so the seed stays reproducible.
+        u = (random_state.random(n_samples) if random_state is not None
+             else np.random.random(n_samples))
+        X[:, i] = hi - u * self.AFT_FRACTION * (hi - lo)
+        return X
+
+
 def run_phase_2():
     """Run NSGA-II until it finds a converged, requirement-satisfying design."""
     print("\n=== PHASE 2: NSGA-II optimisation (design rejected in Phase 1) ===")
 
     problem = DesignProblem()
 
-    # The two converger-coupled levers (W/S and the aft/total split) reconverge the
-    # MTOW (~23 s), but both are quantised to a grid (W_S_CACHE_STEP /
-    # S_AFT_CACHE_STEP), so the converged-MTOW cache holds: only the distinct
-    # (W/S, split) grid points pay the reconverge once (~30 W/S x ~5 split, far
-    # fewer in practice), and every other evaluation is cheap (~0.3 s). The healthy
-    # population/generation count is therefore still affordable (the VTOL-OEI
-    # constraint needs the sliding battery near its aft travel, so it benefits).
+    # The converger-coupled levers (W/S, the aft/total split and the tail span)
+    # reconverge the MTOW (~23 s), but all are quantised to a grid (W_S_CACHE_STEP /
+    # S_AFT_CACHE_STEP / B_TAIL_CACHE_STEP), so the converged-MTOW cache holds: only
+    # the distinct (W/S, split, tail) grid points pay the reconverge once, and every
+    # other evaluation is cheap (~0.3 s). Seeding the VTOL battery aft (see
+    # AftBatterySeededSampling) starts the search inside the thin VTOL-OEI feasible
+    # corner instead of hunting for it.
     algorithm = NSGA2(
         pop_size=24,
-        sampling=FloatRandomSampling(),
+        sampling=AftBatterySeededSampling(),
         crossover=SBX(prob=0.9, eta=15),
         mutation=PM(eta=20),
         eliminate_duplicates=True,
     )
 
-    result = minimize(problem, algorithm, termination=("n_gen", 20), seed=1, verbose=True)
+    # Convergence-based termination: stop once the Pareto front stops moving rather
+    # than after a fixed generation count, with a hard generation cap as a safety
+    # bound (see the TERMINATION_* knobs).
+    termination = DefaultMultiObjectiveTermination(
+        ftol=TERMINATION_FTOL,
+        period=TERMINATION_PERIOD,
+        n_max_gen=TERMINATION_MAX_GEN,
+    )
+    result = minimize(problem, algorithm, termination=termination, seed=1, verbose=True)
 
     pareto_x = result.X
     if pareto_x is None:
