@@ -564,6 +564,7 @@ def size_wing(mtow_kg, m_props, wing_geom, thickness):
     thrusters_rw = [(0.0, 0.0, ETA_ROTOR_RW * semi)]
 
     front, aft = wing_geom["front"], wing_geom["aft"]
+    L_v = wing_geom["root_chord_m"] * 0.17
 
     def size_one_semispan(panel, lift_semi, thruster_stations, winglet_reaction, wing_weight_guess):
         root_chord = panel["root_chord_m"]

@@ -829,12 +829,9 @@ wing_length = (WING_SPAN - FuselageGeometry.body_depth_at_wing)/2
 nonhinged_wing_length = 2
 
 
-L_v = 1.2 * 0.17    # [m]
 
 # -- nonfolding wingbox --
 L_h = 1 # [m]
-t_h = 0.001 # [m]
-t_v = 0.003 # [m]
 
 # -- Propellers --
 takeoff_thrust_props = 3450 # [N]
