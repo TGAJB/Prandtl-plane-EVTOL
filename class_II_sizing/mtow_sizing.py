@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from parameters import (
     G, RHO_ORIGIN, A_DISK, V_HOVER, T_ELAPSED_VC, V_AVG_TO,
     FM, POWER_SAFETY_FACTOR, N_MOTOR, N_PROP, N_BLADES,
-    M_PAYLOAD, WINGLET_MASS_FRAC, WingGeometry,
+    M_PAYLOAD, WINGLET_MASS_FRAC, WingGeometry,t_nonfolding
 )
 from class_II_sizing.energy import battery_mass
 from class_II_sizing.mass_components import (
@@ -66,12 +66,12 @@ def compute_mtow(mtow_kg, verbose=True):
     # (MMOI) sees the same (wing, winglet) shape either way. m_wing is the pure
     # wing structure (no winglet); m_winglet is fed to MMOI's tip plates.
     def _analytical_wing_winglet():
-        total = wing_mass(mtow_kg, wing_geom, m_props, thickness)
+        total = wing_mass(mtow_kg, wing_geom)
         return (1.0 - WINGLET_MASS_FRAC) * total, WINGLET_MASS_FRAC * total
 
     if USE_DETAILED_WING_SIZING:
         try:
-            m_wing, m_winglet = size_wing(mtow_kg, m_props, wing_geom)
+            m_wing, m_winglet = size_wing(mtow_kg, wing_geom, m_props, t_nonfolding)
             if not (np.isfinite(m_wing) and np.isfinite(m_winglet)) or m_wing <= 0.0 or m_wing > 0.6 * mtow_kg:
                 raise ValueError(f"implausible size_wing result ({m_wing:.1f} kg)")
         except Exception as exc:  # never let wing sizing break the converger/optimiser
