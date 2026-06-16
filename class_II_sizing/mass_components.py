@@ -471,8 +471,9 @@ def _size_wing_panel_structure(x, moment, panel_area, root_chord, struct_span):
     stringers_mass = Stringer_A * num_of_stringers_RW * struct_span * RHO_STRINGER   # aluminium
     return (skin_mass + Ibeam_mass + ribs_mass + stringers_mass), overstressed
 
-def calculate_torsion_nonfolding_wing(prop_weight_each, thruster_stations, thickness):
-
+def calculate_torsion_nonfolding_wing(prop_weight_each, thruster_stations, thickness, L_v):
+    # L_v (vertical wingbox dimension) is defined locally in size_wing and handed in
+    # here so the twist uses that same value; it is NOT a module global.
     folding_wing_length = wing_length - nonhinged_wing_length
     thrust = takeoff_thrust_props
 
@@ -512,7 +513,6 @@ def calculate_torsion_nonfolding_wing(prop_weight_each, thruster_stations, thick
         return wing_planform
 
     wing_planform = generate_wing(folding_wing_length, 0, 120, takeoff_thrust_props)
-    wing_planform.plot_wing()
 
     wing_planform.discretize()
     rx = wing_planform.create_loading_diagram(force_direction="x", path_direction="z")
@@ -540,13 +540,22 @@ def calculate_torsion_nonfolding_wing(prop_weight_each, thruster_stations, thick
 
     return twist_angle
 
-def size_wing(mtow_kg, wing_geom, m_props, thickness):
-    """Detailed structural mass of BOTH box-wings and the two winglets [kg].
+def size_wing(mtow_kg, wing_geom, m_props, thickness=None):
+    """Detailed structural mass + structural FEASIBILITY of BOTH box-wings and the
+    two winglets.
 
-    Returns (wing_structural_mass_kg, winglet_mass_kg) for the WHOLE aircraft
-    (both semi-spans of both wings; both winglets), driven by the live planform
-    wing_geom = wing_geometry(mtow_kg). See the section header for the changes made
-    when moving this here from hinge_loading."""
+    Returns (wing_structural_mass_kg, winglet_mass_kg, feasible, wing_margin) for the
+    WHOLE aircraft (both semi-spans of both wings; both winglets), driven by the live
+    planform wing_geom = wing_geometry(mtow_kg). `feasible` is True only if NO panel is
+    bending-overstressed AND the non-folding wingbox torsional twist stays below
+    MAX_TWIST_NONFOLDING_DEG; `wing_margin` is a continuous severity (<=0 iff feasible).
+
+    thickness = non-folding wingbox skin thickness [m]; defaults to the LIVE module
+    global t_nonfolding so the optimiser can override it via setattr on this module
+    (exactly like WING_LOADING_N / S_AFT_TO_S_TOTAL). See the section header for the
+    changes made when moving this here from hinge_loading."""
+    if thickness is None:
+        thickness = t_nonfolding
     g = G
     semi = (wing_geom["span_m"] - FuselageGeometry.body_depth_at_wing) / 2.0
     speed_ratio = vmax / V_CRUISE
@@ -609,8 +618,6 @@ def size_wing(mtow_kg, wing_geom, m_props, thickness):
     m_winglet = 20.0
     over_fw = over_rw = False
 
-    calculate_torsion_nonfolding_wing(m_props)
-
     for _ in range(12):
         m_winglet_new, react_fw, react_rw = size_winglet(front["root_chord_m"], tip_lift_fw, tip_lift_rw)
         react_vec_fw = (0.0, m_winglet_new * g / 2.0, react_fw * speed_ratio ** 2)
@@ -632,13 +639,24 @@ def size_wing(mtow_kg, wing_geom, m_props, thickness):
     wing_struct_total = 2.0 * (m_fw + m_rw)   # both semi-spans of both wings
     winglet_total = 2.0 * m_winglet           # two winglets
 
-    ### Tortion at nonfolding wing
-    torsionfw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_fw, thickness)
-    torsionrw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_rw, thickness)
+    ### Tortion at nonfolding wing (twist in radians; L_v is size_wing's local value)
+    torsionfw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_fw, thickness, L_v)
+    torsionrw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_rw, thickness, L_v)
 
+    # Structural feasibility: NO bending overstress AND torsional twist within limit.
+    # wing_margin is continuous and <=0 iff feasible (the twist term lets the optimiser
+    # tune t_nonfolding; bending contributes a binary penalty since it is governed by
+    # other design vars). Mirrors the "g <= 0 means OK" convention the optimiser uses.
+    twist_allow = math.radians(MAX_TWIST_NONFOLDING_DEG)
+    max_twist = max(abs(torsionfw), abs(torsionrw))
+    bending_ok = not (over_fw or over_rw)
+    feasible = bool(bending_ok and (max_twist < twist_allow))
+    twist_margin = max_twist / twist_allow - 1.0      # continuous; <0 iff twist within limit
+    # Feasible designs keep the continuous (negative) twist margin so the GA can tune
+    # t_nonfolding; a bending overstress forces a positive (infeasible) value.
+    wing_margin = twist_margin if bending_ok else max(twist_margin, 1.0)
 
-
-    return wing_struct_total, winglet_total, torsionfw, torsionrw
+    return wing_struct_total, winglet_total, feasible, wing_margin
 
 #Extra methods for sizing ribs n stuff
 def analyze_cantilever_distributed_load(L, w_func, plot=False, x_eval=None):
@@ -1392,8 +1410,8 @@ def hub_mass(use_fusion=False, m_hub_fusion=None):
 
 # Miscellaneous
 def misc_mass(mtow_kg):
-    return 0.10 * mtow_kg + 32 #kg of the thermal battery management system 
+    return 0.09 * mtow_kg + 32 + 85 #kg of the thermal battery management system (1) and the parachute (2)
 
 
 def hinge_mass(mtow_kg):
-    return 0.05 * mtow_kg
+    return 0.014 * mtow_kg #this is based on what fusion computed for hinge mass as fraction of mtow

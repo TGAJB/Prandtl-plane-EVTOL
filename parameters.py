@@ -833,6 +833,7 @@ nonhinged_wing_length = 2
 # -- nonfolding wingbox --
 L_h = 1 # [m]
 t_nonfolding = 0.001
+MAX_TWIST_NONFOLDING_DEG = 1.0   # [deg] max allowable non-folding wingbox torsional twist
 
 # -- Propellers --
 takeoff_thrust_props = 3450 # [N]

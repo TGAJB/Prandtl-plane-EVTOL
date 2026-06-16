@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from parameters import (
     G, RHO_ORIGIN, A_DISK, V_HOVER, T_ELAPSED_VC, V_AVG_TO,
     FM, POWER_SAFETY_FACTOR, N_MOTOR, N_PROP, N_BLADES,
-    M_PAYLOAD, WINGLET_MASS_FRAC, WingGeometry,t_nonfolding
+    M_PAYLOAD, WINGLET_MASS_FRAC, WingGeometry,
 )
 from class_II_sizing.energy import battery_mass
 from class_II_sizing.mass_components import (
@@ -69,17 +69,20 @@ def compute_mtow(mtow_kg, verbose=True):
         total = wing_mass(mtow_kg, wing_geom)
         return (1.0 - WINGLET_MASS_FRAC) * total, WINGLET_MASS_FRAC * total
 
+    # NO analytical fallback on the detailed path: when the detailed sizing reports the
+    # wing infeasible (bending overstress OR torsional twist over the limit) we carry a
+    # wing_feasible flag up so the convergence loop can STOP and report it (and the
+    # optimiser can read it as a constraint). t_nonfolding is read LIVE inside size_wing
+    # from the mass_components module global, so the optimiser override flows through.
     if USE_DETAILED_WING_SIZING:
-        try:
-            m_wing, m_winglet = size_wing(mtow_kg, wing_geom, m_props, t_nonfolding)
-            if not (np.isfinite(m_wing) and np.isfinite(m_winglet)) or m_wing <= 0.0 or m_wing > 0.6 * mtow_kg:
-                raise ValueError(f"implausible size_wing result ({m_wing:.1f} kg)")
-        except Exception as exc:  # never let wing sizing break the converger/optimiser
-            if verbose:
-                print(f"  [size_wing fallback -> analytical wing_mass: {exc}]")
-            m_wing, m_winglet = _analytical_wing_winglet()
+        m_wing, m_winglet, wing_feasible, wing_margin = size_wing(mtow_kg, wing_geom, m_props)
+        if not (np.isfinite(m_wing) and np.isfinite(m_winglet)) or m_wing <= 0.0 or m_wing > 0.6 * mtow_kg:
+            # Implausible result is treated as infeasible, NOT silently swapped for the
+            # analytical mass; the flag (not a fallback) is what propagates.
+            wing_feasible, wing_margin = False, max(wing_margin, 1.0)
     else:
         m_wing, m_winglet = _analytical_wing_winglet()
+        wing_feasible, wing_margin = True, -1.0
 
     m_batt = battery_mass(mtow_kg)
     m_misc = misc_mass(mtow_kg)
@@ -148,6 +151,8 @@ def compute_mtow(mtow_kg, verbose=True):
         "hinge": m_hinge,
         "wing_geom": wing_geom,
         "max_power_kw": max_power_kw,
+        "wing_feasible": wing_feasible,
+        "wing_margin": wing_margin,
     }
 
 
@@ -157,11 +162,22 @@ def _solve_converged_mass(verbose=True):
     converged = False
     final_breakdown = None
 
+    wing_feasible = True
+
     while True:
         breakdown = compute_mtow(guess, verbose=verbose)
         guess_new = breakdown["mtow"]
         final_breakdown = breakdown
+        wing_feasible = breakdown["wing_feasible"]
         count += 1
+
+        # Detailed wing sizing infeasible (bending overstress or torsional twist over
+        # the limit): STOP the convergence and report it rather than iterating to a
+        # mass that the structure cannot actually carry.
+        if not wing_feasible:
+            if verbose:
+                print("Wing structurally infeasible - stopping convergence.")
+            break
 
         if guess_new > BOUND_HIGH or guess_new < BOUND_LOW:
             if verbose:
@@ -214,6 +230,9 @@ def _solve_converged_mass(verbose=True):
         "hinge": final_breakdown["hinge"],
         "wing_geom": wing_sizing_final,
         "max_power_kw": final_breakdown["max_power_kw"],
+        "wing_feasible": wing_feasible,
+        "wing_margin": final_breakdown["wing_margin"],
+        "feasible": wing_feasible,
     }
 
 

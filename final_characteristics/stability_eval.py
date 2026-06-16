@@ -107,19 +107,28 @@ from final_characteristics.aero_model import apply_vlm_aero
 _MTOW_CACHE = {}
 
 
-def converged_mtow(geometry_overrides):
-    """Return the converged MTOW [kg] for the given converger-geometry overrides.
+def converged_state(geometry_overrides):
+    """Return {"mtow", "wing_feasible", "wing_margin"} for the given converger-geometry
+    overrides.
 
     geometry_overrides maps a class_II_sizing.mass_components module-global name
     to its value (e.g. {"WING_LOADING_N": 820.0}). Empty -> the cached baseline
-    MTOW.
+    state.
 
     We temporarily set the mass_components globals and call the converger's
     private _solve_converged_mass(), which does NOT touch the module-level cache
-    that load_final_design_state() reads, then restore the globals.
+    that load_final_design_state() reads, then restore the globals. wing_feasible /
+    wing_margin come from the detailed wing sizing (bending + non-folding torsion):
+    wing_margin <= 0 iff feasible, so the optimiser can use it directly as a
+    "g <= 0 means OK" constraint.
     """
     if not geometry_overrides:
-        return load_final_design_state(force_recompute=False)["mtow"]
+        state = load_final_design_state(force_recompute=False)
+        return {
+            "mtow": state["mtow"],
+            "wing_feasible": state.get("wing_feasible", True),
+            "wing_margin": state.get("wing_margin", -1.0),
+        }
 
     key = tuple(sorted((name, round(value, 3)) for name, value in geometry_overrides.items()))
     if key in _MTOW_CACHE:
@@ -130,13 +139,23 @@ def converged_mtow(geometry_overrides):
         for name, value in geometry_overrides.items():
             setattr(mass_components, name, value)
         state = mtow_sizing._solve_converged_mass(verbose=False)
-        mtow = state["mtow"]
+        result = {
+            "mtow": state["mtow"],
+            "wing_feasible": state.get("wing_feasible", True),
+            "wing_margin": state.get("wing_margin", -1.0),
+        }
     finally:
         for name, value in saved.items():
             setattr(mass_components, name, value)
 
-    _MTOW_CACHE[key] = mtow
-    return mtow
+    _MTOW_CACHE[key] = result
+    return result
+
+
+def converged_mtow(geometry_overrides):
+    """Return the converged MTOW [kg] only (thin wrapper over converged_state, kept so
+    existing float-returning callers are unaffected)."""
+    return converged_state(geometry_overrides)["mtow"]
 
 
 # ===========================================================================

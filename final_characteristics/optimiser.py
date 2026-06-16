@@ -61,6 +61,7 @@ for _path in (PROJECT_ROOT, VEHICLE_DYNAMICS_DIR):
 from final_characteristics.stability_eval import (
     REQUIREMENT_NAMES,
     converged_mtow,
+    converged_state,          # {mtow, wing_feasible, wing_margin} from the detailed wing sizing
     evaluate_stability,
     _nominal_margin_scales,   # per-requirement |baseline margin| scales (shared with the objective)
 )
@@ -126,6 +127,13 @@ S_AFT_CACHE_STEP = 0.05   # [-] aft/total-split quantisation grid (caches the re
 # -> MTOW; see COUPLE_TAIL_MASS), so it likewise reconverges the MTOW. Quantise it
 # to a grid so the converged-MTOW cache holds across the (W/S, split, tail) key.
 B_TAIL_CACHE_STEP = 0.02   # [m] vertical-tail-span quantisation grid (caches the reconverge)
+# The non-folding wingbox thickness t_nonfolding is a pure FEASIBILITY lever (it sets
+# the torsional twist of the non-folding wing, checked against MAX_TWIST_NONFOLDING_DEG
+# in size_wing); it does NOT change MTOW. It is still part of the converger cache key
+# (size_wing reads it live), so quantise it to a 1 mm grid to cap the distinct
+# reconverges to the 6 values across its [1 mm, 6 mm] range.
+T_NONFOLD_CACHE_STEP = 0.001   # [m] non-folding-thickness quantisation grid
+_TNONFOLD_BOUNDS = (0.001, 0.006)   # [m] = [1 mm, 6 mm]
 # Hover-sized installed power [W] (baseline) -- reference for the matching-diagram
 # power-feasibility constraint. It is ~7x the cruise/climb requirement and grows
 # only weakly with MTOW, so the baseline value is an adequate, documented constant.
@@ -163,6 +171,15 @@ def _quantize_b_tail(b_tail):
     reported MTOW exactly when its tail span is baked back into the sheet."""
     q = round(b_tail / B_TAIL_CACHE_STEP) * B_TAIL_CACHE_STEP
     return min(max(q, _B_TAIL_BOUNDS[0]), _B_TAIL_BOUNDS[1])
+
+
+def _quantize_t_nonfolding(t):
+    """Snap the non-folding wingbox thickness to the cache grid (mirrors
+    _quantize_wing_loading). t_nonfolding does not change MTOW but is part of the
+    converger cache key (size_wing reads it live for the torsion feasibility check),
+    so quantising caps the distinct reconverges to its 6 grid points."""
+    q = round(t / T_NONFOLD_CACHE_STEP) * T_NONFOLD_CACHE_STEP
+    return min(max(q, _TNONFOLD_BOUNDS[0]), _TNONFOLD_BOUNDS[1])
 
 # Couple the vertical-tail span to the MTOW converger (tail mass)? ON: b_vert_tail
 # is the one layout lever with a real MASS effect, so leaving it off made the
@@ -255,6 +272,12 @@ DESIGN_VARIABLES = {
     # mass_components.S_AFT_TO_S_TOTAL so the per-wing STRUCTURAL mass -> MTOW
     # responds too. Range +/-0.10 around the equal-area baseline (Prandtl-valid).
     "s_aft_to_s_total": {"bounds": _S_AFT_BOUNDS,      "route": "design_var:s_aft_to_s_total",         "converger": "S_AFT_TO_S_TOTAL"},
+    # non-folding wingbox skin thickness t_nonfolding [m], [1 mm, 6 mm]. CONVERGER-ONLY
+    # (route kind "converger"): it touches neither the aero/stability params nor the
+    # MTOW mass build-up -- it only sets the non-folding torsional twist that size_wing
+    # checks against MAX_TWIST_NONFOLDING_DEG. The wing-feasibility constraint (see
+    # DesignProblem._evaluate) is what gives the optimiser a reason to tune it.
+    "t_nonfolding":   {"bounds": _TNONFOLD_BOUNDS,     "route": "converger:t_nonfolding",              "converger": "t_nonfolding"},
 }
 DESIGN_VARIABLE_NAMES = list(DESIGN_VARIABLES.keys())
 
@@ -274,6 +297,7 @@ def default_design_vector():
         "b_vert_tail":   1.6,
         "design_point":  _p.WING_LOADING_N,   # current sheet W/S (760)
         "s_aft_to_s_total": _S_AFT_BASELINE,  # current equal-area split (0.5)
+        "t_nonfolding":  _p.t_nonfolding,     # current non-folding wingbox thickness (1 mm)
     }
 
 
@@ -300,6 +324,8 @@ def evaluate_design(design_vars=None):
         design_vars["s_aft_to_s_total"] = _quantize_s_aft(design_vars["s_aft_to_s_total"])
     if "b_vert_tail" in design_vars:
         design_vars["b_vert_tail"] = _quantize_b_tail(design_vars["b_vert_tail"])
+    if "t_nonfolding" in design_vars:
+        design_vars["t_nonfolding"] = _quantize_t_nonfolding(design_vars["t_nonfolding"])
 
     # Split the design vars by where they go.
     param_overrides = {}
@@ -310,8 +336,10 @@ def evaluate_design(design_vars=None):
         kind, key = spec["route"].split(":", 1)
         if kind == "design_var":
             stability_design_vars[key] = value
-        else:  # "override"
+        elif kind == "override":
             param_overrides[key] = value
+        # kind == "converger": no stability/param route; it only feeds the converger
+        # below via spec["converger"] (e.g. t_nonfolding -> feasibility, not MTOW).
         if spec["converger"]:
             geometry_overrides[spec["converger"]] = value
 
@@ -326,8 +354,9 @@ def evaluate_design(design_vars=None):
         geometry_overrides["S_TAIL"] = s_tail
         geometry_overrides["AR_T"] = b * b / s_tail
 
-    # 1) Converged MTOW (responds to converger-coupled geometry vars).
-    mtow = converged_mtow(geometry_overrides)
+    # 1) Converged MTOW + detailed-wing feasibility (respond to converger-coupled vars).
+    state = converged_state(geometry_overrides)
+    mtow = state["mtow"]
 
     # 2) Stability requirements at that MTOW with the overrides applied.
     results = evaluate_stability(
@@ -336,6 +365,12 @@ def evaluate_design(design_vars=None):
         mtow=mtow,
     )
     results["design_vars"] = design_vars
+    # Carry the structural wing feasibility through so DesignProblem can turn it into a
+    # constraint (wing_margin <= 0 means feasible) and the report can show it. A
+    # wing-infeasible design is never "accepted" (folds into the Phase-1 accept test).
+    results["wing_feasible"] = state["wing_feasible"]
+    results["wing_margin"] = state["wing_margin"]
+    results["accepted"] = bool(results.get("accepted", False) and state["wing_feasible"])
     return results
 
 
@@ -352,6 +387,9 @@ def print_design_report(results):
         print(f"    {name:18s}: {status}   (margin {results['margins'][name]:+.4f})")
     print(f"  Worst normalised margin (robustness): {results['worst_margin']:+.4f}  "
           f"(<=0 = all met with slack; ~-1 = baseline slack)")
+    print(f"  Wing structure (bending+torsion): "
+          f"{'FEASIBLE' if results.get('wing_feasible', True) else 'INFEASIBLE'}  "
+          f"(margin {results.get('wing_margin', -1.0):+.4f}, <=0 = OK)")
     print(f"  Overall: {'ACCEPTED' if results['accepted'] else 'REJECTED'}")
     print("-" * 64)
 
@@ -381,9 +419,10 @@ class DesignProblem(Problem):
                      magnitude, so robustness tracks RELATIVE slack) is the second
                      objective -> a real Pareto trade of mass against stability slack.
     n_constr = stability requirements + 2 matching-diagram feasibility constraints
-               (cruise/climb power, cruise CL); all in pymoo's "g <= 0 = OK" form,
-               all normalised to ~O(1) so the constraint-violation pull is balanced
-               across requirements (see _evaluate)
+               (cruise/climb power, cruise CL) + 1 wing-structure feasibility
+               constraint (bending + non-folding torsion, driven by t_nonfolding);
+               all in pymoo's "g <= 0 = OK" form, all normalised to ~O(1) so the
+               constraint-violation pull is balanced across requirements (see _evaluate)
     xl / xu  = bounds from DESIGN_VARIABLES
     """
 
@@ -393,7 +432,7 @@ class DesignProblem(Problem):
         super().__init__(
             n_var=len(DESIGN_VARIABLE_NAMES),
             n_obj=2,                          # (MTOW, worst-case stability margin)
-            n_constr=len(REQUIREMENT_NAMES) + 2,   # + matching-diagram power & CL
+            n_constr=len(REQUIREMENT_NAMES) + 3,   # + matching-diagram power & CL + wing structure
             xl=np.array(lower),
             xu=np.array(upper),
         )
@@ -441,9 +480,15 @@ class DesignProblem(Problem):
             w_s = results["design_vars"]["design_point"]
             g_power = (_md.required_power_W(w_s, results["mtow"]) - _P_INSTALLED_W) / _P_INSTALLED_W
             g_cl = (_md.cruise_lift_coefficient(w_s) - _p.CL_MAX_OPERATIONAL) / _p.CL_MAX_OPERATIONAL
+            #   - the wing-structure feasibility constraint from the detailed sizing:
+            #     g_wing = results["wing_margin"], already <=0 iff the wing is feasible
+            #     (no bending overstress AND non-folding torsional twist within
+            #     MAX_TWIST_NONFOLDING_DEG). The twist term is continuous in t_nonfolding,
+            #     so it gives the GA a gradient to tune the thickness toward feasibility.
+            g_wing = results["wing_margin"]
             constraint_rows.append(
                 [results["margins"][name] / scales[name] for name in REQUIREMENT_NAMES]
-                + [g_power, g_cl]
+                + [g_power, g_cl, g_wing]
             )
 
         out["F"] = np.array(objective_rows)
