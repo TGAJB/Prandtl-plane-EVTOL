@@ -66,7 +66,7 @@ def compute_mtow(mtow_kg, verbose=True):
     # (MMOI) sees the same (wing, winglet) shape either way. m_wing is the pure
     # wing structure (no winglet); m_winglet is fed to MMOI's tip plates.
     def _analytical_wing_winglet():
-        total = wing_mass(mtow_kg, wing_geom)
+        total = wing_mass(mtow_kg, wing_geom, m_props, thickness)
         return (1.0 - WINGLET_MASS_FRAC) * total, WINGLET_MASS_FRAC * total
 
     if USE_DETAILED_WING_SIZING:
