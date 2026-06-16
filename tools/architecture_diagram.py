@@ -311,10 +311,10 @@ def build_pipeline_model() -> GModel:
     N("in_match", "Matching diagram\\nW/S range, power & CL limits", "src")
 
     # Optimiser
-    N("opt_vars", "Tunes 7 design variables:\\nfront-wing position & height /\\nwing loading (W/S) /\\naft-total area split /\\nvertical-tail span /\\ncruise & VTOL battery position", "opt")
-    N("opt_main", "NSGA-II population search\\nevolves designs toward the best\\nmass-stability trade-off", "opt",
+    N("opt_vars", "Searches 7 design variables:\\nfront-wing fore/aft (x_LEMAC_fw) /\\nfront-wing height (z_w_fw) /\\nwing loading (W/S) /\\naft-total area split (S_aw/S_tot) /\\nvertical-tail span (b_vtail) /\\ncruise battery x / VTOL battery x", "opt")
+    N("opt_main", "NSGA-II population search\\nObjective functions:\\nminimise mass (MTOW) /\\nmaximise stability (margin)", "opt",
       fill="#eaf5ea", border="#2e7d32", penwidth=2.0)
-    N("opt_out", "Outputs (key values):\\nPareto front (MTOW vs stability) /\\nchosen design + 7 tuned values\\n(written back to the inputs)", "opt")
+    N("opt_out", "Outputs (key values):\\nchosen design + 7 tuned values\\n(written back to the inputs)", "opt")
 
     # MTOW convergence loop
     N("mtow_loop", "Damped fixed-point loop\\nguess weight -> size all parts ->\\nre-sum -> repeat until <1% change", "mtow")
@@ -324,7 +324,7 @@ def build_pipeline_model() -> GModel:
     # Stability evaluation
     N("stab_aero", "Live aero (VLM)\\nlift slope, aero centre &\\ninduced drag from geometry", "stab")
     N("stab_eval", "Stability derivatives +\\ncruise / VTOL c.g. envelopes", "stab")
-    N("stab_con", "Constraints checked:\\nstiffness signs (C_M_alpha<0, C_N_beta>0) /\\ncruise c.g. within limits /\\nVTOL one-engine-out c.g. /\\nwing structurally feasible /\\npower & cruise-CL feasible", "stab")
+    N("stab_con", "Constraints required of the final design:\\nC_Malpha<0, C_Lq>0, C_Mq<0 /\\nC_Ybeta<0, C_Lbeta<0, C_Nbeta>0 /\\nC_Yp<0, C_Lp<0, C_Np<0 /\\nC_Yr>0, C_Lr>0, C_Nr<0 /\\ncruise c.g. within [fwd, aft] /\\nVTOL OEI c.g. within envelope /\\nwing feasible / power & cruise-CL feasible", "stab")
 
     E = model.edges.append
     E(GEdge("in_design", "opt_main", "search bounds"))

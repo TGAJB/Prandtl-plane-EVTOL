@@ -13,9 +13,9 @@ digraph "pipeline_dataflow" {
   }
   subgraph "cluster_opt" {
     label="Optimiser - NSGA-II (pymoo)"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#fde9d9"; fontname="Helvetica-Bold"; fontsize=12;
-    "opt_vars" [label="Tunes 7 design variables:\nfront-wing position & height /\nwing loading (W/S) /\naft-total area split /\nvertical-tail span /\ncruise & VTOL battery position", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "opt_main" [label="NSGA-II population search\nevolves designs toward the best\nmass-stability trade-off", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
-    "opt_out" [label="Outputs (key values):\nPareto front (MTOW vs stability) /\nchosen design + 7 tuned values\n(written back to the inputs)", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "opt_vars" [label="Searches 7 design variables:\nfront-wing fore/aft (x_LEMAC_fw) /\nfront-wing height (z_w_fw) /\nwing loading (W/S) /\naft-total area split (S_aw/S_tot) /\nvertical-tail span (b_vtail) /\ncruise battery x / VTOL battery x", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "opt_main" [label="NSGA-II population search\nObjective functions:\nminimise mass (MTOW) /\nmaximise stability (margin)", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
+    "opt_out" [label="Outputs (key values):\nchosen design + 7 tuned values\n(written back to the inputs)", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
   }
   subgraph "cluster_mtow" {
     label="MTOW convergence loop"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#dbe9fb"; fontname="Helvetica-Bold"; fontsize=12;
@@ -27,7 +27,7 @@ digraph "pipeline_dataflow" {
     label="Stability evaluation"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#d9eef1"; fontname="Helvetica-Bold"; fontsize=12;
     "stab_aero" [label="Live aero (VLM)\nlift slope, aero centre &\ninduced drag from geometry", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
     "stab_eval" [label="Stability derivatives +\ncruise / VTOL c.g. envelopes", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "stab_con" [label="Constraints checked:\nstiffness signs (C_M_alpha<0, C_N_beta>0) /\ncruise c.g. within limits /\nVTOL one-engine-out c.g. /\nwing structurally feasible /\npower & cruise-CL feasible", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "stab_con" [label="Constraints required of the final design:\nC_Malpha<0, C_Lq>0, C_Mq<0 /\nC_Ybeta<0, C_Lbeta<0, C_Nbeta>0 /\nC_Yp<0, C_Lp<0, C_Np<0 /\nC_Yr>0, C_Lr>0, C_Nr<0 /\ncruise c.g. within [fwd, aft] /\nVTOL OEI c.g. within envelope /\nwing feasible / power & cruise-CL feasible", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
   }
   "in_design" -> "opt_main" [color="#888888", label="search bounds"; fontcolor="#888888"];
   "in_match" -> "opt_main" [color="#888888", label="W/S range + feasibility"; fontcolor="#888888"];

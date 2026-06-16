@@ -179,9 +179,9 @@ flowchart LR
     in_match["Matching diagram<br/>W/S range, power & CL limits"]
   end
   subgraph cl_opt["Optimiser - NSGA-II (pymoo)"]
-    opt_vars["Tunes 7 design variables:<br/>front-wing position & height /<br/>wing loading (W/S) /<br/>aft-total area split /<br/>vertical-tail span /<br/>cruise & VTOL battery position"]
-    opt_main["NSGA-II population search<br/>evolves designs toward the best<br/>mass-stability trade-off"]
-    opt_out["Outputs (key values):<br/>Pareto front (MTOW vs stability) /<br/>chosen design + 7 tuned values<br/>(written back to the inputs)"]
+    opt_vars["Searches 7 design variables:<br/>front-wing fore/aft (x_LEMAC_fw) /<br/>front-wing height (z_w_fw) /<br/>wing loading (W/S) /<br/>aft-total area split (S_aw/S_tot) /<br/>vertical-tail span (b_vtail) /<br/>cruise battery x / VTOL battery x"]
+    opt_main["NSGA-II population search<br/>Objective functions:<br/>minimise mass (MTOW) /<br/>maximise stability (margin)"]
+    opt_out["Outputs (key values):<br/>chosen design + 7 tuned values<br/>(written back to the inputs)"]
   end
   subgraph cl_mtow["MTOW convergence loop"]
     mtow_loop["Damped fixed-point loop<br/>guess weight -> size all parts -><br/>re-sum -> repeat until <1% change"]
@@ -191,7 +191,7 @@ flowchart LR
   subgraph cl_stab["Stability evaluation"]
     stab_aero["Live aero (VLM)<br/>lift slope, aero centre &<br/>induced drag from geometry"]
     stab_eval["Stability derivatives +<br/>cruise / VTOL c.g. envelopes"]
-    stab_con["Constraints checked:<br/>stiffness signs (C_M_alpha<0, C_N_beta>0) /<br/>cruise c.g. within limits /<br/>VTOL one-engine-out c.g. /<br/>wing structurally feasible /<br/>power & cruise-CL feasible"]
+    stab_con["Constraints required of the final design:<br/>C_Malpha<0, C_Lq>0, C_Mq<0 /<br/>C_Ybeta<0, C_Lbeta<0, C_Nbeta>0 /<br/>C_Yp<0, C_Lp<0, C_Np<0 /<br/>C_Yr>0, C_Lr>0, C_Nr<0 /<br/>cruise c.g. within [fwd, aft] /<br/>VTOL OEI c.g. within envelope /<br/>wing feasible / power & cruise-CL feasible"]
   end
   in_design -->|search bounds| opt_main
   in_match -->|W/S range + feasibility| opt_main
