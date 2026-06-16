@@ -626,7 +626,7 @@ INERTIA_XZ_TO_XX_RATIO = 0.05  # [-] I_xz as a fraction of I_xx   (dyn_stab_anal
 
 NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing
 AREA_SPLIT          = WingGeometry.S_fw / WingGeometry.S_tot  # [-] front-wing fraction of total area (init sizing seed)
-S_AFT_TO_S_TOTAL    = WingGeometry.S_aw / WingGeometry.S_tot  # [-] aft-wing fraction of total area; design lever (optimiser), drives the front/aft wing-mass split
+S_AFT_TO_S_TOTAL    = 0.55  # [-] aft-wing fraction of total area; design lever (optimiser) that drives the front/aft wing-mass split. Literal (= former S_aw/S_tot seed) so the optimiser can persist its tuned value back here.
 WING_SPAN           = WingGeometry.b_fw          # [m]     span from the footprint constraint
 WING_LOADING_N      = WingGeometry.design_point  # [N/m^2] selected design-point wing loading from matching diagram
 TAPER_W             = WingGeometry.taper_fw      # [-]     wing chord taper ratio (c_tip / c_root)
