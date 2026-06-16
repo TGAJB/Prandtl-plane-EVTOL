@@ -107,7 +107,7 @@ PARAMS = [
     # ---- Roll (dihedral / wing height / sweep) ----
     ("wing_geometry.dihedral_front_wing", 0.0,   6.0,   0.0,   "front-wing dihedral",       "deg",   None),
     ("wing_geometry.dihedral_aft_wing",   0.0,   6.0,   0.0,   "aft-wing dihedral",         "deg",   None),
-    ("wing_geometry.z_w_fw",             -1.0,   0.0,  -0.5,   "front-wing height z",       "m",     None),
+    ("wing_geometry.z_w_fw",             -0.9,  -0.6,  -0.75,  "front-wing height z",       "m",     None),
     ("wing_geometry.LE_sweep_fw",         0.0,  10.0,   0.0,   "front-wing LE sweep",       "deg",   None),
     ("wing_geometry.LE_sweep_aw",         0.0,  10.0,   0.0,   "aft-wing LE sweep",         "deg",   None),
     # ---- Directional (vertical tail / winglet) ----

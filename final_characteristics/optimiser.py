@@ -78,15 +78,10 @@ from class_II_sizing.mtow_sizing import converged_mass as _converged_mass
 
 _WG = _p.WingGeometry()
 _TG = _p.TailGeometry()
-_C_ROOT_FW = _WG.chord_fw_root                     # [m] front-wing root chord
-_Z_GROUND = _p.Z_GEAR                              # [m] skid-bottom datum (centreline frame, z up)
-# Front-wing height above the ground (skid) datum: bounded by (3/4 * root_chord)
-# and (2.4 m - root_chord). Sorted so pymoo gets (low, high); in the body frame
-# this is ~[-0.56, -0.055] m, bracketing the current -0.5 m.
-_ZWFW_BOUNDS = tuple(sorted((
-    _Z_GROUND + 0.75 * _C_ROOT_FW,     # 3/4 root-chord above ground
-    _Z_GROUND + (2.4 - _C_ROOT_FW),    # 2.4 m - root chord above ground
-)))
+# Front-wing height: placement range from the fuselage-centreline datum, set by the
+# fuselage layout (parameters.Z_W_FW_MIN/MAX = [-0.9, -0.6] m, z up, -=below). Sorted
+# so pymoo gets (low, high).
+_ZWFW_BOUNDS = tuple(sorted((_p.Z_W_FW_MIN, _p.Z_W_FW_MAX)))
 # Sliding-battery VTOL station: cruise station back to where the flat-wide box's
 # aft face reaches the fuselage tail (so it stays inside the airframe).
 _BATT_MASS = _converged_mass()["battery"]

@@ -129,7 +129,7 @@ class WingGeometry:
 
     # Wing vertical position relative to body centreline (z positive up,
     # matching the MMOI layout: front wing low, aft wing one gap above it)
-    z_w_fw:               float = -0.2889         # [m]
+    z_w_fw:               float = -0.75           # [m] front-wing height from the centreline datum (z up, -=below); allowed range [Z_W_FW_MIN, Z_W_FW_MAX]
     z_w_aw:               float = z_w_fw + gap  # [m]
 
     x_LEMAC_fw:           float = 0.5982 # [m] front-wing LEMAC, MASTER (optimiser design variable, bounds 0-1.5)
@@ -765,6 +765,13 @@ WING_STAGGER = WingGeometry.stagger      # [m]  longitudinal distance front -> r
 H_GAP_WINGS  = WingGeometry.gap          # [m]  vertical gap between wing planes; tip-plate height
 X_WING_R     = AerodynamicCoefficients.x_ac_aw   # [m]  rear-wing CG station (derived)
 Z_WING_R     = WingGeometry.z_w_aw       # [m]  high rear wing (= z_w_fw + gap)
+
+# Front-wing vertical placement range from the fuselage-centreline datum (z up,
+# negative = below the centreline). Geometric limit from the fuselage layout; used
+# as the optimiser's z_w_fw design-variable bounds. (Comfortably above the skid
+# datum Z_GEAR ~ -1.30 m.)
+Z_W_FW_MIN   = -0.9                       # [m]  lowest front-wing mount
+Z_W_FW_MAX   = -0.6                       # [m]  highest front-wing mount
 WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out for the two
                                          #      vertical tip joiners                      PLACEHOLDER
 # -- Winglets --
