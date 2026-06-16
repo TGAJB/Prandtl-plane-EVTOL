@@ -1,0 +1,845 @@
+final_design output generation -> C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_design\results
+[parameters] design override ACTIVE from C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_design\chosen_design.json -> {'x_LEMAC_fw': 0.17583, 'x_batt_cruise': 1.507148, 'x_batt_vtol': 6.418074, 'z_w_fw': -0.895019, 'b_vert_tail': 1.4, 'design_point': 765.0, 's_aft_to_s_total': 0.6, 't_nonfolding': 0.005}
+
+========================================================================
+MASS & MTOW (class_II_sizing.mtow_sizing)
+========================================================================
+[Fusion] Single blade mass loaded: 1.4635 kg
+[Fusion] Single hub mass loaded:   6.9534 kg
+         Source: C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\fusion\geometry.json
+
+  Fuselage        : 141.78 kg
+  Wing  [detailed size_wing]: 306.44 kg
+  Winglet         : 28.58 kg
+    Wing area     : 41.68 m^2
+    Wing AR       : 4.06
+    Root / tip / mean c (MAC): 2.21 / 0.99 / 1.68 m
+  Landing gear    : 47.01 kg
+    Root / tip c  : 2.21 / 0.99 m
+  Landing gear    : 47.01 kg  [E elastomeric]
+                     params={'kb': np.float64(181007.30747), 'dm': np.float64(0.19881), 'loss': np.float64(0.56022)}  (score 0.850)
+  Tail            : 23.11 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 889.21 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 409.50 kg
+  Hinge           : 45.50 kg
+  ---------------------------------
+  MTOW estimate   : 2596.31 kg
+
+
+  Fuselage        : 137.99 kg
+  Wing  [detailed size_wing]: 278.11 kg
+  Winglet         : 27.45 kg
+    Wing area     : 37.49 m^2
+    Wing AR       : 4.51
+    Root / tip / mean c (MAC): 1.99 / 0.89 / 1.51 m
+  Landing gear    : 45.58 kg
+    Root / tip c  : 1.99 / 0.89 m
+  Landing gear    : 45.58 kg  [E elastomeric]
+                     params={'kb': np.float64(163237.01694), 'dm': np.float64(0.19847), 'loss': np.float64(0.51149)}  (score 0.850)
+  Tail            : 22.52 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 793.94 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 380.08 kg
+  Hinge           : 40.92 kg
+  ---------------------------------
+  MTOW estimate   : 2431.76 kg
+
+
+  Fuselage        : 135.09 kg
+  Wing  [detailed size_wing]: 256.80 kg
+  Winglet         : 25.92 kg
+    Wing area     : 34.33 m^2
+    Wing AR       : 4.92
+    Root / tip / mean c (MAC): 1.82 / 0.82 / 1.38 m
+  Landing gear    : 44.44 kg
+    Root / tip c  : 1.82 / 0.82 m
+  Landing gear    : 44.44 kg  [E elastomeric]
+                     params={'kb': np.float64(147745.50312), 'dm': np.float64(0.2), 'loss': np.float64(0.49564)}  (score 1.000)
+  Tail            : 22.08 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 730.43 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 357.97 kg
+  Hinge           : 37.48 kg
+  ---------------------------------
+  MTOW estimate   : 2315.37 kg
+
+
+  Fuselage        : 132.93 kg
+  Wing  [detailed size_wing]: 241.07 kg
+  Winglet         : 24.79 kg
+    Wing area     : 32.01 m^2
+    Wing AR       : 5.28
+    Root / tip / mean c (MAC): 1.70 / 0.76 / 1.29 m
+  Landing gear    : 43.67 kg
+    Root / tip c  : 1.70 / 0.76 m
+  Landing gear    : 43.67 kg  [E elastomeric]
+                     params={'kb': np.float64(138982.08075), 'dm': np.float64(0.19886), 'loss': np.float64(0.59875)}  (score 0.850)
+  Tail            : 21.75 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 666.91 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 341.68 kg
+  Hinge           : 34.95 kg
+  ---------------------------------
+  MTOW estimate   : 2212.92 kg
+
+
+  Fuselage        : 131.22 kg
+  Wing  [detailed size_wing]: 228.75 kg
+  Winglet         : 23.91 kg
+    Wing area     : 30.20 m^2
+    Wing AR       : 5.60
+    Root / tip / mean c (MAC): 1.60 / 0.72 / 1.22 m
+  Landing gear    : 43.01 kg
+    Root / tip c  : 1.60 / 0.72 m
+  Landing gear    : 43.01 kg  [E elastomeric]
+                     params={'kb': np.float64(129933.3689), 'dm': np.float64(0.2), 'loss': np.float64(0.44143)}  (score 0.850)
+  Tail            : 21.50 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 635.15 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 328.92 kg
+  Hinge           : 32.97 kg
+  ---------------------------------
+  MTOW estimate   : 2150.60 kg
+
+
+  Fuselage        : 129.99 kg
+  Wing  [detailed size_wing]: 220.57 kg
+  Winglet         : 23.27 kg
+    Wing area     : 28.89 m^2
+    Wing AR       : 5.85
+    Root / tip / mean c (MAC): 1.53 / 0.69 / 1.16 m
+  Landing gear    : 42.56 kg
+    Root / tip c  : 1.53 / 0.69 m
+  Landing gear    : 42.56 kg  [E elastomeric]
+                     params={'kb': np.float64(124302.97558), 'dm': np.float64(0.2), 'loss': np.float64(0.54944)}  (score 0.850)
+  Tail            : 21.31 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 603.40 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 319.74 kg
+  Hinge           : 31.54 kg
+  ---------------------------------
+  MTOW estimate   : 2097.54 kg
+
+
+  Fuselage        : 129.06 kg
+  Wing  [detailed size_wing]: 213.80 kg
+  Winglet         : 23.69 kg
+    Wing area     : 27.89 m^2
+    Wing AR       : 6.06
+    Root / tip / mean c (MAC): 1.48 / 0.67 / 1.12 m
+  Landing gear    : 42.22 kg
+    Root / tip c  : 1.48 / 0.67 m
+  Landing gear    : 42.22 kg  [E elastomeric]
+                     params={'kb': np.float64(120024.14718), 'dm': np.float64(0.2), 'loss': np.float64(0.40622)}  (score 1.000)
+  Tail            : 21.17 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 571.64 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 312.76 kg
+  Hinge           : 30.45 kg
+  ---------------------------------
+  MTOW estimate   : 2049.95 kg
+
+
+  Fuselage        : 128.30 kg
+  Wing  [detailed size_wing]: 209.00 kg
+  Winglet         : 23.30 kg
+    Wing area     : 27.09 m^2
+    Wing AR       : 6.24
+    Root / tip / mean c (MAC): 1.44 / 0.65 / 1.09 m
+  Landing gear    : 41.94 kg
+    Root / tip c  : 1.44 / 0.65 m
+  Landing gear    : 41.94 kg  [E elastomeric]
+                     params={'kb': np.float64(116571.54556), 'dm': np.float64(0.2), 'loss': np.float64(0.44143)}  (score 0.670)
+  Tail            : 21.06 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 571.64 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 307.13 kg
+  Hinge           : 29.58 kg
+  ---------------------------------
+  MTOW estimate   : 2037.11 kg
+
+
+  Fuselage        : 127.84 kg
+  Wing  [detailed size_wing]: 205.68 kg
+  Winglet         : 23.07 kg
+    Wing area     : 26.61 m^2
+    Wing AR       : 6.35
+    Root / tip / mean c (MAC): 1.41 / 0.64 / 1.07 m
+  Landing gear    : 41.78 kg
+    Root / tip c  : 1.41 / 0.64 m
+  Landing gear    : 41.78 kg  [E elastomeric]
+                     params={'kb': np.float64(114490.89461), 'dm': np.float64(0.2), 'loss': np.float64(0.44143)}  (score 1.000)
+  Tail            : 20.99 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 539.88 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 303.73 kg
+  Hinge           : 29.05 kg
+  ---------------------------------
+  MTOW estimate   : 1997.19 kg
+
+
+  Fuselage        : 127.38 kg
+  Wing  [detailed size_wing]: 201.69 kg
+  Winglet         : 22.82 kg
+    Wing area     : 26.11 m^2
+    Wing AR       : 6.47
+    Root / tip / mean c (MAC): 1.39 / 0.62 / 1.05 m
+  Landing gear    : 41.60 kg
+    Root / tip c  : 1.39 / 0.62 m
+  Landing gear    : 41.60 kg  [E elastomeric]
+                     params={'kb': np.float64(112349.13139), 'dm': np.float64(0.2), 'loss': np.float64(0.59794)}  (score 0.850)
+  Tail            : 20.92 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 539.88 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 300.24 kg
+  Hinge           : 28.50 kg
+  ---------------------------------
+  MTOW estimate   : 1988.21 kg
+
+
+  Fuselage        : 127.09 kg
+  Wing  [detailed size_wing]: 199.60 kg
+  Winglet         : 22.68 kg
+    Wing area     : 25.80 m^2
+    Wing AR       : 6.55
+    Root / tip / mean c (MAC): 1.37 / 0.62 / 1.04 m
+  Landing gear    : 41.50 kg
+    Root / tip c  : 1.37 / 0.62 m
+  Landing gear    : 41.50 kg  [E elastomeric]
+                     params={'kb': np.float64(111032.09202), 'dm': np.float64(0.2), 'loss': np.float64(0.58453)}  (score 1.000)
+  Tail            : 20.88 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 539.88 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 298.09 kg
+  Hinge           : 28.17 kg
+  ---------------------------------
+  MTOW estimate   : 1983.05 kg
+
+
+  Fuselage        : 126.91 kg
+  Wing  [detailed size_wing]: 198.32 kg
+  Winglet         : 22.58 kg
+    Wing area     : 25.62 m^2
+    Wing AR       : 6.60
+    Root / tip / mean c (MAC): 1.36 / 0.61 / 1.03 m
+  Landing gear    : 41.44 kg
+    Root / tip c  : 1.36 / 0.61 m
+  Landing gear    : 41.44 kg  [E elastomeric]
+                     params={'kb': np.float64(110229.30651), 'dm': np.float64(0.2), 'loss': np.float64(0.44143)}  (score 0.850)
+  Tail            : 20.85 kg
+  Motors          : 32.20 kg/motor  (6 motors)
+  Blades [Fusion    ]: 70.25 kg  (6 rotors x 8 blades)
+  Hubs   [Fusion    ]: 41.72 kg  (6 rotors)
+  Battery         : 539.88 kg
+  Payload         : 400.00 kg
+  Miscellaneous   : 296.78 kg
+  Hinge           : 27.97 kg
+  ---------------------------------
+  MTOW estimate   : 1979.90 kg
+
+Converged in 12 iterations.  Final MTOW: 1979.90 kg
+  Blade source : Fusion 360 | single blade 1.4635 kg | total 70.25 kg
+  Hub source   : Fusion 360 | single hub 6.9534 kg | total 41.72 kg
+
+========================================================================
+INERTIA & C.G. (class_II_sizing.MMOI)
+========================================================================
+
+Component          m [kg]      x       y      z      dIxx      dIyy      dIzz
+--------------------------------------------------------------------------------
+fuselage            126.9   3.15    0.00   0.00     134.4     179.6     172.1
+wing_front           79.3   1.60    0.00  -0.90    1151.1     134.4    1217.7
+wing_rear           119.0   6.65    0.00   1.20    1925.7    2121.8    3547.8
+tip_plate_stbd       11.3   4.12    6.50   0.15     483.0      29.2     500.4
+tip_plate_port       11.3   4.12   -6.50   0.15     483.0      29.2     500.4
+tail_stbd            10.4   6.40    0.61   0.97      20.8     160.1     149.9
+tail_port            10.4   6.40   -0.61   0.97      20.8     160.1     149.9
+pod_fw_in_stbd       43.8   0.80    1.95  -0.90     185.2     176.8     324.8
+prop_fw_in_stbd      11.7   0.80    1.95  -0.90      52.1      49.9      92.1
+pod_fw_in_port       43.8   0.80   -1.95  -0.90     185.2     176.8     324.8
+prop_fw_in_port      11.7   0.80   -1.95  -0.90      52.1      49.9      92.1
+pod_fw_out_stbd      43.8   0.80    4.55  -0.90     925.7     176.8    1065.2
+prop_fw_out_stbd     11.7   0.80    4.55  -0.90     250.0      49.9     289.9
+pod_fw_out_port      43.8   0.80   -4.55  -0.90     925.7     176.8    1065.2
+prop_fw_out_port     11.7   0.80   -4.55  -0.90     250.0      49.9     289.9
+pod_rw_stbd          43.8   5.85    3.25   1.20     554.6     526.6     897.6
+prop_rw_stbd         11.7   5.85    3.25   1.20     150.8     143.4     245.1
+pod_rw_port          43.8   5.85   -3.25   1.20     554.6     526.6     897.6
+prop_rw_port         11.7   5.85   -3.25   1.20     150.8     143.4     245.1
+battery             539.9   1.51    0.00  -0.70     206.5     930.8     900.6
+payload             400.0   2.70    0.00  -0.20     114.1     182.1     198.7
+gear_rail_stbd       20.7   3.50    1.45  -1.30      66.7      72.2      92.6
+gear_rail_port       20.7   3.50   -1.45  -1.30      66.7      72.2      92.6
+misc                296.8   3.15    0.00   0.00     165.9     345.7     328.2
+--------------------------------------------------------------------------------
+TOTAL              1979.9                          9076.0    6664.0   13680.1
+
+CG (nose datum, z up) : x = 2.700 m, y = 0.000 m, z = -0.243 m
+Ixx = 9076, Iyy = 6664, Izz = 13680, Ixz = 1931 kg m^2
+Gyradii: R_x = 0.329 (b/2 ref), R_y = 1.310 ((L_fus*FAT_CYLINDER_SECTION)/2 ref)
+
+========================================================================
+STABILITY & C.G. ENVELOPES (final_characteristics.stability_eval)
+========================================================================
+  requirements passing: 16/16   accepted=True   worst_margin=-1.0
+
+========================================================================
+MATCHING DIAGRAM (final_characteristics.matching_diagram)
+========================================================================
+  feasible W/S window: [459.4, 765.6] N/m^2
+
+========================================================================
+FULL PARAMETER DUMP (dump_parameters)
+========================================================================
+  wrote parameters_full.txt / .json (234 module globals)
+
+========================================================================
+DEPARTMENT RUN: matching_diagram  (matching_diagram)
+========================================================================
+=== Matching diagram (cruise configuration) ===
+  Converged MTOW            : 1979.9 kg
+  Oswald e (Rizzo box-wing) : 1.3420
+  Stall W/S upper bound     : 765.6 N/m^2
+  Optimiser W/S search range: [459.4, 765.6] N/m^2
+  Reference points (quantitative, not a selection):
+    max W/S (stall)         : W/S = 765.6 N/m^2,  W/P = 0.1625 N/W  (A = 6.66, CL_cr = 0.594)
+    peak W/P (boundary max) : W/S = 765.6 N/m^2,  W/P = 0.1625 N/W
+  Required vs installed power at max W/S:
+    P_required (cruise/climb): 119.5 kW   P_installed (hover-sized): 930.8 kW   -> FEASIBLE
+
+========================================================================
+DEPARTMENT RUN: aero_model  (aero_model)
+========================================================================
+Live VLM aero at baseline geometry (front wing):
+  CL_alpha          : 5.3825
+  x_ac              : 0.2313
+  cl_alpha_per_deg  : 0.1095
+  C_M_ac            : -0.1237
+
+========================================================================
+DEPARTMENT RUN: drag_polar  (dragpolar)
+========================================================================
+MTOW from class_II_sizing/mtow_sizing.py = 1979.90 kg
+Wing area from class_II_sizing/mtow_sizing.py = 25.62 m^2
+Aspect ratio from class_II_sizing/mtow_sizing.py = 6.597
+Cruise altitude from parameters.py = 3810.00 m
+Cruise density = 0.8357 kg/m^3
+Stall density = 1.2250 kg/m^3
+CL_min_operational = 0.371
+CL_max_operational = 2.000
+Using V_max from P_a = P_r = 69.92 m/s
+Calculated V_stall = 24.88 m/s
+Using cruise speed V_cruise = 55.56 m/s
+C_L_min_input = -0.500
+C_L_max_input = 2.200
+Induced drag factor k = 0.0360
+Maximum L/D = 18.42
+CL at maximum L/D = 0.755
+CD at maximum L/D = 0.0410
+Cruise L/D = 17.86
+CL at cruise = 0.588
+CD at cruise = 0.0329
+P_a = P_r at approximately V = 69.92 m/s
+
+========================================================================
+DEPARTMENT RUN: propeller_ppe  (ppe)
+========================================================================
+================================================================
+ Propeller: D=1.9 m, B=8, disc loading 1212 N/m^2 (124 kg/m^2)
+ Airfoil stall at 13 deg, Cl_max=1.30
+================================================================
+
+--- HOVER (min power) ---
+  RPM          :   2568.7
+  collective   :     4.01 deg
+  thrust       :   3435.0 N  (target 3435)
+  power        :   101.85 kW, BEMT power:    67.89 kW
+  M_tip        :    0.745
+  FoM          :    0.750, BEMT FoM:    1.125
+  max AoA      :     5.34 deg (stall 13)
+Maximum torque exerted on motor shaft: 378.6 Nm
+  TO noise     :     99.2 dB @ 15 m (limit 80.0: EXCEEDS by 19.2)
+  TO noise     :     94.6 dBA (A-weighted)
+  TO PWL (Wang2025):    111.8 dBA (sound power level)
+  TO SPL (Wang2025, theta=120 deg):     83.9 dBA
+
+--- CRUISE (min power) ---
+  RPM          :    800.0
+  collective   :    41.14 deg
+  thrust       :    220.3 N  (target 220)
+  power        :    14.83 kW
+  J            :    2.193
+  efficiency   :    0.825
+  M_tip        :    0.232
+  max AoA      :     5.27 deg
+Maximum torque exerted on motor shaft: 177.0 Nm
+  cruise noise :     81.2 dB @ 15 m (limit 60.0: EXCEEDS by 21.2)
+  cruise noise :     71.9 dBA (A-weighted)
+
+--- Generating C_T plots ---
+Saved: propeller_CT_curves.png
+
+--- Selecting cruise pitch from efficiency diagram ---
+Saved: propeller_efficiency_vs_pitch.png
+  OPTIMUM cruise pitch:
+    beta @ 0.75R :     65.0 deg
+    collective   :     59.7 deg
+    RPM          :      492
+    efficiency   :    0.861
+
+NOTE: noise chart functions are DIGITIZED approximations (+/-10 dB).
+  cruise SPL (Wang2025, theta=120 deg):     52.0 dBA
+
+========================================================================
+DEPARTMENT RUN: ecs  (ecs_sizing)
+========================================================================
+==========================================================================
+AVIONICS POWER BUILD-UP (edit watts / qty / liquid_cooled per box)
+==========================================================================
+component                  qty   W/unit   elec W    cooling  cabin W
+Flight computer              3     60.0    180.0 air->cabin    180.0
+IMU                          2      2.0      4.0 air->cabin      4.0
+GNSS receiver                2      0.2      0.4 air->cabin      0.4
+Air-data electronics         1      5.0      5.0 air->cabin      5.0
+ADS-B transponder            1      3.0      3.0 air->cabin      3.0
+LiDAR                        1     90.0     90.0 air->cabin     90.0
+Radar                        1     45.0     45.0 air->cabin     45.0
+SATCOM terminal              1     45.0     45.0 air->cabin     45.0
+Cellular modem               1     15.0     15.0 air->cabin     15.0
+Exterior cameras             4      4.0     16.0 air->cabin     16.0
+Interior camera              1      4.0      4.0 air->cabin      4.0
+--------------------------------------------------------------------------
+TOTAL electrical                           407.4
+  + 20% margin                             488.9
+TOTAL into cabin (heat)                                        407.4
+  + margin -> ECS input                                        488.9
+
+ECS avionics heat term used (x r_avionics 0.95): 464.4 W
+==========================================================================
+
+==========================================================================
+E-ECS SIZING REPORT  --  Folding Prandtl eVTOL
+==========================================================================
+
+Phase: Takeoff  (alt 0 ft, ISA+25, M0.00)
+  ambient p        : 1.013 bar   cabin p: 0.813 bar   beta_c: 1.000
+  heat load total  :   2227.3 W
+      metabolic       :    280.0 W
+      avionics        :    464.4 W
+      displays        :     33.6 W
+      lights          :     34.2 W
+      conduction      :    815.0 W
+      solar_windows   :    600.0 W
+  ECS air mass flow: 0.2465 kg/s (driven by thermal)
+  compressor power :      0.0 W
+  MOTOR power      :      0.0 W
+  comp. exit temp  :   40.0 C (OK, no ACM needed)
+  duration         : 5 s -> ECS energy 0.0 Wh (0.0000 kWh)
+  vs propulsion    : 0.686 kWh prop -> ECS is 0.00% of phase propulsive energy
+
+Phase: Vertical climb  (alt 500 ft, ISA+25, M0.02)
+  ambient p        : 0.995 bar   cabin p: 0.813 bar   beta_c: 1.000
+  heat load total  :   2184.8 W
+      metabolic       :    280.0 W
+      avionics        :    464.4 W
+      displays        :     33.6 W
+      lights          :     34.2 W
+      conduction      :    772.5 W
+      solar_windows   :    600.0 W
+  ECS air mass flow: 0.2418 kg/s (driven by thermal)
+  compressor power :      0.0 W
+  MOTOR power      :      0.0 W
+  comp. exit temp  :   39.0 C (OK, no ACM needed)
+  duration         : 25 s -> ECS energy 0.0 Wh (0.0000 kWh)
+  vs propulsion    : 3.280 kWh prop -> ECS is 0.00% of phase propulsive energy
+
+Phase: Climb  (alt 11458 ft, ISA-20, M0.15)
+  ambient p        : 0.658 bar   cabin p: 0.813 bar   beta_c: 1.215
+  heat load total  :   -634.6 W
+      metabolic       :    280.0 W
+      avionics        :    464.4 W
+      displays        :     33.6 W
+      lights          :     34.2 W
+      conduction      :  -2046.8 W
+      solar_windows   :    600.0 W
+  ECS air mass flow: 0.0263 kg/s (driven by thermal)
+  compressor power :    485.1 W
+  MOTOR power      :    549.1 W
+  comp. exit temp  :   -8.2 C (OK, no ACM needed)
+  duration         : 1222 s -> ECS energy 47.7 Wh (0.0477 kWh)
+  vs propulsion    : 37.780 kWh prop -> ECS is 0.13% of phase propulsive energy
+
+Phase: Cruise  (alt 12500 ft, ISA-20, M0.17)
+  ambient p        : 0.632 bar   cabin p: 0.813 bar   beta_c: 1.261
+  heat load total  :  -1311.5 W
+      metabolic       :    280.0 W
+      avionics        :    464.4 W
+      displays        :     33.6 W
+      lights          :     34.2 W
+      conduction      :  -2123.8 W
+      solar_windows   :      0.0 W
+  ECS air mass flow: 0.0544 kg/s (driven by thermal)
+  compressor power :   1188.4 W
+  MOTOR power      :   1345.1 W
+  comp. exit temp  :   -6.6 C (OK, no ACM needed)
+  duration         : 2195 s -> ECS energy 820.1 Wh (0.8201 kWh)
+  vs propulsion    : 36.900 kWh prop -> ECS is 2.22% of phase propulsive energy
+
+Phase: Descent  (alt 9000 ft, ISA-20, M0.12)
+  ambient p        : 0.724 bar   cabin p: 0.813 bar   beta_c: 1.111
+  heat load total  :  -1040.3 W
+      metabolic       :    280.0 W
+      avionics        :    464.4 W
+      displays        :     33.6 W
+      lights          :     34.2 W
+      conduction      :  -1852.6 W
+      solar_windows   :      0.0 W
+  ECS air mass flow: 0.0432 kg/s (driven by thermal)
+  compressor power :    430.9 W
+  MOTOR power      :    487.7 W
+  comp. exit temp  :  -12.2 C (OK, no ACM needed)
+  duration         : 312 s -> ECS energy 42.3 Wh (0.0423 kWh)
+  vs propulsion    : 6.580 kWh prop -> ECS is 0.64% of phase propulsive energy
+
+Phase: Landing  (alt 6000 ft, ISA-20, M0.05)
+  ambient p        : 0.812 bar   cabin p: 0.813 bar   beta_c: 1.000
+  heat load total  :   -813.0 W
+      metabolic       :    280.0 W
+      avionics        :    464.4 W
+      displays        :     33.6 W
+      lights          :     34.2 W
+      conduction      :  -1625.2 W
+      solar_windows   :      0.0 W
+  ECS air mass flow: 0.0337 kg/s (driven by thermal)
+  compressor power :      0.0 W
+  MOTOR power      :      0.0 W
+  comp. exit temp  :  -16.8 C (OK, no ACM needed)
+  duration         : 71 s -> ECS energy 0.0 Wh (0.0000 kWh)
+  vs propulsion    : 8.360 kWh prop -> ECS is 0.00% of phase propulsive energy
+
+--------------------------------------------------------------------------
+SIZING (peak) motor power : 1345.1 W (1.35 kW)  -> driven by 'Cruise'
+TOTAL ECS energy for mission: 0.910 kWh
+TOTAL propulsive energy     : 93.59 kWh
+ECS / propulsion            : 0.97 %
+==========================================================================
+
+PHASE COMPARISON  (ECS motor energy vs battery propulsive energy)
+phase                    ECS [kWh]  prop [kWh]  ECS % prop
+Takeoff                     0.0000       0.686        0.00
+Vertical climb              0.0000       3.280        0.00
+Climb                       0.0477      37.780        0.13
+Cruise                      0.8201      36.900        2.22
+Descent                     0.0423       6.580        0.64
+Landing                     0.0000       8.360        0.00
+----------------------------------------------------------
+TOTAL                       0.9100      93.586       0.97%
+
+CLIMB SUB-SEGMENT BREAKDOWN (altitude ramp into pressurized regime)
+segment         alt [ft]   beta_c  motor [W]  ECS [Wh]
+Climb[1/6]          1042    1.000        0.0      0.00
+Climb[2/6]          3125    1.000        0.0      0.00
+Climb[3/6]          5208    1.000        0.0      0.00
+Climb[4/6]          7292    1.035       61.8      3.50
+Climb[5/6]          9375    1.121      232.1     13.13
+Climb[6/6]         11458    1.215      549.1     31.06
+  climb total                                    47.68
+
+CABIN-PRESSURE SENSITIVITY (sizing driver = cruise pressurization)
+ cabin alt [ft]  cabin p [bar]  peak motor [W]  ECS energy [kWh]
+              0          1.013          2711.6             1.975
+           4000          0.875          1793.9             1.251
+           6000          0.812          1339.9             0.906
+           8000          0.753           889.2             0.576
+
+========================================================================
+DEPARTMENT RUN: aux_loads  (aux_loads)
+========================================================================
+============================================================================================
+AUXILIARY ELECTRICAL LOAD BUILD-UP  ([src]=sourced, [PH]=estimate)
+============================================================================================
+load                          bus       W    tag       owner   duty (T/VC/Cl/Cr/D/L)
+Flight computers (x3)          28     180  [src]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+IMU (x2)                       28       4  [src]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+GNSS (x2)                      28       0  [src]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+ADS-B transponder              28       3  [src]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+LiDAR                          28      90  [src]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+Radar                          28      45  [src]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+SATCOM terminal                28      45   [PH]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+Cellular modem                 28      15   [PH]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+Exterior cameras (x4)          28      16  [src]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+Interior camera                28       4   [PH]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+Air-data electronics           28       5   [PH]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+Pitot-static probe heater      28     100  [src]     Control   0.0/0.0/0.3/0.3/0.5/0.5
+Static port heaters (x2)       28     120  [src]     Control   0.0/0.0/0.3/0.3/0.5/0.5
+AoA vane heaters (x2)          28     180  [src]     Control   0.0/0.0/0.3/0.3/0.5/0.5
+Cabin + nav lighting           28      80   [PH]       Cabin   1.0/1.0/1.0/1.0/1.0/1.0
+Displays + infotainment        28      66  [src]       Cabin   1.0/1.0/1.0/1.0/1.0/1.0
+USB / passenger charging       28     100   [PH]       Cabin   1.0/1.0/1.0/1.0/1.0/1.0
+BMS logic                      28      30   [PH]       Power   1.0/1.0/1.0/1.0/1.0/1.0
+Pressure / cabin sensors       28      10   [PH]       Cabin   1.0/1.0/1.0/1.0/1.0/1.0
+Tilt actuators                270    6000   [PH]  Propulsion   1.0/1.0/0.2/0.0/0.2/1.0
+Folding mechanism             270    4000   [PH]  Mechanisms   0.0/0.0/0.0/0.0/0.0/0.0
+Control-surface actuators     270     800   [PH]     Control   1.0/1.0/1.0/1.0/1.0/1.0
+AC compressor                 270    1100[ECS-derived]   ECS/Cabin   1.0/1.0/0.5/0.0/0.3/1.0
+--------------------------------------------------------------------------------------------
+Energy per phase [kWh]:
+   Takeoff         0.013
+   Vertical climb  0.063
+   Climb           1.201
+   Cruise          1.035
+   Descent         0.294
+   Landing         0.184
+By bus:  28 V = 0.92 kWh   270 V = 1.87 kWh
+TOTAL auxiliary energy = 2.79 kWh (incl. DC/DC 0.95)
+============================================================================================
+Sanity check: steady 28 V draw (ALWAYS-on loads) = 1093 W, a few kW class -- consistent with small-aircraft avionics+cabin loads.
+
+========================================================================
+DEPARTMENT RUN: static_long_stab  (stat_long_stab_anal)
+========================================================================
+  [SKIP - missing dependency] static_long_stab: No module named 'plotly'
+
+========================================================================
+DEPARTMENT RUN: vtol_oei  (stat_long_stab_anal_vtol_oei_plot)
+========================================================================
+  [SKIP - missing dependency] vtol_oei: No module named 'plotly'
+
+========================================================================
+DEPARTMENT RUN: dyn_stab  (dyn_stab_analysis)
+========================================================================
+
+Component          m [kg]      x       y      z      dIxx      dIyy      dIzz
+--------------------------------------------------------------------------------
+fuselage            126.9   3.15    0.00   0.00     134.4     179.6     172.1
+wing_front           79.3   1.60    0.00  -0.90    1151.1     134.4    1217.7
+wing_rear           119.0   6.65    0.00   1.20    1925.7    2121.8    3547.8
+tip_plate_stbd       11.3   4.12    6.50   0.15     483.0      29.2     500.4
+tip_plate_port       11.3   4.12   -6.50   0.15     483.0      29.2     500.4
+tail_stbd            10.4   6.40    0.61   0.97      20.8     160.1     149.9
+tail_port            10.4   6.40   -0.61   0.97      20.8     160.1     149.9
+pod_fw_in_stbd       43.8   0.80    1.95  -0.90     185.2     176.8     324.8
+prop_fw_in_stbd      11.7   0.80    1.95  -0.90      52.1      49.9      92.1
+pod_fw_in_port       43.8   0.80   -1.95  -0.90     185.2     176.8     324.8
+prop_fw_in_port      11.7   0.80   -1.95  -0.90      52.1      49.9      92.1
+pod_fw_out_stbd      43.8   0.80    4.55  -0.90     925.7     176.8    1065.2
+prop_fw_out_stbd     11.7   0.80    4.55  -0.90     250.0      49.9     289.9
+pod_fw_out_port      43.8   0.80   -4.55  -0.90     925.7     176.8    1065.2
+prop_fw_out_port     11.7   0.80   -4.55  -0.90     250.0      49.9     289.9
+pod_rw_stbd          43.8   5.85    3.25   1.20     554.6     526.6     897.6
+prop_rw_stbd         11.7   5.85    3.25   1.20     150.8     143.4     245.1
+pod_rw_port          43.8   5.85   -3.25   1.20     554.6     526.6     897.6
+prop_rw_port         11.7   5.85   -3.25   1.20     150.8     143.4     245.1
+battery             539.9   1.51    0.00  -0.70     206.5     930.8     900.6
+payload             400.0   2.70    0.00  -0.20     114.1     182.1     198.7
+gear_rail_stbd       20.7   3.50    1.45  -1.30      66.7      72.2      92.6
+gear_rail_port       20.7   3.50   -1.45  -1.30      66.7      72.2      92.6
+misc                296.8   3.15    0.00   0.00     165.9     345.7     328.2
+--------------------------------------------------------------------------------
+TOTAL              1979.9                          9076.0    6664.0   13680.1
+
+CG (nose datum, z up) : x = 2.700 m, y = 0.000 m, z = -0.243 m
+Ixx = 9076, Iyy = 6664, Izz = 13680, Ixz = 1931 kg m^2
+Gyradii: R_x = 0.329 (b/2 ref), R_y = 1.310 ((L_fus*FAT_CYLINDER_SECTION)/2 ref)
+MTOW used by aircraft: 1979.9048276501665
+I_xx used by aircraft: 9075.984246561293
+I_yy used by aircraft: 6663.956779560079
+I_zz used by aircraft: 13680.068777838569
+I_xz used by aircraft: 1930.7631178633146
+
+===============================================================================================
+  VEHICLE DYNAMICS — STABILITY & CONTROL DERIVATIVE SUMMARY                                    
+===============================================================================================
+
+  LONGITUDINAL — Static stability
+  ---------------------------------------------------------------------------------------------
+  Symbol                     Value   Units   Description                                   
+  C_L_alpha                  +5.85   1/rad   Lift-curve slope                              
+  C_M_alpha                  -6.54   1/rad   Pitching-moment slope (static margin)         
+
+  LONGITUDINAL — Dynamic (rate) derivatives
+  ---------------------------------------------------------------------------------------------
+  Symbol                     Value   Units   Description                                   
+  C_L_q                      +14.6   1/rad   Lift due to pitch rate                        
+  C_M_q                      -89.3   1/rad   Pitch damping                                 
+  C_L_alpha_dot              +4.27   1/rad   Lift due to AoA rate (downwash lag)           
+  C_M_alpha_dot              -15.8   1/rad   Pitch moment due to AoA rate                  
+
+  LONGITUDINAL — Symmetric force bridge (X/Z)
+  ---------------------------------------------------------------------------------------------
+  Symbol                     Value   Units   Description                                   
+  C_X_0                      -0.00   -       Steady X-force (trim)                         
+  C_Z_0                     -0.593   -       Steady Z-force (trim)                         
+  C_X_u                    -0.0251   -       X-force due to speed                          
+  C_Z_u                      -1.20   -       Z-force due to speed                          
+  C_X_alpha                 +0.346   1/rad   X-force due to AoA                            
+  C_Z_alpha                  -5.86   1/rad   Z-force due to AoA                            
+  C_Z_alpha_dot              -4.27   1/rad   Z-force due to AoA rate                       
+  C_Z_q                      -14.6   1/rad   Z-force due to pitch rate                     
+
+  LATERAL/DIRECTIONAL — Static stability (sideslip)
+  ---------------------------------------------------------------------------------------------
+  Symbol                     Value   Units   Description                                   
+  C_Y_beta                   -2.19   1/rad   Side-force due to sideslip                    
+  C_l_beta                 -0.0958   1/rad   Rolling moment due to sideslip (dihedral effect)
+  C_n_beta                  +0.145   1/rad   Yawing moment due to sideslip (weathercock)   
+
+  LATERAL/DIRECTIONAL — Dynamic (rate) derivatives
+  ---------------------------------------------------------------------------------------------
+  Symbol                     Value   Units   Description                                   
+  C_Y_p                   -0.00887   1/rad   Side-force due to roll rate                   
+  C_l_p                     -0.376   1/rad   Roll damping                                  
+  C_n_p                    -0.0467   1/rad   Yawing moment due to roll rate                
+  C_Y_r                     +0.360   1/rad   Side-force due to yaw rate                    
+  C_l_r                     +0.135   1/rad   Rolling moment due to yaw rate                
+  C_n_r                     -0.107   1/rad   Yaw damping                                   
+  C_Y_beta_dot             +0.0112   1/rad   Side-force due to sideslip rate               
+  C_n_beta_dot            -0.00320   1/rad   Yawing moment due to sideslip rate            
+
+  CONTROL — Longitudinal (elevator)
+  ---------------------------------------------------------------------------------------------
+  Symbol                     Value   Units   Description                                   
+  C_L_delta_e               +0.804   1/rad   Lift due to elevator                          
+  C_M_delta_e                -2.98   1/rad   Pitch moment due to elevator                  
+  C_Z_delta_e               -0.804   1/rad   Z-force due to elevator                       
+  C_X_delta_e                +0.00   1/rad   X-force due to elevator                       
+
+  CONTROL — Lateral/directional (aileron & rudder)
+  ---------------------------------------------------------------------------------------------
+  Symbol                     Value   Units   Description                                   
+  C_l_delta_a              +0.0362   1/rad   Rolling moment due to aileron                 
+  C_n_delta_a                +0.00   1/rad   Yawing moment due to aileron (adverse yaw)    
+  C_Y_delta_r               +0.141   1/rad   Side-force due to rudder                      
+  C_n_delta_r              -0.0403   1/rad   Yawing moment due to rudder                   
+  C_l_delta_r              +0.0100   1/rad   Rolling moment due to rudder                  
+
+===============================================================================================
+  Sign conventions: stable -> C_M_alpha<0, C_M_q<0, C_n_beta>0,                                
+  C_l_beta<0, C_l_p<0, C_n_r<0. All derivatives per radian.                                    
+===============================================================================================
+
+
+==============================================================================
+  FOLDING PRANDTL — CRUISE DYNAMIC STABILITY   (V = 55.6 m/s, CL = 0.593)
+==============================================================================
+  mu_c = 87.7   mu_b = 7.18   KX2 = 0.0271  KY2 = 2.971  KZ2 = 0.0409
+
+  Symmetric eigenvalues : [-6.0375e+00+3.0648j -6.0375e+00-3.0648j -2.2000e-03+0.2146j
+ -2.2000e-03-0.2146j]
+  Asymmetric eigenvalues: [-0.3517+2.178j -0.3517-2.178j -2.412 +0.j     0.0249+0.j   ]
+
+  MODE             lambda [1/s]             stable   characteristics
+  --------------------------------------------------------------------------
+  Short period     -6.0375 ± 3.0648j        yes      wn = 6.771 rad/s, zeta = 0.892, P = 2.1 s, T1/2 = 0.1 s
+  Phugoid          -0.0022 ± 0.2146j        yes      wn = 0.215 rad/s, zeta = 0.010, P = 29.3 s, T1/2 = 308.1 s
+  Dutch roll       -0.3517 ± 2.1780j        yes      wn = 2.206 rad/s, zeta = 0.159, P = 2.9 s, T1/2 = 2.0 s
+  Spiral           +0.02485                 NO       tau = 40.23 s, T2 = 27.9 s
+  Roll subsidence  -2.41196                 yes      tau = 0.41 s, T1/2 = 0.3 s
+
+  Handling qualities (MIL-F-8785C, Class II/III Cat B, Level 1):
+   [PASS] Short period damping 0.30 <= zeta <= 2.00               zeta = 0.892
+   [FAIL] Phugoid damping zeta >= 0.04                            zeta = 0.010
+   [PASS] Dutch roll zeta>=0.08, wn>=0.4 rad/s, zeta*wn>=0.15     zeta = 0.159, wn = 2.21
+   [PASS] Roll-mode time constant tau <= 1.4 s                    tau = 0.41 s
+   [PASS] Spiral: T_double >= 20 s                                T2 = 27.9 s
+==============================================================================
+
+  [FAILED] dyn_stab: module 'control' has no attribute 'ss'
+Traceback (most recent call last):
+  File "C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_design\generate_outputs.py", line 215, in run_department_plots
+    runpy.run_path(spec.origin, run_name="__main__")
+  File "<frozen runpy>", line 291, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_characteristics\vehicle_dynamics\dyn_stab_analysis.py", line 399, in <module>
+    main(plot=True)
+  File "C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_characteristics\vehicle_dynamics\dyn_stab_analysis.py", line 391, in main
+    files = simulate_eigenmotions(model, As, Bs, Aa, Ba, save_dir)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_characteristics\vehicle_dynamics\dyn_stab_analysis.py", line 322, in simulate_eigenmotions
+    y = forced_response(As, Bs, t, u)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_characteristics\vehicle_dynamics\dyn_stab_analysis.py", line 292, in forced_response
+    sys = ct.ss(A, B, np.eye(A.shape[0]), np.zeros((A.shape[0], B.shape[1])))
+          ^^^^^
+AttributeError: module 'control' has no attribute 'ss'
+
+========================================================================
+DEPARTMENT RUN: landing_gear_trade  (trade_off_landing_gear)
+========================================================================
+================================================================
+DROP CONDITIONS (whole-gear basis)
+================================================================
+  MTOW  = 1980 kg   M_eff = 1980 kg   (4 hinges across 2 skids)
+  v_L   = 2.21 m/s   v_R = 2.71 m/s
+  E_L   = 4856 J     E_R = 7284 J  (= 1.5 E_L)
+
+================================================================
+SIZING  (scipy SLSQP: lightest whole gear meeting both drops)
+================================================================
+concept              feas  mass[kg]       SEA    MS_e    MS_R    n_pk
+----------------------------------------------------------------
+A cross-tube            N      38.1       445   -0.94    0.80     4.3
+B metal leaf            Y     252.0       334    0.00    7.33    20.0
+B' composite leaf       N      36.6        40   -0.88   -0.89     0.8
+F crushable hybrid      N      58.7       196   -0.87   -0.02     4.4
+E elastomeric           Y      41.4       319    0.00    0.18     4.5
+
+================================================================
+TRADE-OFF SCORE + SENSITIVITY
+================================================================
+concept                 score   P(rank #1)
+------------------------------------------
+E elastomeric           0.670         93%
+B metal leaf            0.514          7%
+
+  Weighted winner : E elastomeric
+  Robust winner   : E elastomeric  (93% of trials)
+
+  F-delta plot written -> fd_curves.png
+
+========================================================================
+COPYING / RELOCATING ARTIFACTS INTO results/figures
+========================================================================
+  moved 4 cwd artifact(s), copied 40 repo artifact(s) into C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_design\results\figures
+
+========================================================================
+DONE
+========================================================================
+Report : C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_design\results\report.md
+Figures: C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_design\results\figures  (45 png)
+Data   : C:\Users\AJEBr\OneDrive\Documents\Aerospace\DSE project\Prandtl-plane-EVTOL\final_design\results\data

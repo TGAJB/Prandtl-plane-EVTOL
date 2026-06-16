@@ -1,0 +1,10 @@
+{
+  "x_LEMAC_fw": 0.17583,
+  "x_batt_cruise": 1.507148,
+  "x_batt_vtol": 6.418074,
+  "z_w_fw": -0.895019,
+  "b_vert_tail": 1.4,
+  "design_point": 765.0,
+  "s_aft_to_s_total": 0.6,
+  "t_nonfolding": 0.005
+}

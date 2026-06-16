@@ -35,8 +35,6 @@ Thumbs.db
 *.bak
 ~$*
 
-# final_design runner: the active design override + generated results
-# (keep the results/ folder itself via results/.gitkeep)
-final_design/chosen_design.json
-final_design/results/*
-!final_design/results/.gitkeep
+# final_design runner: the active design override + generated results are TRACKED
+# (committed) so that running run_design and pushing updates them for the whole team.
+# Nothing here is ignored; commit & push after a run to share the regenerated outputs.
