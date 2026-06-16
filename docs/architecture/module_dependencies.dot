@@ -8,19 +8,20 @@ digraph "module_dependencies" {
   compound=true;
   subgraph "cluster_class_II_sizing" {
     label="class_II_sizing"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#dbe9fb"; fontname="Helvetica-Bold"; fontsize=12;
+    "class_II_sizing/MMOI" [label="MMOI", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=15];
     "class_II_sizing/energy" [label="energy", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=12];
     "class_II_sizing/fuselage_sizing_plots" [label="fuselage_sizing_plots", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
     "class_II_sizing/landing_gear_sensitivity" [label="landing_gear_sensitivity", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
     "class_II_sizing/landing_gear_sketch" [label="landing_gear_sketch", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
     "class_II_sizing/loading diagram (bubble diagram)" [label="loading diagram (bubble diagram)", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
     "class_II_sizing/mass_components" [label="mass_components", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=17];
-    "class_II_sizing/MMOI" [label="MMOI", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=14];
     "class_II_sizing/mtow_sizing" [label="mtow_sizing", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=23];
     "class_II_sizing/pressurization_sizing" [label="pressurization_sizing", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
     "class_II_sizing/trade_off_landing_gear" [label="trade_off_landing_gear", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
   }
   subgraph "cluster_final_characteristics" {
     label="final_characteristics"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#e2efda"; fontname="Helvetica-Bold"; fontsize=12;
+    "final_characteristics/FBD_Generator_wing" [label="FBD_Generator_wing", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
     "final_characteristics/aero_calibration" [label="aero_calibration", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
     "final_characteristics/aero_model" [label="aero_model", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=12];
     "final_characteristics/aeroacoustics" [label="aeroacoustics", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
@@ -28,11 +29,10 @@ digraph "module_dependencies" {
     "final_characteristics/battery_cells" [label="battery_cells", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
     "final_characteristics/control" [label="control", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=13];
     "final_characteristics/ecs_sizing" [label="ecs_sizing", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
-    "final_characteristics/FBD_Generator_wing" [label="FBD_Generator_wing", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "final_characteristics/matching_diagram" [label="matching_diagram", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=12];
-    "final_characteristics/optimiser" [label="optimiser", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
+    "final_characteristics/matching_diagram" [label="matching_diagram", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=13];
+    "final_characteristics/optimiser" [label="optimiser", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=12];
     "final_characteristics/ppe" [label="ppe", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=12];
-    "final_characteristics/stability_eval" [label="stability_eval", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=13];
+    "final_characteristics/stability_eval" [label="stability_eval", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=14];
     "final_characteristics/stability_sensitivity" [label="stability_sensitivity", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
     "final_characteristics/structures" [label="structures", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
     "final_characteristics/test file" [label="test file", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
@@ -56,12 +56,19 @@ digraph "module_dependencies" {
   }
   subgraph "cluster_final_characteristics_vehicle_dynamics" {
     label="final_characteristics/vehicle_dynamics"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#d9eef1"; fontname="Helvetica-Bold"; fontsize=12;
+    "final_characteristics/vehicle_dynamics/VTOL_cg_envelope_det" [label="VTOL_cg_envelope_det", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=14];
     "final_characteristics/vehicle_dynamics/aircraft" [label="aircraft", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=16];
     "final_characteristics/vehicle_dynamics/dyn_stab_analysis" [label="dyn_stab_analysis", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
     "final_characteristics/vehicle_dynamics/stat_long_stab_anal" [label="stat_long_stab_anal", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
     "final_characteristics/vehicle_dynamics/stat_long_stab_anal_func" [label="stat_long_stab_anal_func", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=13];
     "final_characteristics/vehicle_dynamics/stat_long_stab_anal_vtol_oei_plot" [label="stat_long_stab_anal_vtol_oei_plot", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
-    "final_characteristics/vehicle_dynamics/VTOL_cg_envelope_det" [label="VTOL_cg_envelope_det", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=14];
+  }
+  subgraph "cluster_final_design" {
+    label="final_design"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#f2f2f2"; fontname="Helvetica-Bold"; fontsize=12;
+    "final_design/dump_parameters" [label="dump_parameters", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=12];
+    "final_design/figure_capture" [label="figure_capture", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=12];
+    "final_design/generate_outputs" [label="generate_outputs", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
+    "final_design/run_design" [label="run_design", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
   }
   subgraph "cluster_fusion" {
     label="fusion"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#eeeeee"; fontname="Helvetica-Bold"; fontsize=12;
@@ -152,6 +159,15 @@ digraph "module_dependencies" {
   "final_characteristics/vehicle_dynamics/stat_long_stab_anal_func" -> "parameters" [color="#888888"];
   "final_characteristics/vehicle_dynamics/stat_long_stab_anal_vtol_oei_plot" -> "final_characteristics/vehicle_dynamics/VTOL_cg_envelope_det" [color="#888888"];
   "final_characteristics/vehicle_dynamics/stat_long_stab_anal_vtol_oei_plot" -> "final_characteristics/vehicle_dynamics/aircraft" [color="#888888"];
+  "final_design/dump_parameters" -> "parameters" [color="#888888"];
+  "final_design/generate_outputs" -> "class_II_sizing/MMOI" [color="#888888"];
+  "final_design/generate_outputs" -> "class_II_sizing/mtow_sizing" [color="#888888"];
+  "final_design/generate_outputs" -> "final_characteristics/matching_diagram" [color="#888888"];
+  "final_design/generate_outputs" -> "final_characteristics/stability_eval" [color="#888888"];
+  "final_design/generate_outputs" -> "final_design/dump_parameters" [color="#888888"];
+  "final_design/generate_outputs" -> "final_design/figure_capture" [color="#888888"];
+  "final_design/generate_outputs" -> "parameters" [color="#888888"];
+  "final_design/run_design" -> "final_characteristics/optimiser" [color="#888888"];
   "initial_sizing/init_wing_sizing" -> "parameters" [color="#888888"];
   "parameters" -> "class_II_sizing/MMOI" [color="#888888"];
   "parameters" -> "class_II_sizing/mtow_sizing" [color="#888888"];

@@ -1,18 +1,19 @@
 ```mermaid
 flowchart LR
   subgraph cl_class_II_sizing["class_II_sizing"]
+    class_II_sizing_MMOI["MMOI"]
     class_II_sizing_energy["energy"]
     class_II_sizing_fuselage_sizing_plots["fuselage_sizing_plots"]
     class_II_sizing_landing_gear_sensitivity["landing_gear_sensitivity"]
     class_II_sizing_landing_gear_sketch["landing_gear_sketch"]
     class_II_sizing_loading_diagram__bubble_diagram_["loading diagram (bubble diagram)"]
     class_II_sizing_mass_components["mass_components"]
-    class_II_sizing_MMOI["MMOI"]
     class_II_sizing_mtow_sizing["mtow_sizing"]
     class_II_sizing_pressurization_sizing["pressurization_sizing"]
     class_II_sizing_trade_off_landing_gear["trade_off_landing_gear"]
   end
   subgraph cl_final_characteristics["final_characteristics"]
+    final_characteristics_FBD_Generator_wing["FBD_Generator_wing"]
     final_characteristics_aero_calibration["aero_calibration"]
     final_characteristics_aero_model["aero_model"]
     final_characteristics_aeroacoustics["aeroacoustics"]
@@ -20,7 +21,6 @@ flowchart LR
     final_characteristics_battery_cells["battery_cells"]
     final_characteristics_control["control"]
     final_characteristics_ecs_sizing["ecs_sizing"]
-    final_characteristics_FBD_Generator_wing["FBD_Generator_wing"]
     final_characteristics_matching_diagram["matching_diagram"]
     final_characteristics_optimiser["optimiser"]
     final_characteristics_ppe["ppe"]
@@ -45,12 +45,18 @@ flowchart LR
     final_characteristics_structures_winglet_sizing_global["winglet_sizing_global"]
   end
   subgraph cl_final_characteristics_vehicle_dynamics["final_characteristics/vehicle_dynamics"]
+    final_characteristics_vehicle_dynamics_VTOL_cg_envelope_det["VTOL_cg_envelope_det"]
     final_characteristics_vehicle_dynamics_aircraft["aircraft"]
     final_characteristics_vehicle_dynamics_dyn_stab_analysis["dyn_stab_analysis"]
     final_characteristics_vehicle_dynamics_stat_long_stab_anal["stat_long_stab_anal"]
     final_characteristics_vehicle_dynamics_stat_long_stab_anal_func["stat_long_stab_anal_func"]
     final_characteristics_vehicle_dynamics_stat_long_stab_anal_vtol_oei_plot["stat_long_stab_anal_vtol_oei_plot"]
-    final_characteristics_vehicle_dynamics_VTOL_cg_envelope_det["VTOL_cg_envelope_det"]
+  end
+  subgraph cl_final_design["final_design"]
+    final_design_dump_parameters["dump_parameters"]
+    final_design_figure_capture["figure_capture"]
+    final_design_generate_outputs["generate_outputs"]
+    final_design_run_design["run_design"]
   end
   subgraph cl_fusion["fusion"]
     fusion_fuselage_fuselage["fuselage"]
@@ -137,6 +143,15 @@ flowchart LR
   final_characteristics_vehicle_dynamics_stat_long_stab_anal_func --> parameters
   final_characteristics_vehicle_dynamics_stat_long_stab_anal_vtol_oei_plot --> final_characteristics_vehicle_dynamics_VTOL_cg_envelope_det
   final_characteristics_vehicle_dynamics_stat_long_stab_anal_vtol_oei_plot --> final_characteristics_vehicle_dynamics_aircraft
+  final_design_dump_parameters --> parameters
+  final_design_generate_outputs --> class_II_sizing_MMOI
+  final_design_generate_outputs --> class_II_sizing_mtow_sizing
+  final_design_generate_outputs --> final_characteristics_matching_diagram
+  final_design_generate_outputs --> final_characteristics_stability_eval
+  final_design_generate_outputs --> final_design_dump_parameters
+  final_design_generate_outputs --> final_design_figure_capture
+  final_design_generate_outputs --> parameters
+  final_design_run_design --> final_characteristics_optimiser
   initial_sizing_init_wing_sizing --> parameters
   parameters --> class_II_sizing_MMOI
   parameters --> class_II_sizing_mtow_sizing

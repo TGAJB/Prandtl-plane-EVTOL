@@ -1,45 +1,34 @@
 ```mermaid
 flowchart LR
-  subgraph cl_opt["Optimiser (NSGA-II)"]
-    opt["optimiser.py<br/>NSGA-II (pymoo)"]
-    evald["evaluate_design"]
+  subgraph cl_src["Inputs (read by every stage)"]
+    in_design["Design inputs<br/>geometry / masses /<br/>materials / constants"]
+    in_match["Matching diagram<br/>W/S range, power & CL limits"]
+  end
+  subgraph cl_opt["Optimiser - NSGA-II (pymoo)"]
+    opt_vars["Tunes 7 design variables:<br/>front-wing position & height /<br/>wing loading (W/S) /<br/>aft-total area split /<br/>vertical-tail span /<br/>cruise & VTOL battery position"]
+    opt_main["NSGA-II population search<br/>evolves designs toward the best<br/>mass-stability trade-off"]
+    opt_out["Outputs (key values):<br/>Pareto front (MTOW vs stability) /<br/>chosen design + 7 tuned values<br/>(written back to the inputs)"]
   end
   subgraph cl_mtow["MTOW convergence loop"]
-    convm["converged_mtow"]
-    solveconv["_solve_converged_mass<br/>(mtow_sizing)"]
-    mass["mass_components<br/>fuselage/wing/tail/LG"]
-    energy["energy<br/>battery_mass"]
+    mtow_loop["Damped fixed-point loop<br/>guess weight -> size all parts -><br/>re-sum -> repeat until <1% change"]
+    mtow_parts["Sizes each pass:<br/>hover power / wing + winglet (structure) /<br/>fuselage / tail / landing gear /<br/>motors / propellers + hubs / battery"]
+    mtow_out["Converged MTOW"]
   end
   subgraph cl_stab["Stability evaluation"]
-    evalstab["evaluate_stability"]
-    splitfn["_update_aircraft_for_wing_split"]
-    vlm["apply_vlm_aero<br/>(aero_model VLM)"]
-    aircraft["aircraft.solve()<br/>DATCOM derivatives"]
-    margins["requirement margins<br/>+ worst_margin"]
+    stab_aero["Live aero (VLM)<br/>lift slope, aero centre &<br/>induced drag from geometry"]
+    stab_eval["Stability derivatives +<br/>cruise / VTOL c.g. envelopes"]
+    stab_con["Constraints checked:<br/>stiffness signs (C_M_alpha<0, C_N_beta>0) /<br/>cruise c.g. within limits /<br/>VTOL one-engine-out c.g. /<br/>wing structurally feasible /<br/>power & cruise-CL feasible"]
   end
-  subgraph cl_src["Inputs"]
-    params["parameters.py<br/>(single source of truth)"]
-    matching["matching_diagram<br/>W/S bounds + power/CL"]
-    mmoi["MMOI<br/>mass / c.g. / inertia"]
-  end
-  params -->|constants| opt
-  params -->|constants| mass
-  params -->|constants| evalstab
-  matching -->|W/S range + feasibility| opt
-  opt -->|design vector| evald
-  evald -->|geometry overrides| convm
-  convm --> solveconv
-  solveconv -->|iterate| mass
-  mass --> solveconv
-  solveconv --> energy
-  convm -.->|setattr override:<br/>WING_LOADING_N, S_AFT_TO_S_TOTAL| mass
-  solveconv -->|MTOW (objective 1)| opt
-  evald -->|MTOW + overrides| evalstab
-  evalstab --> splitfn
-  splitfn --> vlm
-  vlm --> aircraft
-  aircraft -->|derivatives| margins
-  evalstab -.->|setattr override:<br/>MMOI globals| mmoi
-  mmoi -->|c.g. / inertia| evalstab
-  margins -->|worst margin (objective 2)| opt
+  in_design -->|search bounds| opt_main
+  in_match -->|W/S range + feasibility| opt_main
+  opt_vars --> opt_main
+  opt_main -->|on convergence| opt_out
+  opt_main -->|design vector| mtow_loop
+  mtow_loop -->|iterate| mtow_parts
+  mtow_parts --> mtow_loop
+  mtow_loop --> mtow_out
+  mtow_out -->|converged MTOW| stab_eval
+  stab_aero -->|CL_alpha, x_ac| stab_eval
+  stab_eval -->|derivatives + c.g.| stab_con
+  stab_con -.->|any constraint not met -> next candidate| opt_main
 ```

@@ -290,57 +290,54 @@ def build_pipeline_model() -> GModel:
     model = GModel(name="pipeline_dataflow",
                    title="Runtime pipeline & data flow (curated)")
 
+    # Four left-to-right stages as columns: Inputs -> Optimiser -> MTOW loop ->
+    # Stability evaluation, with one feedback edge (a failed constraint sends the
+    # optimiser back for the next candidate). The hand-tuned SVG
+    # (docs/architecture/pipeline_dataflow.svg) renders these as clean vertical
+    # columns; this model keeps the .dot / .mmd content in sync.
     C = {
-        "opt": GCluster("opt", "Optimiser (NSGA-II)", "#fde9d9"),
+        "src": GCluster("src", "Inputs (read by every stage)", "#fff2cc"),
+        "opt": GCluster("opt", "Optimiser - NSGA-II (pymoo)", "#fde9d9"),
         "mtow": GCluster("mtow", "MTOW convergence loop", "#dbe9fb"),
         "stab": GCluster("stab", "Stability evaluation", "#d9eef1"),
-        "src": GCluster("src", "Inputs", "#fff2cc"),
     }
     model.clusters = C
 
     def N(nid, label, cl, **kw):
         model.nodes.append(GNode(id=nid, label=label, cluster=cl, **kw))
 
-    N("params", "parameters.py\\n(single source of truth)", "src", fill="#ffd966", border="#bf9000", penwidth=2.2)
-    N("matching", "matching_diagram\\nW/S bounds + power/CL", "src")
-    N("mmoi", "MMOI\\nmass / c.g. / inertia", "src")
+    # Inputs
+    N("in_design", "Design inputs\\ngeometry / masses /\\nmaterials / constants", "src")
+    N("in_match", "Matching diagram\\nW/S range, power & CL limits", "src")
 
-    N("opt", "optimiser.py\\nNSGA-II (pymoo)", "opt", fill="#eaf5ea", border="#2e7d32", penwidth=2.0)
-    N("evald", "evaluate_design", "opt")
+    # Optimiser
+    N("opt_vars", "Tunes 7 design variables:\\nfront-wing position & height /\\nwing loading (W/S) /\\naft-total area split /\\nvertical-tail span /\\ncruise & VTOL battery position", "opt")
+    N("opt_main", "NSGA-II population search\\nevolves designs toward the best\\nmass-stability trade-off", "opt",
+      fill="#eaf5ea", border="#2e7d32", penwidth=2.0)
+    N("opt_out", "Outputs (key values):\\nPareto front (MTOW vs stability) /\\nchosen design + 7 tuned values\\n(written back to the inputs)", "opt")
 
-    N("convm", "converged_mtow", "mtow")
-    N("solveconv", "_solve_converged_mass\\n(mtow_sizing)", "mtow")
-    N("mass", "mass_components\\nfuselage/wing/tail/LG", "mtow")
-    N("energy", "energy\\nbattery_mass", "mtow")
+    # MTOW convergence loop
+    N("mtow_loop", "Damped fixed-point loop\\nguess weight -> size all parts ->\\nre-sum -> repeat until <1% change", "mtow")
+    N("mtow_parts", "Sizes each pass:\\nhover power / wing + winglet (structure) /\\nfuselage / tail / landing gear /\\nmotors / propellers + hubs / battery", "mtow")
+    N("mtow_out", "Converged MTOW", "mtow", fill="#eef5ff", border="#2f5597")
 
-    N("evalstab", "evaluate_stability", "stab")
-    N("splitfn", "_update_aircraft_for_wing_split", "stab")
-    N("vlm", "apply_vlm_aero\\n(aero_model VLM)", "stab")
-    N("aircraft", "aircraft.solve()\\nDATCOM derivatives", "stab")
-    N("margins", "requirement margins\\n+ worst_margin", "stab")
+    # Stability evaluation
+    N("stab_aero", "Live aero (VLM)\\nlift slope, aero centre &\\ninduced drag from geometry", "stab")
+    N("stab_eval", "Stability derivatives +\\ncruise / VTOL c.g. envelopes", "stab")
+    N("stab_con", "Constraints checked:\\nstiffness signs (C_M_alpha<0, C_N_beta>0) /\\ncruise c.g. within limits /\\nVTOL one-engine-out c.g. /\\nwing structurally feasible /\\npower & cruise-CL feasible", "stab")
 
     E = model.edges.append
-    E(GEdge("params", "opt", "constants"))
-    E(GEdge("params", "mass", "constants"))
-    E(GEdge("params", "evalstab", "constants"))
-    E(GEdge("matching", "opt", "W/S range + feasibility"))
-
-    E(GEdge("opt", "evald", "design vector"))
-    E(GEdge("evald", "convm", "geometry overrides"))
-    E(GEdge("convm", "solveconv"))
-    E(GEdge("solveconv", "mass", "iterate", both=True))
-    E(GEdge("solveconv", "energy"))
-    E(GEdge("convm", "mass", "setattr override:\\nWING_LOADING_N, S_AFT_TO_S_TOTAL", dashed=True, color="#c0392b"))
-    E(GEdge("solveconv", "opt", "MTOW (objective 1)"))
-
-    E(GEdge("evald", "evalstab", "MTOW + overrides"))
-    E(GEdge("evalstab", "splitfn"))
-    E(GEdge("splitfn", "vlm"))
-    E(GEdge("vlm", "aircraft"))
-    E(GEdge("aircraft", "margins", "derivatives"))
-    E(GEdge("evalstab", "mmoi", "setattr override:\\nMMOI globals", dashed=True, color="#c0392b"))
-    E(GEdge("mmoi", "evalstab", "c.g. / inertia"))
-    E(GEdge("margins", "opt", "worst margin (objective 2)"))
+    E(GEdge("in_design", "opt_main", "search bounds"))
+    E(GEdge("in_match", "opt_main", "W/S range + feasibility"))
+    E(GEdge("opt_vars", "opt_main"))
+    E(GEdge("opt_main", "opt_out", "on convergence"))
+    E(GEdge("opt_main", "mtow_loop", "design vector"))
+    E(GEdge("mtow_loop", "mtow_parts", "iterate", both=True))
+    E(GEdge("mtow_loop", "mtow_out"))
+    E(GEdge("mtow_out", "stab_eval", "converged MTOW"))
+    E(GEdge("stab_aero", "stab_eval", "CL_alpha, x_ac"))
+    E(GEdge("stab_eval", "stab_con", "derivatives + c.g."))
+    E(GEdge("stab_con", "opt_main", "any constraint not met -> next candidate", dashed=True, color="#c0392b"))
     return model
 
 

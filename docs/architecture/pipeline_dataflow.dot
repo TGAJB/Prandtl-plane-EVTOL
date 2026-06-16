@@ -6,49 +6,38 @@ digraph "pipeline_dataflow" {
   node [fontname="Helvetica", style="rounded,filled"];
   edge [fontname="Helvetica", fontsize=9, arrowsize=0.7];
   compound=true;
+  subgraph "cluster_src" {
+    label="Inputs (read by every stage)"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#fff2cc"; fontname="Helvetica-Bold"; fontsize=12;
+    "in_design" [label="Design inputs\ngeometry / masses /\nmaterials / constants", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "in_match" [label="Matching diagram\nW/S range, power & CL limits", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+  }
   subgraph "cluster_opt" {
-    label="Optimiser (NSGA-II)"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#fde9d9"; fontname="Helvetica-Bold"; fontsize=12;
-    "opt" [label="optimiser.py\nNSGA-II (pymoo)", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
-    "evald" [label="evaluate_design", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    label="Optimiser - NSGA-II (pymoo)"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#fde9d9"; fontname="Helvetica-Bold"; fontsize=12;
+    "opt_vars" [label="Tunes 7 design variables:\nfront-wing position & height /\nwing loading (W/S) /\naft-total area split /\nvertical-tail span /\ncruise & VTOL battery position", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "opt_main" [label="NSGA-II population search\nevolves designs toward the best\nmass-stability trade-off", shape=box, fillcolor="#eaf5ea", color="#2e7d32", penwidth=2.0, fontsize=11];
+    "opt_out" [label="Outputs (key values):\nPareto front (MTOW vs stability) /\nchosen design + 7 tuned values\n(written back to the inputs)", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
   }
   subgraph "cluster_mtow" {
     label="MTOW convergence loop"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#dbe9fb"; fontname="Helvetica-Bold"; fontsize=12;
-    "convm" [label="converged_mtow", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "solveconv" [label="_solve_converged_mass\n(mtow_sizing)", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "mass" [label="mass_components\nfuselage/wing/tail/LG", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "energy" [label="energy\nbattery_mass", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "mtow_loop" [label="Damped fixed-point loop\nguess weight -> size all parts ->\nre-sum -> repeat until <1% change", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "mtow_parts" [label="Sizes each pass:\nhover power / wing + winglet (structure) /\nfuselage / tail / landing gear /\nmotors / propellers + hubs / battery", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "mtow_out" [label="Converged MTOW", shape=box, fillcolor="#eef5ff", color="#2f5597", penwidth=1.0, fontsize=11];
   }
   subgraph "cluster_stab" {
     label="Stability evaluation"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#d9eef1"; fontname="Helvetica-Bold"; fontsize=12;
-    "evalstab" [label="evaluate_stability", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "splitfn" [label="_update_aircraft_for_wing_split", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "vlm" [label="apply_vlm_aero\n(aero_model VLM)", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "aircraft" [label="aircraft.solve()\nDATCOM derivatives", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "margins" [label="requirement margins\n+ worst_margin", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "stab_aero" [label="Live aero (VLM)\nlift slope, aero centre &\ninduced drag from geometry", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "stab_eval" [label="Stability derivatives +\ncruise / VTOL c.g. envelopes", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
+    "stab_con" [label="Constraints checked:\nstiffness signs (C_M_alpha<0, C_N_beta>0) /\ncruise c.g. within limits /\nVTOL one-engine-out c.g. /\nwing structurally feasible /\npower & cruise-CL feasible", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
   }
-  subgraph "cluster_src" {
-    label="Inputs"; style="filled,rounded"; color="#bbbbbb"; fillcolor="#fff2cc"; fontname="Helvetica-Bold"; fontsize=12;
-    "params" [label="parameters.py\n(single source of truth)", shape=box, fillcolor="#ffd966", color="#bf9000", penwidth=2.2, fontsize=11];
-    "matching" [label="matching_diagram\nW/S bounds + power/CL", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-    "mmoi" [label="MMOI\nmass / c.g. / inertia", shape=box, fillcolor="#ffffff", color="#555555", penwidth=1.0, fontsize=11];
-  }
-  "params" -> "opt" [color="#888888", label="constants"; fontcolor="#888888"];
-  "params" -> "mass" [color="#888888", label="constants"; fontcolor="#888888"];
-  "params" -> "evalstab" [color="#888888", label="constants"; fontcolor="#888888"];
-  "matching" -> "opt" [color="#888888", label="W/S range + feasibility"; fontcolor="#888888"];
-  "opt" -> "evald" [color="#888888", label="design vector"; fontcolor="#888888"];
-  "evald" -> "convm" [color="#888888", label="geometry overrides"; fontcolor="#888888"];
-  "convm" -> "solveconv" [color="#888888"];
-  "solveconv" -> "mass" [color="#888888", label="iterate"; fontcolor="#888888", dir=both];
-  "solveconv" -> "energy" [color="#888888"];
-  "convm" -> "mass" [color="#c0392b", label="setattr override:\nWING_LOADING_N, S_AFT_TO_S_TOTAL"; fontcolor="#c0392b", style=dashed];
-  "solveconv" -> "opt" [color="#888888", label="MTOW (objective 1)"; fontcolor="#888888"];
-  "evald" -> "evalstab" [color="#888888", label="MTOW + overrides"; fontcolor="#888888"];
-  "evalstab" -> "splitfn" [color="#888888"];
-  "splitfn" -> "vlm" [color="#888888"];
-  "vlm" -> "aircraft" [color="#888888"];
-  "aircraft" -> "margins" [color="#888888", label="derivatives"; fontcolor="#888888"];
-  "evalstab" -> "mmoi" [color="#c0392b", label="setattr override:\nMMOI globals"; fontcolor="#c0392b", style=dashed];
-  "mmoi" -> "evalstab" [color="#888888", label="c.g. / inertia"; fontcolor="#888888"];
-  "margins" -> "opt" [color="#888888", label="worst margin (objective 2)"; fontcolor="#888888"];
+  "in_design" -> "opt_main" [color="#888888", label="search bounds"; fontcolor="#888888"];
+  "in_match" -> "opt_main" [color="#888888", label="W/S range + feasibility"; fontcolor="#888888"];
+  "opt_vars" -> "opt_main" [color="#888888"];
+  "opt_main" -> "opt_out" [color="#888888", label="on convergence"; fontcolor="#888888"];
+  "opt_main" -> "mtow_loop" [color="#888888", label="design vector"; fontcolor="#888888"];
+  "mtow_loop" -> "mtow_parts" [color="#888888", label="iterate"; fontcolor="#888888", dir=both];
+  "mtow_loop" -> "mtow_out" [color="#888888"];
+  "mtow_out" -> "stab_eval" [color="#888888", label="converged MTOW"; fontcolor="#888888"];
+  "stab_aero" -> "stab_eval" [color="#888888", label="CL_alpha, x_ac"; fontcolor="#888888"];
+  "stab_eval" -> "stab_con" [color="#888888", label="derivatives + c.g."; fontcolor="#888888"];
+  "stab_con" -> "opt_main" [color="#c0392b", label="any constraint not met -> next candidate"; fontcolor="#c0392b", style=dashed];
 }
