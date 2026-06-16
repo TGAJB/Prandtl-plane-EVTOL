@@ -832,6 +832,7 @@ nonhinged_wing_length = 2
 
 # -- nonfolding wingbox --
 L_h = 1 # [m]
+t_nonfolding = 0.001
 
 # -- Propellers --
 takeoff_thrust_props = 3450 # [N]
