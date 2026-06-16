@@ -633,8 +633,8 @@ def size_wing(mtow_kg, wing_geom, m_props):
     winglet_total = 2.0 * m_winglet           # two winglets
 
     ### Tortion at nonfolding wing
-    torsionfw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_fw, thickness)
-    torsionrw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_rw, thickness)
+    torsionfw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_fw, t_nonfolding)
+    torsionrw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_rw, t_nonfolding)
 
 
 
