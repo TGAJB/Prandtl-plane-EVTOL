@@ -540,7 +540,7 @@ def calculate_torsion_nonfolding_wing(prop_weight_each, thruster_stations, thick
 
     return twist_angle
 
-def size_wing(mtow_kg, wing_geom, m_props):
+def size_wing(mtow_kg, wing_geom, m_props, thickness):
     """Detailed structural mass of BOTH box-wings and the two winglets [kg].
 
     Returns (wing_structural_mass_kg, winglet_mass_kg) for the WHOLE aircraft
@@ -633,8 +633,8 @@ def size_wing(mtow_kg, wing_geom, m_props):
     winglet_total = 2.0 * m_winglet           # two winglets
 
     ### Tortion at nonfolding wing
-    torsionfw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_fw, t_nonfolding)
-    torsionrw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_rw, t_nonfolding)
+    torsionfw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_fw, thickness)
+    torsionrw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_rw, thickness)
 
 
 
