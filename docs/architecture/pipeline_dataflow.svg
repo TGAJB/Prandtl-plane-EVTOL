@@ -29,8 +29,8 @@
   <rect x="314" y="62" width="250" height="466" rx="12" fill="#fde9d9" stroke="#e0a884"/>
   <text x="439" y="86" text-anchor="middle" font-size="14" font-weight="bold" fill="#a64a26">Optimiser &#8212; NSGA-II (pymoo)</text>
 
-  <rect x="330" y="104" width="218" height="160" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="342" y="126" font-size="12" font-weight="bold" fill="#222222">Searches 7 design variables</text>
+  <rect x="330" y="104" width="218" height="178" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
+  <text x="342" y="126" font-size="12" font-weight="bold" fill="#222222">Searches 8 design variables</text>
   <text x="342" y="148" font-size="10.5" fill="#333333">&#8226; front-wing fore/aft  (x_LEMAC_fw)</text>
   <text x="342" y="166" font-size="10.5" fill="#333333">&#8226; front-wing height  (z_w_fw)</text>
   <text x="342" y="184" font-size="10.5" fill="#333333">&#8226; wing loading  (W/S)</text>
@@ -38,17 +38,18 @@
   <text x="342" y="220" font-size="10.5" fill="#333333">&#8226; vertical-tail span  (b_vtail)</text>
   <text x="342" y="238" font-size="10.5" fill="#333333">&#8226; cruise battery x  (x_batt,cr)</text>
   <text x="342" y="256" font-size="10.5" fill="#333333">&#8226; VTOL battery x  (x_batt,vtol)</text>
+  <text x="342" y="274" font-size="10.5" fill="#333333">&#8226; non-folding skin thickness  (t_nf)</text>
 
-  <rect x="330" y="278" width="218" height="94" rx="8" fill="#eaf5ea" stroke="#2e7d32" stroke-width="2"/>
-  <text x="439" y="300" text-anchor="middle" font-size="12" font-weight="bold" fill="#1b5e20">NSGA-II population search</text>
-  <text x="342" y="320" font-size="11" font-weight="bold" fill="#222222">Objective functions:</text>
-  <text x="342" y="338" font-size="11" fill="#333333">&#8595; minimise mass (MTOW)</text>
-  <text x="342" y="356" font-size="11" fill="#333333">&#8593; maximise stability (margin)</text>
+  <rect x="330" y="296" width="218" height="94" rx="8" fill="#eaf5ea" stroke="#2e7d32" stroke-width="2"/>
+  <text x="439" y="318" text-anchor="middle" font-size="12" font-weight="bold" fill="#1b5e20">NSGA-II population search</text>
+  <text x="342" y="338" font-size="11" font-weight="bold" fill="#222222">Objective functions:</text>
+  <text x="342" y="356" font-size="11" fill="#333333">&#8595; minimise mass (MTOW)</text>
+  <text x="342" y="374" font-size="11" fill="#333333">&#8593; maximise stability (margin)</text>
 
-  <rect x="330" y="386" width="218" height="78" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="342" y="408" font-size="12" font-weight="bold" fill="#222222">Outputs (key values)</text>
-  <text x="342" y="430" font-size="11" fill="#333333">&#8226; chosen design + 7 tuned values</text>
-  <text x="342" y="448" font-size="11" fill="#333333">&#8226; written back to the inputs</text>
+  <rect x="330" y="404" width="218" height="78" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
+  <text x="342" y="426" font-size="12" font-weight="bold" fill="#222222">Outputs (key values)</text>
+  <text x="342" y="448" font-size="11" fill="#333333">&#8226; chosen design + 8 tuned values</text>
+  <text x="342" y="466" font-size="11" fill="#333333">&#8226; written back to the inputs</text>
 
   <!-- ================= COLUMN 3: MTOW CONVERGENCE LOOP ================= -->
   <rect x="604" y="62" width="250" height="466" rx="12" fill="#dbe9fb" stroke="#8fb6e6"/>
