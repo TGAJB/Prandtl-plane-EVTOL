@@ -8,7 +8,7 @@ other scripts while varying MTOW, wing-area split, and the VTOL/cruise CGs.
 import aircraft
 import numpy as np
 
-from parameters import CRUISE_STATIC_MARGIN, G, WingGeometry
+from parameters import CRUISE_STATIC_MARGIN, G, S_AFT_TO_S_TOTAL
 from VTOL_cg_envelope_det import (
     LP_TOL,
     cg_envelope_with_static_margin,
@@ -25,7 +25,10 @@ from VTOL_cg_envelope_det import (
 # in sync with the design: the cruise static margin and the aft/total wing-area
 # split both come from there rather than being hardcoded here.
 DEFAULT_CRUISE_STATIC_MARGIN = CRUISE_STATIC_MARGIN
-DEFAULT_S_AFT_TO_S_TOTAL = WingGeometry.S_aw / WingGeometry.S_tot
+# Use the master sheet's S_AFT_TO_S_TOTAL global (override-aware) rather than the
+# fixed WingGeometry.S_aw/S_tot area-literal ratio, so a tuned/overridden aft-area
+# split reaches the standalone aero/stability path the SAME as the mass side.
+DEFAULT_S_AFT_TO_S_TOTAL = S_AFT_TO_S_TOTAL
 
 
 def calc_wing_geom(ac, S, wing):

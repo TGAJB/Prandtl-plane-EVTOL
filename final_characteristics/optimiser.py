@@ -40,7 +40,6 @@ Run:      python final_characteristics/optimiser.py
 Requires: pip install pymoo
 """
 
-import re
 import sys
 from pathlib import Path
 
@@ -173,10 +172,10 @@ def _quantize_b_tail(b_tail):
 # converged-MTOW cache absorbs the extra reconverges. See evaluate_design.
 COUPLE_TAIL_MASS = True
 
-# After Phase 2 picks a design, write its tuned design variables back into their
-# ORIGINAL definitions in parameters.py so every other module (which imports
-# parameters) uses the tuned design. See persist_tuned_design().
-PERSIST_TUNED_DESIGN = True
+# Phase 2 returns the chosen design but does NOT write it anywhere. The tuned
+# design variables are consumed by the final_design/ runner, which serialises them
+# to final_design/chosen_design.json (read by parameters.py at import) so every
+# other module sees the design WITHOUT rewriting the parameters.py source.
 
 # pymoo: the NSGA-II implementation used in Phase 2.
 from pymoo.core.problem import Problem
@@ -358,60 +357,6 @@ def print_design_report(results):
 
 
 # ===========================================================================
-# 2b. PERSIST THE TUNED DESIGN BACK INTO parameters.py
-# ===========================================================================
-# Each tuned design variable maps to ONE assignment in parameters.py. The regex
-# captures everything up to and including '=' (group 1) and the trailing comment
-# (group 2), and rewrites only the numeric literal, so the annotation, spacing and
-# comment are preserved. design_point feeds WING_LOADING_N, s_aft_to_s_total feeds
-# S_AFT_TO_S_TOTAL, and x_batt_cruise feeds both X_BATT_CRUISE and the X_BATT alias
-# -- all derived at import, so writing these literals propagates everywhere.
-_PERSIST_TARGETS = {
-    "x_LEMAC_fw":       r"^(\s*x_LEMAC_fw\s*:\s*float\s*=\s*)[-+\d.eE]+(.*)$",
-    "z_w_fw":           r"^(\s*z_w_fw\s*:\s*float\s*=\s*)[-+\d.eE]+(.*)$",
-    "b_vert_tail":      r"^(\s*b_vert_tail\s*:\s*float\s*=\s*)[-+\d.eE]+(.*)$",
-    "design_point":     r"^(\s*design_point\s*:\s*float\s*=\s*)[-+\d.eE]+(.*)$",
-    "s_aft_to_s_total": r"^(S_AFT_TO_S_TOTAL\s*=\s*)[-+\d.eE]+(.*)$",
-    "x_batt_cruise":    r"^(X_BATT_CRUISE\s*=\s*)[-+\d.eE]+(.*)$",
-    "x_batt_vtol":      r"^(X_BATT_VTOL\s*=\s*)[-+\d.eE]+(.*)$",
-}
-
-
-def _apply_persist(src, design_vars):
-    """Rewrite the 7 tuned-design literals in the parameters.py source string.
-    Returns (new_src, {design_var: written_value}). Raises if any target is not
-    found exactly once (so a silent miss can't ship)."""
-    updated = {}
-    for key, pattern in _PERSIST_TARGETS.items():
-        if key not in design_vars:
-            continue
-        literal = repr(round(float(design_vars[key]), 6))   # clean float literal
-        src, n = re.subn(
-            pattern, lambda m: m.group(1) + literal + m.group(2), src,
-            flags=re.MULTILINE,   # replace ALL matches so a duplicate is caught below
-        )
-        if n != 1:
-            raise RuntimeError(f"persist_tuned_design: '{key}' matched {n} lines (want exactly 1)")
-        updated[key] = literal
-    return src, updated
-
-
-def persist_tuned_design(design_vars):
-    """Write the optimiser's tuned design variables back into their original
-    definitions in parameters.py, so subsequent runs of any other file use the
-    tuned design. Edits the source literals in place (annotation/comment preserved)."""
-    path = _p.__file__
-    with open(path, "r") as f:
-        src = f.read()
-    new_src, updated = _apply_persist(src, design_vars)
-    with open(path, "w") as f:
-        f.write(new_src)
-    print("\nPersisted tuned design variables to parameters.py:")
-    for key, literal in updated.items():
-        print(f"    {key:18s}-> {literal}")
-
-
-# ===========================================================================
 # 3. PHASE 1 -- single acceptance check
 # ===========================================================================
 def run_phase_1():
@@ -587,8 +532,9 @@ def run_phase_2():
     print(f"\nRepresentative design on the front ({label}):")
     best = evaluate_design(design_vector_to_dict(pareto_x[chosen]))
     print_design_report(best)
-    if PERSIST_TUNED_DESIGN:
-        persist_tuned_design(best["design_vars"])
+    print("\nThe chosen design is NOT written to parameters.py. Run it through the "
+          "final_design/ runner to apply it (via final_design/chosen_design.json) and "
+          "regenerate all department outputs.")
     return best
 
 

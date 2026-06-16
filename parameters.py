@@ -32,6 +32,45 @@ from support_files.oswaldefficiency import oswald_efficiency
 
 
 # ============================================================================
+# OPTIONAL DESIGN OVERRIDE HOOK
+# ----------------------------------------------------------------------------
+# The optimiser no longer rewrites this file. Instead, the final_design/ runner
+# serialises its chosen design to final_design/chosen_design.json, and this hook
+# reads that file ONCE at import and overrides the (small, fixed) set of design
+# ROOTS below -- BEFORE any dependent value is derived -- so every module that
+# imports `parameters` sees a fully consistent, tuned sheet.
+#
+# It is reversible and non-destructive: delete chosen_design.json (or leave it
+# absent) and the baseline literals below are used unchanged. The JSON keys are
+# exactly the optimiser's DESIGN_VARIABLE_NAMES. Anything unrecognised is ignored.
+# A malformed/missing file never breaks import (falls back to baseline).
+# ============================================================================
+import json as _json
+
+_DESIGN_OVERRIDE_PATH = _PROJECT_ROOT / "final_design" / "chosen_design.json"
+_DESIGN_OVERRIDES = {}
+try:
+    if _DESIGN_OVERRIDE_PATH.is_file():
+        with open(_DESIGN_OVERRIDE_PATH, "r") as _f:
+            _loaded = _json.load(_f)
+        if isinstance(_loaded, dict):
+            _DESIGN_OVERRIDES = {k: float(v) for k, v in _loaded.items()}
+except Exception as _exc:   # never let a bad override file break the whole sheet
+    print(f"[parameters] WARNING: ignoring {_DESIGN_OVERRIDE_PATH.name} "
+          f"({_exc.__class__.__name__}: {_exc}); using baseline values.")
+    _DESIGN_OVERRIDES = {}
+
+if _DESIGN_OVERRIDES:
+    print(f"[parameters] design override ACTIVE from {_DESIGN_OVERRIDE_PATH} "
+          f"-> {_DESIGN_OVERRIDES}")
+
+
+def _ov(key, default):
+    """Return the design-override value for `key` if present, else `default`."""
+    return _DESIGN_OVERRIDES.get(key, default)
+
+
+# ============================================================================
 # Part 1 - VEHICLE DYNAMICS PARAMETER SHEET (single source of truth for
 #          shared quantities)
 # ============================================================================
@@ -69,7 +108,7 @@ class WingGeometry:
     the position, size, and orientation of the front and aft horizontal wings.
     """
 
-    design_point:         float = 765.6250  # [N/m^2] selected wing loading from matching diagram
+    design_point:         float = _ov("design_point", 765.6250)  # [N/m^2] selected wing loading from matching diagram (design override: design_point)
 
     S_fw:                 float = 11.619  # [m^2]
     S_aw:                 float = 14.201  # [m^2]
@@ -129,10 +168,10 @@ class WingGeometry:
 
     # Wing vertical position relative to body centreline (z positive up,
     # matching the MMOI layout: front wing low, aft wing one gap above it)
-    z_w_fw:               float = -0.75           # [m] front-wing height from the centreline datum (z up, -=below); allowed range [Z_W_FW_MIN, Z_W_FW_MAX]
+    z_w_fw:               float = _ov("z_w_fw", -0.75)           # [m] front-wing height from the centreline datum (z up, -=below); allowed range [Z_W_FW_MIN, Z_W_FW_MAX] (design override: z_w_fw)
     z_w_aw:               float = z_w_fw + gap  # [m]
 
-    x_LEMAC_fw:           float = 0.5982 # [m] front-wing LEMAC, MASTER (optimiser design variable, bounds 0-1.5)
+    x_LEMAC_fw:           float = _ov("x_LEMAC_fw", 0.5982) # [m] front-wing LEMAC, MASTER (optimiser design variable, bounds 0-1.5) (design override: x_LEMAC_fw)
     x_LEMAC_aw:           float = 5.5982 # [m] aft-wing LEMAC, MASTER (fixed, independent of front); = x_LEMAC_fw default + 5.0 so baseline stagger stays 5.0
 
     # ===== FOLDED-WING / VTOL LAYOUT ========================================
@@ -168,7 +207,7 @@ class TailGeometry:
     x_vert_tail:                float = 6.4  # [m]
     c_r_vert_tail:              float = 1.6  # [m]
     c_t_vert_tail:              float = 1.3  # [m]
-    b_vert_tail:                float = 1.4485  # [m]
+    b_vert_tail:                float = _ov("b_vert_tail", 1.4485)  # [m] (design override: b_vert_tail)
     S_vert_tail:                float = ((c_r_vert_tail + c_t_vert_tail)*b_vert_tail)/2  # [m^2]
     AR_vert_tail:               float = b_vert_tail**2/S_vert_tail  # [-]
     LE_sweep_vert_tail:         float = 0.31  # [rad]
@@ -626,7 +665,7 @@ INERTIA_XZ_TO_XX_RATIO = 0.05  # [-] I_xz as a fraction of I_xx   (dyn_stab_anal
 
 NUMBER_OF_WINGS     = 2       # [-]     e.g. 1 for conventional, 2 for Prandtl/box-wing
 AREA_SPLIT          = WingGeometry.S_fw / WingGeometry.S_tot  # [-] front-wing fraction of total area (init sizing seed)
-S_AFT_TO_S_TOTAL    = 0.55  # [-] aft-wing fraction of total area; design lever (optimiser) that drives the front/aft wing-mass split. Literal (= former S_aw/S_tot seed) so the optimiser can persist its tuned value back here.
+S_AFT_TO_S_TOTAL    = _ov("s_aft_to_s_total", 0.55)  # [-] aft-wing fraction of total area; design lever (optimiser) that drives the front/aft wing-mass split. Baseline literal (= former S_aw/S_tot seed); design override key: s_aft_to_s_total.
 WING_SPAN           = WingGeometry.b_fw          # [m]     span from the footprint constraint
 WING_LOADING_N      = WingGeometry.design_point  # [N/m^2] selected design-point wing loading from matching diagram
 TAPER_W             = WingGeometry.taper_fw      # [-]     wing chord taper ratio (c_tip / c_root)
@@ -855,8 +894,8 @@ Z_ROTOR_RW = Z_WING_R                   # [m]  rotors carried at rear-wing heigh
 # cruise c.g. (cruise uses the forward station; the emergency uses the aft one).
 # The optimiser tunes both stations (see optimiser.py); MMOI uses X_BATT_CRUISE for
 # the cruise build-up and X_BATT_VTOL for the folded/VTOL build-up.
-X_BATT_CRUISE = 2.7438   # [m]  cruise station (box mid-length near the cruise c.g.)
-X_BATT_VTOL   = 6.5612   # [m]  VTOL-emergency station (slid aft; optimiser-tuned)
+X_BATT_CRUISE = _ov("x_batt_cruise", 2.7438)   # [m]  cruise station (box mid-length near the cruise c.g.); design override key: x_batt_cruise
+X_BATT_VTOL   = _ov("x_batt_vtol", 6.5612)   # [m]  VTOL-emergency station (slid aft); design override key: x_batt_vtol
 X_BATT        = X_BATT_CRUISE  # [m]  default/alias used by the cruise MMOI build-up
 Z_BATT = -0.7   # [m]  below the cabin floor (floor ~ -0.5 m for the 2.0 m section)
 
