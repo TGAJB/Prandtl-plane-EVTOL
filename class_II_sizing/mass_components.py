@@ -74,7 +74,7 @@ from hinge_loading import (
     Wing, PointLoad, DistributedLoad,
     size_winglet, calculate_wing_ellipse,
     calculate_Ibeam_moment_of_inertia, calc_ubeam_moment_of_intertia,
-    calc_cross_section_moment_of_inertia, ribs_position_iteration,
+    calc_cross_section_moment_of_inertia, ribs_position_iteration, transform_vector
 )
 
 # Master switch for the detailed (FEA-style) wing+winglet structural sizing.
@@ -471,8 +471,76 @@ def _size_wing_panel_structure(x, moment, panel_area, root_chord, struct_span):
     stringers_mass = Stringer_A * num_of_stringers_RW * struct_span * RHO_STRINGER   # aluminium
     return (skin_mass + Ibeam_mass + ribs_mass + stringers_mass), overstressed
 
+def calculate_torsion_nonfolding_wing(prop_weight_each, thruster_stations, thickness):
 
-def size_wing(mtow_kg, m_props, wing_geom):
+    folding_wing_length = wing_length - nonhinged_wing_length
+    thrust = takeoff_thrust_props
+
+    def generate_wing(folding_wing_length, Vconfig, angle, thrust):
+
+        wing_planform = Wing(
+            np.array([[1, 0, 0], [1, 0, folding_wing_length],
+                      [-1.5, 0, folding_wing_length], [-1.5, 0, 0]]),
+            HINGE_THETA,
+            HINGE_PHI)
+
+        alpha, beta = calculate_wing_ellipse(0.1, folding_wing_length, 1990 * 9.80665 * 0.9 * 0.25)
+
+        def wing_loading(x):  # THIS NEEDS TO BE SCALED TO ACCOUNT FOR HALFSPAN
+            # Alpha and beta are derived from these constraints:
+            # The integral of this formula along the span must equal the weight the wing is expected to carry
+            # The lifting force at the wingtip must be the winglet lift fraction * the force at the chord
+            return np.sqrt(-(x - alpha)) * beta * (Vconfig / V_CRUISE) ** 2
+
+        def weight(x):
+            return -70 / folding_wing_length
+
+        wing_planform.angle = angle
+
+        """
+        wing_planform.add_distributed_load(
+            DistributedLoad((0, -1, 0), (0, 0, 0), (0, 0, L), wing_loading))
+        """
+
+        wing_planform.add_distributed_load(
+            DistributedLoad((0, -1, 0), (0, 0, 0), (0, 0, folding_wing_length), weight, color="blue"),
+            nonangled=True)
+        for pos in thruster_stations:
+            wing_planform.add_point_load(PointLoad((thrust_props, 0, 0), pos))
+            wing_planform.add_point_load(PointLoad((0, prop_weight_each, 0), pos), nonangled=True)
+
+        return wing_planform
+
+    wing_planform = generate_wing(folding_wing_length, 0, 120, takeoff_thrust_props)
+    wing_planform.plot_wing()
+
+    wing_planform.discretize()
+    rx = wing_planform.create_loading_diagram(force_direction="x", path_direction="z")
+    ry = wing_planform.create_loading_diagram(force_direction="y", path_direction="z")
+    rz = wing_planform.create_loading_diagram(force_direction="z", path_direction="y")
+    mx = wing_planform.create_moment_diagram("x")
+    my = wing_planform.create_moment_diagram("y")
+    mz = wing_planform.create_moment_diagram("z")
+
+    moment = (mx, my, mz)
+    moment_body = transform_vector(moment, wing_planform.wing_axes, np.eye(3))
+    M = moment_body[2]
+
+    t_h = thickness
+    t_v = thickness #FIX FOR THESE TWO MONKEYS
+
+    A_m = (L_h - t_h) * (L_v - t_v)
+
+    Tau_v = M / (2 * A_m * t_h)
+    Tau_h = M / (2 * A_m * t_v)
+
+    mid_thickness = 2 * (L_v - t_v) / t_h + 2 * (L_h - t_h) / t_v  # This is ds/dt integral bullshit
+
+    twist_angle = M * nonhinged_wing_length / (4 * A_m ** 2 * G_AL) * mid_thickness
+
+    return twist_angle
+
+def size_wing(mtow_kg, m_props, wing_geom, thickness):
     """Detailed structural mass of BOTH box-wings and the two winglets [kg].
 
     Returns (wing_structural_mass_kg, winglet_mass_kg) for the WHOLE aircraft
@@ -539,6 +607,9 @@ def size_wing(mtow_kg, m_props, wing_geom):
     m_fw = m_rw = 30.0
     m_winglet = 20.0
     over_fw = over_rw = False
+
+    calculate_torsion_nonfolding_wing(m_props)
+
     for _ in range(12):
         m_winglet_new, react_fw, react_rw = size_winglet(front["root_chord_m"], tip_lift_fw, tip_lift_rw)
         react_vec_fw = (0.0, m_winglet_new * g / 2.0, react_fw * speed_ratio ** 2)
@@ -559,7 +630,14 @@ def size_wing(mtow_kg, m_props, wing_geom):
 
     wing_struct_total = 2.0 * (m_fw + m_rw)   # both semi-spans of both wings
     winglet_total = 2.0 * m_winglet           # two winglets
-    return wing_struct_total, winglet_total
+
+    ### Tortion at nonfolding wing
+    torsionfw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_fw, thickness)
+    torsionrw = calculate_torsion_nonfolding_wing(prop_weight_each, thrusters_rw, thickness)
+
+
+
+    return wing_struct_total, winglet_total, torsionfw, torsionrw
 
 #Extra methods for sizing ribs n stuff
 def analyze_cantilever_distributed_load(L, w_func, plot=False, x_eval=None):

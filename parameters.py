@@ -613,6 +613,7 @@ SIGMA_ALLOW_AL = 260e6   # [Pa]   2024-T3 compression allowable (MMPDS-01)
 POISSON_AL = 0.33 # [-] poisson ratio for aluminum
 RHO_AL         = 2700.0  # [kg/m^3] aluminium alloy density
 E_AL           = 73.1 * 10 ** 9   # [Pa] aluminium young modulus
+G_AL = 26e9 # [Pa] Shear modulus for aluminum
 
 # Aerodynamic & propulsive parameters
 
@@ -826,6 +827,17 @@ vmax = V_CRUISE*1.25
 load_factor = 1
 wing_length = (WING_SPAN - FuselageGeometry.body_depth_at_wing)/2
 nonhinged_wing_length = 2
+
+
+L_v = 1.2 * 0.17    # [m]
+
+# -- nonfolding wingbox --
+L_h = 1 # [m]
+t_h = 0.001 # [m]
+t_v = 0.003 # [m]
+
+# -- Propellers --
+takeoff_thrust_props = 3450 # [N]
 
 # -- Elliptical approx of wing:
 tip_lift_fraction = 0.3 #lift at the tip / lift at the root
