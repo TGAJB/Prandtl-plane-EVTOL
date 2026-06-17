@@ -799,11 +799,11 @@ _VTOL_ROTOR_RW_OFFSET     = 1.35    # [m] x_vtol_rotor_rw      - x_ac_aw
 # IMPORT-TIME SEEDS. The optimiser path overrides them per-evaluation via the
 # mmoi_overrides bridge in stability_eval.evaluate_stability so they track the
 # wing-LEMAC masters; the seeds equal the baseline geometry for standalone callers.
-X_WING_F     = AerodynamicCoefficients.x_ac_fw                       # [m]  front-wing CG ~ x_LEMAC (vd: 1.0) + 0.4*MAC  PLACEHOLDER
+X_WING_F     = WingGeometry.x_LEMAC_fw + _AC_OFFSET_FW               # [m]  front-wing AC station, DERIVED from the (override-aware) LEMAC master (mirrors stability_eval._resolve_dependents) so standalone callers (fuselage sizing, MMOI) track x_LEMAC_fw instead of the stale baseline seed
 Z_WING_F     = WingGeometry.z_w_fw       # [m]  low-mounted front wing
 WING_STAGGER = WingGeometry.stagger      # [m]  longitudinal distance front -> rear wing
 H_GAP_WINGS  = WingGeometry.gap          # [m]  vertical gap between wing planes; tip-plate height
-X_WING_R     = AerodynamicCoefficients.x_ac_aw   # [m]  rear-wing CG station (derived)
+X_WING_R     = WingGeometry.x_LEMAC_aw + _AC_OFFSET_AW   # [m]  rear-wing AC station, DERIVED from the LEMAC master (= seed when x_LEMAC_aw is not overridden)
 Z_WING_R     = WingGeometry.z_w_aw       # [m]  high rear wing (= z_w_fw + gap)
 
 # Front-wing vertical placement range from the fuselage-centreline datum (z up,

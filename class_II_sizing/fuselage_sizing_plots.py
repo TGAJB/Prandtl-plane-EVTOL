@@ -57,8 +57,20 @@ from parameters import (
 )
 from class_II_sizing.mass_components import fuselage_mass
 
+
+def _design_mtow(fallback=2000.0):
+    """Live converged MTOW [kg] of the active design (honours the chosen_design.json
+    override) so the figures are drawn at the real design point, not a fixed stand-in.
+    Falls back to ``fallback`` if the converged state cannot be loaded."""
+    try:
+        from class_II_sizing.mtow_sizing import load_final_design_state
+        return float(load_final_design_state()["mtow"])
+    except Exception:
+        return fallback
+
+
 OUT_DIR = PROJECT_ROOT / "class_II_sizing" / "fuselage_sizing_figures"
-MTOW_REF = 2000.0          # representative MTOW [kg] for the per-condition diagrams
+MTOW_REF = _design_mtow()   # [kg] live design MTOW for the per-condition diagrams (override-aware; 2000 kg fallback)
 
 # Key longitudinal stations to mark on every beam axis (station, label, colour).
 _STATIONS = [
