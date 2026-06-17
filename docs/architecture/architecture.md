@@ -179,9 +179,9 @@ flowchart LR
     in_match["Matching diagram<br/>W/S range, power & CL limits"]
   end
   subgraph cl_opt["Optimiser - NSGA-II (pymoo)"]
-    opt_vars["Searches 7 design variables:<br/>front-wing fore/aft (x_LEMAC_fw) /<br/>front-wing height (z_w_fw) /<br/>wing loading (W/S) /<br/>aft-total area split (S_aw/S_tot) /<br/>vertical-tail span (b_vtail) /<br/>cruise battery x / VTOL battery x"]
+    opt_vars["Searches 8 design variables:<br/>front-wing fore/aft (x_LEMAC_fw) /<br/>front-wing height (z_w_fw) /<br/>wing loading (W/S) /<br/>aft-total area split (S_aw/S_tot) /<br/>vertical-tail span (b_vtail) /<br/>cruise battery x / VTOL battery x /<br/>non-folding skin thickness (t_nf)"]
     opt_main["NSGA-II population search<br/>Objective functions:<br/>minimise mass (MTOW) /<br/>maximise stability (margin)"]
-    opt_out["Outputs (key values):<br/>chosen design + 7 tuned values<br/>(written back to the inputs)"]
+    opt_out["Outputs (key values):<br/>chosen design + 8 tuned values<br/>(written back to the inputs)"]
   end
   subgraph cl_mtow["MTOW convergence loop"]
     mtow_loop["Damped fixed-point loop<br/>guess weight -> size all parts -><br/>re-sum -> repeat until <1% change"]

@@ -311,10 +311,10 @@ def build_pipeline_model() -> GModel:
     N("in_match", "Matching diagram\\nW/S range, power & CL limits", "src")
 
     # Optimiser
-    N("opt_vars", "Searches 7 design variables:\\nfront-wing fore/aft (x_LEMAC_fw) /\\nfront-wing height (z_w_fw) /\\nwing loading (W/S) /\\naft-total area split (S_aw/S_tot) /\\nvertical-tail span (b_vtail) /\\ncruise battery x / VTOL battery x", "opt")
+    N("opt_vars", "Searches 8 design variables:\\nfront-wing fore/aft (x_LEMAC_fw) /\\nfront-wing height (z_w_fw) /\\nwing loading (W/S) /\\naft-total area split (S_aw/S_tot) /\\nvertical-tail span (b_vtail) /\\ncruise battery x / VTOL battery x /\\nnon-folding skin thickness (t_nf)", "opt")
     N("opt_main", "NSGA-II population search\\nObjective functions:\\nminimise mass (MTOW) /\\nmaximise stability (margin)", "opt",
       fill="#eaf5ea", border="#2e7d32", penwidth=2.0)
-    N("opt_out", "Outputs (key values):\\nchosen design + 7 tuned values\\n(written back to the inputs)", "opt")
+    N("opt_out", "Outputs (key values):\\nchosen design + 8 tuned values\\n(written back to the inputs)", "opt")
 
     # MTOW convergence loop
     N("mtow_loop", "Damped fixed-point loop\\nguess weight -> size all parts ->\\nre-sum -> repeat until <1% change", "mtow")

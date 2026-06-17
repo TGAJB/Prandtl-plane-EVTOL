@@ -1,121 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1260" height="620" viewBox="0 0 1260 620" font-family="Helvetica, Arial, sans-serif">
-  <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L7,3 L0,6 Z" fill="#555555"/>
-    </marker>
-    <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L7,3 L0,6 Z" fill="#c0392b"/>
-    </marker>
-  </defs>
-
-  <rect x="0" y="0" width="1260" height="620" fill="#ffffff"/>
-  <text x="630" y="34" text-anchor="middle" font-size="19" font-weight="bold" fill="#222222">eVTOL Sizing &amp; Optimisation &#8212; Runtime Pipeline</text>
-
-  <!-- ================= COLUMN 1: INPUTS ================= -->
-  <rect x="24" y="62" width="250" height="466" rx="12" fill="#fff2cc" stroke="#d6c36a"/>
-  <text x="149" y="86" text-anchor="middle" font-size="14" font-weight="bold" fill="#7a6000">Inputs</text>
-  <text x="149" y="104" text-anchor="middle" font-size="10.5" font-style="italic" fill="#7a6000">read by every stage</text>
-
-  <rect x="40" y="120" width="218" height="84" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="52" y="144" font-size="12" font-weight="bold" fill="#222222">Design inputs</text>
-  <text x="52" y="166" font-size="11" fill="#333333">geometry &#183; masses &#183;</text>
-  <text x="52" y="184" font-size="11" fill="#333333">materials &#183; constants</text>
-
-  <rect x="40" y="218" width="218" height="62" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="52" y="242" font-size="12" font-weight="bold" fill="#222222">Matching diagram</text>
-  <text x="52" y="262" font-size="11" fill="#333333">W/S range, power &amp; CL limits</text>
-
-  <!-- ================= COLUMN 2: OPTIMISER ================= -->
-  <rect x="314" y="62" width="250" height="466" rx="12" fill="#fde9d9" stroke="#e0a884"/>
-  <text x="439" y="86" text-anchor="middle" font-size="14" font-weight="bold" fill="#a64a26">Optimiser &#8212; NSGA-II (pymoo)</text>
-
-  <rect x="330" y="104" width="218" height="160" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="342" y="126" font-size="12" font-weight="bold" fill="#222222">Searches 7 design variables</text>
-  <text x="342" y="148" font-size="10.5" fill="#333333">&#8226; front-wing fore/aft  (x_LEMAC_fw)</text>
-  <text x="342" y="166" font-size="10.5" fill="#333333">&#8226; front-wing height  (z_w_fw)</text>
-  <text x="342" y="184" font-size="10.5" fill="#333333">&#8226; wing loading  (W/S)</text>
-  <text x="342" y="202" font-size="10.5" fill="#333333">&#8226; aft/total area split  (S_aw/S_tot)</text>
-  <text x="342" y="220" font-size="10.5" fill="#333333">&#8226; vertical-tail span  (b_vtail)</text>
-  <text x="342" y="238" font-size="10.5" fill="#333333">&#8226; cruise battery x  (x_batt,cr)</text>
-  <text x="342" y="256" font-size="10.5" fill="#333333">&#8226; VTOL battery x  (x_batt,vtol)</text>
-
-  <rect x="330" y="278" width="218" height="94" rx="8" fill="#eaf5ea" stroke="#2e7d32" stroke-width="2"/>
-  <text x="439" y="300" text-anchor="middle" font-size="12" font-weight="bold" fill="#1b5e20">NSGA-II population search</text>
-  <text x="342" y="320" font-size="11" font-weight="bold" fill="#222222">Objective functions:</text>
-  <text x="342" y="338" font-size="11" fill="#333333">&#8595; minimise mass (MTOW)</text>
-  <text x="342" y="356" font-size="11" fill="#333333">&#8593; maximise stability (margin)</text>
-
-  <rect x="330" y="386" width="218" height="78" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="342" y="408" font-size="12" font-weight="bold" fill="#222222">Outputs (key values)</text>
-  <text x="342" y="430" font-size="11" fill="#333333">&#8226; chosen design + 7 tuned values</text>
-  <text x="342" y="448" font-size="11" fill="#333333">&#8226; written back to the inputs</text>
-
-  <!-- ================= COLUMN 3: MTOW CONVERGENCE LOOP ================= -->
-  <rect x="604" y="62" width="250" height="466" rx="12" fill="#dbe9fb" stroke="#8fb6e6"/>
-  <text x="729" y="86" text-anchor="middle" font-size="14" font-weight="bold" fill="#2f5597">MTOW convergence loop</text>
-
-  <rect x="620" y="104" width="218" height="88" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="632" y="126" font-size="12" font-weight="bold" fill="#222222">Damped fixed-point loop</text>
-  <text x="632" y="148" font-size="11" fill="#333333">guess weight &#8594; size all parts</text>
-  <text x="632" y="166" font-size="11" fill="#333333">&#8594; re-sum &#8594; repeat until the</text>
-  <text x="632" y="184" font-size="11" fill="#333333">weight change is &lt; 1%</text>
-
-  <rect x="620" y="206" width="218" height="124" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="632" y="228" font-size="12" font-weight="bold" fill="#222222">Sizes each pass:</text>
-  <text x="632" y="250" font-size="11" fill="#333333">&#8226; hover power</text>
-  <text x="632" y="268" font-size="11" fill="#333333">&#8226; wing + winglet (structure)</text>
-  <text x="632" y="286" font-size="11" fill="#333333">&#8226; fuselage &#183; tail &#183; landing gear</text>
-  <text x="632" y="304" font-size="11" fill="#333333">&#8226; motors &#183; propellers + hubs</text>
-  <text x="632" y="322" font-size="11" fill="#333333">&#8226; battery</text>
-
-  <rect x="620" y="344" width="218" height="44" rx="8" fill="#eef5ff" stroke="#2f5597"/>
-  <text x="729" y="372" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#2f5597">&#8594; Converged MTOW</text>
-
-  <path d="M834,134 a14,14 0 1 1 -6,-11" fill="none" stroke="#2f5597" stroke-width="1.6" marker-end="url(#arrow)"/>
-
-  <!-- ================= COLUMN 4: STABILITY EVALUATION ================= -->
-  <rect x="894" y="62" width="340" height="466" rx="12" fill="#d9eef1" stroke="#7fc0c9"/>
-  <text x="1064" y="86" text-anchor="middle" font-size="14" font-weight="bold" fill="#1f6b75">Stability evaluation</text>
-
-  <rect x="910" y="104" width="308" height="78" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="922" y="126" font-size="12" font-weight="bold" fill="#222222">Live aero (VLM)</text>
-  <text x="922" y="148" font-size="11" fill="#333333">lift slope, aero centre &amp; induced</text>
-  <text x="922" y="166" font-size="11" fill="#333333">drag computed from current geometry</text>
-
-  <rect x="910" y="196" width="308" height="58" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="922" y="220" font-size="12" font-weight="bold" fill="#222222">Stability derivatives + neutral point</text>
-  <text x="922" y="240" font-size="11" fill="#333333">+ cruise / VTOL c.g. envelopes</text>
-
-  <rect x="910" y="268" width="308" height="214" rx="8" fill="#ffffff" stroke="#8a8a8a"/>
-  <text x="922" y="290" font-size="11.5" font-weight="bold" fill="#222222">Constraints required of the final design:</text>
-  <text x="922" y="314" font-size="11" fill="#333333">C_M&#945; &lt; 0   &#183;   C_Lq &gt; 0   &#183;   C_Mq &lt; 0</text>
-  <text x="922" y="332" font-size="11" fill="#333333">C_Y&#946; &lt; 0   &#183;   C_L&#946; &lt; 0   &#183;   C_N&#946; &gt; 0</text>
-  <text x="922" y="350" font-size="11" fill="#333333">C_Yp &lt; 0   &#183;   C_Lp &lt; 0   &#183;   C_Np &lt; 0</text>
-  <text x="922" y="368" font-size="11" fill="#333333">C_Yr &gt; 0   &#183;   C_Lr &gt; 0   &#183;   C_Nr &lt; 0</text>
-  <line x1="922" y1="380" x2="1206" y2="380" stroke="#dddddd" stroke-width="1"/>
-  <text x="922" y="398" font-size="11" fill="#333333">cruise c.g.:  x_fwd &#8804; x_cg &#8804; x_aft</text>
-  <text x="922" y="416" font-size="11" fill="#333333">VTOL OEI c.g.:  within allowable envelope</text>
-  <text x="922" y="434" font-size="11" fill="#333333">wing structure:  margin &#8804; 0  (feasible)</text>
-  <text x="922" y="452" font-size="11" fill="#333333">power:  P_req &#8804; P_installed</text>
-  <text x="922" y="470" font-size="11" fill="#333333">lift:  C_L,cruise &#8804; C_L,max</text>
-
-  <rect x="910" y="492" width="308" height="28" rx="14" fill="#eaf5ea" stroke="#2e7d32"/>
-  <text x="1064" y="510" text-anchor="middle" font-size="11" font-weight="bold" fill="#1b5e20">&#10003; all constraints met &#8594; design accepted</text>
-
-  <!-- ================= FORWARD FLOW ARROWS ================= -->
-  <line x1="274" y1="300" x2="312" y2="300" stroke="#555555" stroke-width="2.2" marker-end="url(#arrow)"/>
-  <text x="294" y="288" text-anchor="middle" font-size="10" fill="#555555">search</text>
-  <text x="294" y="314" text-anchor="middle" font-size="10" fill="#555555">bounds</text>
-
-  <line x1="564" y1="300" x2="602" y2="300" stroke="#555555" stroke-width="2.2" marker-end="url(#arrow)"/>
-  <text x="584" y="288" text-anchor="middle" font-size="10" fill="#555555">design</text>
-  <text x="584" y="314" text-anchor="middle" font-size="10" fill="#555555">vector</text>
-
-  <line x1="854" y1="300" x2="892" y2="300" stroke="#555555" stroke-width="2.2" marker-end="url(#arrow)"/>
-  <text x="873" y="288" text-anchor="middle" font-size="10" fill="#555555">converged</text>
-  <text x="873" y="314" text-anchor="middle" font-size="10" fill="#555555">MTOW</text>
-
-  <!-- ================= FEEDBACK (constraint not met -> next candidate) ================= -->
-  <path d="M1064,528 L1064,576 L439,576 L439,530" fill="none" stroke="#c0392b" stroke-width="2.2" stroke-dasharray="7,4" marker-end="url(#arrowRed)"/>
-  <text x="751" y="570" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#c0392b">any constraint not met &#8594; optimiser proposes the next candidate (loop)</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="692" viewBox="0 0 1300 692" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6 Z" fill="#555555"/></marker><marker id="arrowRed" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6 Z" fill="#c0392b"/></marker></defs>
+<rect x="0" y="0" width="1300" height="692" fill="#ffffff"/>
+<text x="650.0" y="36" text-anchor="middle" font-size="23" font-weight="bold" fill="#222222">eVTOL Sizing &amp; Optimisation — Runtime Pipeline</text>
+<rect x="22" y="66" width="250" height="534.0" rx="12" fill="#fff2cc" stroke="#d6c36a"/>
+<text x="147.0" y="90" text-anchor="middle" font-size="16" font-weight="bold" fill="#7a6000">Inputs</text>
+<text x="147.0" y="110" text-anchor="middle" font-size="12" font-style="italic" fill="#7a6000">read by every stage</text>
+<rect x="38" y="128" width="218" height="87.0" rx="8" fill="#ffffff" stroke="#8a8a8a"/><text x="50.0" y="152.0" text-anchor="start" font-size="14" font-weight="bold" fill="#222222">Design inputs</text><text x="50.0" y="178.0" text-anchor="start" font-size="13" fill="#333333">geometry · masses ·</text><text x="50.0" y="199.0" text-anchor="start" font-size="13" fill="#333333">materials · constants</text>
+<rect x="38" y="229" width="218" height="66.0" rx="8" fill="#ffffff" stroke="#8a8a8a"/><text x="50.0" y="253.0" text-anchor="start" font-size="14" font-weight="bold" fill="#222222">Matching diagram</text><text x="50.0" y="279.0" text-anchor="start" font-size="13" fill="#333333">W/S range, power &amp; CL limits</text>
+<rect x="298" y="66" width="300" height="534.0" rx="12" fill="#fde9d9" stroke="#e0a884"/>
+<text x="448.0" y="90" text-anchor="middle" font-size="16" font-weight="bold" fill="#a64a26">Optimiser — NSGA-II (pymoo)</text>
+<rect x="314" y="114" width="268" height="213.0" rx="8" fill="#ffffff" stroke="#8a8a8a"/><text x="326.0" y="138.0" text-anchor="start" font-size="14" font-weight="bold" fill="#222222">Searches 8 design variables</text><text x="326.0" y="164.0" text-anchor="start" font-size="12.5" fill="#333333">• front-wing fore/aft  (x_LEMAC_fw)</text><text x="326.0" y="185.0" text-anchor="start" font-size="12.5" fill="#333333">• front-wing height  (z_w_fw)</text><text x="326.0" y="206.0" text-anchor="start" font-size="12.5" fill="#333333">• wing loading  (W/S)</text><text x="326.0" y="227.0" text-anchor="start" font-size="12.5" fill="#333333">• aft/total area split  (S_aw/S_tot)</text><text x="326.0" y="248.0" text-anchor="start" font-size="12.5" fill="#333333">• vertical-tail span  (b_vtail)</text><text x="326.0" y="269.0" text-anchor="start" font-size="12.5" fill="#333333">• cruise battery x  (x_batt,cr)</text><text x="326.0" y="290.0" text-anchor="start" font-size="12.5" fill="#333333">• VTOL battery x  (x_batt,vtol)</text><text x="326.0" y="311.0" text-anchor="start" font-size="12.5" fill="#333333">• non-folding skin thickness  (t_nf)</text>
+<rect x="314" y="341" width="268" height="108.0" rx="8" fill="#eaf5ea" stroke="#2e7d32" stroke-width="2"/><text x="448.0" y="365.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#1b5e20">NSGA-II population search</text><text x="326.0" y="391.0" text-anchor="start" font-size="13" font-weight="bold" fill="#222222">Objective functions:</text><text x="326.0" y="412.0" text-anchor="start" font-size="13" fill="#333333">↓ minimise mass (MTOW)</text><text x="326.0" y="433.0" text-anchor="start" font-size="13" fill="#333333">↑ maximise stability (margin)</text>
+<rect x="314" y="463" width="268" height="87.0" rx="8" fill="#ffffff" stroke="#8a8a8a"/><text x="326.0" y="487.0" text-anchor="start" font-size="14" font-weight="bold" fill="#222222">Outputs (key values)</text><text x="326.0" y="513.0" text-anchor="start" font-size="13" fill="#333333">• chosen design + 8 tuned values</text><text x="326.0" y="534.0" text-anchor="start" font-size="13" fill="#333333">• written back to the inputs</text>
+<rect x="624" y="66" width="258" height="534.0" rx="12" fill="#dbe9fb" stroke="#8fb6e6"/>
+<text x="753.0" y="90" text-anchor="middle" font-size="16" font-weight="bold" fill="#2f5597">MTOW convergence loop</text>
+<rect x="640" y="114" width="226" height="108.0" rx="8" fill="#ffffff" stroke="#8a8a8a"/><text x="652.0" y="138.0" text-anchor="start" font-size="14" font-weight="bold" fill="#222222">Damped fixed-point loop</text><text x="652.0" y="164.0" text-anchor="start" font-size="13" fill="#333333">guess weight → size all parts</text><text x="652.0" y="185.0" text-anchor="start" font-size="13" fill="#333333">→ re-sum → repeat until the</text><text x="652.0" y="206.0" text-anchor="start" font-size="13" fill="#333333">weight change is &lt; 1%</text>
+<rect x="640" y="236" width="226" height="150.0" rx="8" fill="#ffffff" stroke="#8a8a8a"/><text x="652.0" y="260.0" text-anchor="start" font-size="14" font-weight="bold" fill="#222222">Sizes each pass:</text><text x="652.0" y="286.0" text-anchor="start" font-size="13" fill="#333333">• hover power</text><text x="652.0" y="307.0" text-anchor="start" font-size="13" fill="#333333">• wing + winglet (structure)</text><text x="652.0" y="328.0" text-anchor="start" font-size="13" fill="#333333">• fuselage · tail · landing gear</text><text x="652.0" y="349.0" text-anchor="start" font-size="13" fill="#333333">• motors · propellers + hubs</text><text x="652.0" y="370.0" text-anchor="start" font-size="13" fill="#333333">• battery</text>
+<rect x="640" y="400" width="226" height="40.0" rx="8" fill="#eef5ff" stroke="#2f5597"/><text x="753.0" y="424.0" text-anchor="middle" font-size="14.5" font-weight="bold" fill="#2f5597">→ Converged MTOW</text>
+<rect x="908" y="66" width="370" height="534.0" rx="12" fill="#d9eef1" stroke="#7fc0c9"/>
+<text x="1093.0" y="90" text-anchor="middle" font-size="16" font-weight="bold" fill="#1f6b75">Stability evaluation</text>
+<rect x="924" y="114" width="338" height="87.0" rx="8" fill="#ffffff" stroke="#8a8a8a"/><text x="936.0" y="138.0" text-anchor="start" font-size="14" font-weight="bold" fill="#222222">Live aero (VLM)</text><text x="936.0" y="164.0" text-anchor="start" font-size="13" fill="#333333">lift slope, aero centre &amp; induced</text><text x="936.0" y="185.0" text-anchor="start" font-size="13" fill="#333333">drag computed from current geometry</text>
+<rect x="924" y="215" width="338" height="66.0" rx="8" fill="#ffffff" stroke="#8a8a8a"/><text x="936.0" y="239.0" text-anchor="start" font-size="14" font-weight="bold" fill="#222222">Stability derivatives + neutral point</text><text x="936.0" y="265.0" text-anchor="start" font-size="13" fill="#333333">+ cruise / VTOL c.g. envelopes</text>
+<rect x="924" y="295" width="338" height="245.0" rx="8" fill="#ffffff" stroke="#8a8a8a"/><text x="936.0" y="319.0" text-anchor="start" font-size="13" font-weight="bold" fill="#222222">Constraints required of the final design:</text><text x="936.0" y="340.0" text-anchor="start" font-size="13" fill="#333333">C_Mα &lt; 0    ·    C_Lq &gt; 0    ·    C_Mq &lt; 0</text><text x="936.0" y="361.0" text-anchor="start" font-size="13" fill="#333333">C_Yβ &lt; 0    ·    C_Lβ &lt; 0    ·    C_Nβ &gt; 0</text><text x="936.0" y="382.0" text-anchor="start" font-size="13" fill="#333333">C_Yp &lt; 0    ·    C_Lp &lt; 0    ·    C_Np &lt; 0</text><text x="936.0" y="403.0" text-anchor="start" font-size="13" fill="#333333">C_Yr &gt; 0    ·    C_Lr &gt; 0    ·    C_Nr &lt; 0</text><line x1="930" y1="417.0" x2="1256" y2="417.0" stroke="#dddddd" stroke-width="1"/><text x="936.0" y="440.0" text-anchor="start" font-size="13" fill="#333333">cruise c.g.:  x_fwd ≤ x_cg ≤ x_aft</text><text x="936.0" y="461.0" text-anchor="start" font-size="13" fill="#333333">VTOL OEI c.g.:  within allowable envelope</text><text x="936.0" y="482.0" text-anchor="start" font-size="13" fill="#333333">wing structure:  margin ≤ 0  (feasible)</text><text x="936.0" y="503.0" text-anchor="start" font-size="13" fill="#333333">power:  P_req ≤ P_installed</text><text x="936.0" y="524.0" text-anchor="start" font-size="13" fill="#333333">lift:  C_L,cruise ≤ C_L,max</text>
+<path d="M852,148 a15,15 0 1 1 -7,-12" fill="none" stroke="#2f5597" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="924" y="554.0" width="338" height="30" rx="15" fill="#eaf5ea" stroke="#2e7d32"/>
+<text x="1093.0" y="573.0" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1b5e20">✓ all constraints met → design accepted</text>
+<line x1="274" y1="333.0" x2="296" y2="333.0" stroke="#555555" stroke-width="2.4" marker-end="url(#arrow)"/>
+<text x="285.0" y="324.0" text-anchor="middle" font-size="11.5" fill="#555555">search</text>
+<text x="285.0" y="350.0" text-anchor="middle" font-size="11.5" fill="#555555">bounds</text>
+<line x1="600" y1="333.0" x2="622" y2="333.0" stroke="#555555" stroke-width="2.4" marker-end="url(#arrow)"/>
+<text x="611.0" y="324.0" text-anchor="middle" font-size="11.5" fill="#555555">design</text>
+<text x="611.0" y="350.0" text-anchor="middle" font-size="11.5" fill="#555555">vector</text>
+<line x1="884" y1="333.0" x2="906" y2="333.0" stroke="#555555" stroke-width="2.4" marker-end="url(#arrow)"/>
+<text x="895.0" y="324.0" text-anchor="middle" font-size="11.5" fill="#555555">converged</text>
+<text x="895.0" y="350.0" text-anchor="middle" font-size="11.5" fill="#555555">MTOW</text>
+<path d="M1093.0,600.0 L1093.0,646.0 L448.0,646.0 L448.0,602.0" fill="none" stroke="#c0392b" stroke-width="2.4" stroke-dasharray="7,4" marker-end="url(#arrowRed)"/>
+<text x="770.5" y="638.0" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#c0392b">any constraint not met → optimiser proposes the next candidate (loop)</text>
 </svg>
