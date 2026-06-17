@@ -24,8 +24,20 @@ using the failure mode that actually governs a thin shell in bending: **buckling
 (``sigma_cr = C E t/R``), floored at a min manufacturing/handling gauge. Both CFRP and
 aluminium are sized and the lighter is kept.
 
-The four figures
-----------------
+Report-facing figures
+---------------------
+These are the compact plots used next to the hand-drawn FBD and dimension sketches in
+Section 10.9:
+
+1. ``fuselage_report_shear_moment.png`` -- the internal shear and bending-moment
+   diagrams for the three load cases.
+2. ``fuselage_report_moment_envelope.png`` -- the absolute moment envelope, with the
+   critical load case, station and ultimate design moment marked.
+3. ``fuselage_report_skin_thickness_profile.png`` -- the yield, buckling, minimum-gauge
+   and selected constant thickness along the fuselage.
+
+Diagnostic figures
+------------------
 1. ``fuselage_load_shear_moment.png`` -- the headline figure: per design condition, the
    load / shear / moment diagrams built from ALL loads acting together. Shows how the
    wing reactions, tail load and inertia STACK along the fuselage and which condition
@@ -39,6 +51,7 @@ The four figures
    sweep (physics vs legacy regression), showing the buckling-driven MTOW dependence.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -53,15 +66,22 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from parameters import (
     D_FUS, L_FUS, FUS_SHELL_BUCKLING_C, FUS_PRIMARY_FRACTION,
-    X_WING_F, X_WING_R, X_TAIL, X_GEAR, X_PAYLOAD,
+    STRUCT_SF, X_WING_F, X_WING_R, X_TAIL, X_GEAR, X_PAYLOAD,
 )
 from class_II_sizing.mass_components import fuselage_mass
 
 
 def _design_mtow(fallback=2000.0):
-    """Live converged MTOW [kg] of the active design (honours the chosen_design.json
-    override) so the figures are drawn at the real design point, not a fixed stand-in.
-    Falls back to ``fallback`` if the converged state cannot be loaded."""
+    """Converged report MTOW [kg], preferring final_design/results over live recompute."""
+    result_path = PROJECT_ROOT / "final_design" / "results" / "data" / "characteristics.json"
+    try:
+        with open(result_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        mass = data["mass"]
+        return float(mass.get("mtow_final_kg", mass["mtow"]))
+    except Exception:
+        pass
+
     try:
         from class_II_sizing.mtow_sizing import load_final_design_state
         return float(load_final_design_state()["mtow"])
@@ -95,6 +115,131 @@ def _caption(fig, text):
     """Italic explanatory caption along the bottom of a figure (how to read it)."""
     fig.text(0.5, 0.012, text, ha="center", va="bottom", fontsize=8.5,
              style="italic", wrap=True, color="#333333")
+
+
+def _condition_label(name):
+    """Short condition names for the report-facing figures."""
+    if name.startswith("C1"):
+        return "C1 symmetric manoeuvre"
+    if name.startswith("C2"):
+        return "C2 dive manoeuvre"
+    if name.startswith("C3"):
+        return "C3 hard landing"
+    return name
+
+
+def plot_report_shear_moment(details, out_dir):
+    """Report figure: shear-force and bending-moment diagrams for the load cases."""
+    conds = details["conditions"]
+    fig, axes = plt.subplots(2, len(conds), figsize=(13.0, 6.2), sharex=True)
+
+    for j, c in enumerate(conds):
+        x, V, M = c["x"], c["V"], c["M"]
+        ax_v, ax_m = axes[0, j], axes[1, j]
+        is_gov = c["name"] == details["governing_condition"]
+
+        ax_v.plot(x, V / 1e3, color="tab:blue", lw=1.9)
+        ax_v.fill_between(x, V / 1e3, 0, color="tab:blue", alpha=0.12)
+        ax_m.plot(x, M / 1e3, color="tab:red", lw=1.9)
+        ax_m.fill_between(x, M / 1e3, 0, color="tab:red", alpha=0.12)
+
+        ipk = int(np.argmax(np.abs(M)))
+        ax_m.plot(x[ipk], M[ipk] / 1e3, "ko", ms=4)
+        ax_m.annotate(f"peak |M| = {abs(M[ipk]) / 1e3:.1f} kN m",
+                      xy=(x[ipk], M[ipk] / 1e3), xytext=(0.05, 0.12),
+                      textcoords="axes fraction", fontsize=8.0,
+                      arrowprops=dict(arrowstyle="->", lw=0.8))
+
+        title = _condition_label(c["name"])
+        if is_gov:
+            title += "\n(governing)"
+        ax_v.set_title(title, fontsize=10, fontweight="bold",
+                       color="firebrick" if is_gov else "black")
+
+        for ax in (ax_v, ax_m):
+            ax.axhline(0, color="black", lw=0.8)
+            ax.grid(True, ls="--", alpha=0.35)
+            _mark_stations(ax)
+        ax_m.set_xlabel("x from nose [m]")
+        if j == 0:
+            ax_v.set_ylabel("shear $V(x)$ [kN]")
+            ax_m.set_ylabel("moment $M(x)$ [kN m]")
+
+    fig.suptitle(f"Fuselage internal load diagrams  (MTOW = {MTOW_REF:.0f} kg)",
+                 fontsize=12, fontweight="bold")
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    path = out_dir / "fuselage_report_shear_moment.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
+def plot_report_moment_envelope(details, out_dir):
+    """Report figure: bending moment envelope and the critical ultimate value."""
+    conds = details["conditions"]
+    x = conds[0]["x"]
+    abs_moments = np.vstack([np.abs(c["M"]) for c in conds])
+    env_limit = np.max(abs_moments, axis=0)
+    env_ult = STRUCT_SF * env_limit
+
+    fig, ax = plt.subplots(figsize=(9.2, 5.0))
+    colors = ["#8fb6df", "#d9a36a", "#a8c686"]
+    for c, color in zip(conds, colors):
+        ax.plot(x, np.abs(c["M"]) / 1e3, color=color, lw=1.25,
+                label=_condition_label(c["name"]))
+    ax.plot(x, env_limit / 1e3, color="black", lw=2.4,
+            label="$M_{env}(x)$")
+    ax.plot(x, env_ult / 1e3, color="firebrick", lw=1.8, ls="--",
+            label=f"ultimate envelope ($j$ = {STRUCT_SF:.1f})")
+
+    _mark_stations(ax)
+    ax.set_xlabel("x from nose [m]")
+    ax.set_ylabel("bending moment magnitude [kN m]")
+    ax.set_title("Fuselage bending-moment envelope",
+                 fontsize=11, fontweight="bold")
+    ax.grid(True, ls="--", alpha=0.35)
+    ax.legend(fontsize=8.5, loc="upper left")
+    fig.tight_layout()
+    path = out_dir / "fuselage_report_moment_envelope.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
+def plot_report_skin_thickness_profile(details, out_dir):
+    """Report figure: required thickness variation and selected constant gauge."""
+    winner = details["material"]
+    p = details["by_material"][winner]
+    x = p["x"]
+    t_selected = float(np.max(p["t_skin"]))
+
+    fig, ax = plt.subplots(figsize=(9.2, 5.0))
+    ax.plot(x, p["t_yield"] * 1e3, color="tab:green", lw=1.5,
+            label="yield requirement")
+    ax.plot(x, p["t_buckle"] * 1e3, color="tab:red", lw=1.9,
+            label="buckling requirement")
+    ax.axhline(p["t_min_gauge"] * 1e3, color="tab:blue", ls=":",
+               lw=1.8, label=f"minimum gauge = {p['t_min_gauge'] * 1e3:.1f} mm")
+    ax.plot(x, p["t_skin"] * 1e3, color="black", lw=2.2,
+            label="required local thickness")
+    ax.axhline(t_selected * 1e3, color="firebrick", ls="--", lw=1.8,
+               label=f"selected constant thickness = {t_selected * 1e3:.2f} mm")
+    ax.fill_between(x, p["t_skin"] * 1e3, p["t_min_gauge"] * 1e3,
+                    where=p["t_skin"] > p["t_min_gauge"], color="tab:red",
+                    alpha=0.08)
+
+    _mark_stations(ax)
+    ax.set_xlabel("x from nose [m]")
+    ax.set_ylabel("skin thickness [mm]")
+    ax.set_title("Fuselage skin-thickness requirements", fontsize=11, fontweight="bold")
+    ax.set_ylim(0, max(1.2 * t_selected * 1e3, 1.25 * p["t_min_gauge"] * 1e3))
+    ax.grid(True, ls="--", alpha=0.35)
+    ax.legend(fontsize=8.4, loc="upper left")
+    fig.tight_layout()
+    path = out_dir / "fuselage_report_skin_thickness_profile.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
 
 
 def plot_load_shear_moment(details, out_dir):
@@ -304,6 +449,9 @@ def main():
     print(f"  M_design : {details['m_design']/1e3:.2f} kN.m  | peak gauge: {details['t_max']*1e3:.2f} mm")
 
     paths = [
+        plot_report_shear_moment(details, OUT_DIR),
+        plot_report_moment_envelope(details, OUT_DIR),
+        plot_report_skin_thickness_profile(details, OUT_DIR),
         plot_load_shear_moment(details, OUT_DIR),
         plot_skin_thickness(details, OUT_DIR),
         plot_material_comparison(details, OUT_DIR),
