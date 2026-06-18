@@ -187,3 +187,49 @@ def test_size_mission_per_phase_energy_definition():
     summary = ecs.size_mission(ac, cond, _simple_phases())
     for r in summary["per_phase"]:
         assert r["energy_Wh"] == pytest.approx(r["P_motor_W"] * r["duration_s"] / 3600.0)
+
+
+# ---------------------------------------------------------------------------
+# U9 - input range / model-validity checks
+# ---------------------------------------------------------------------------
+def test_duty_fractions_within_unit_range():
+    # Every duty cycle is a fraction-active in [0, 1]; anything outside is a
+    # data-entry error that would silently corrupt the energy build-up.
+    for L in ax.default_aux_loads():
+        for p, _ in ax.PHASES:
+            assert 0.0 <= L.duty.get(p, 0.0) <= 1.0
+
+
+def test_ecs_cruise_within_no_acm_regime():
+    # The ECS model omits the air-cycle-machine cooling train; the module states
+    # this holds while the compressor exit temperature stays modest (< ~60 C).
+    # Confirm the sizing (cruise) case is inside that documented validity band.
+    ac, cond = ecs.Aircraft(), ecs.Conditioning()
+    cruise = ecs.Phase("Cruise", 12500, -20, 0.17, "heat", False, False, 0.0)
+    r = ecs.evaluate_phase(ac, cond, cruise)
+    assert r["T_comp_exit_C"] < 60.0
+
+
+# ---------------------------------------------------------------------------
+# U10 - output format / downstream interface contract
+# ---------------------------------------------------------------------------
+def test_energy_breakdown_output_contract():
+    b = ax.energy_breakdown(ax.default_aux_loads())
+    assert set(b) == {"phase_E", "bus_E", "total_kWh"}
+    assert set(b["phase_E"]) == {p for p, _ in ax.PHASES}     # one entry per phase
+    assert set(b["bus_E"]) == {28, 270}                       # the two buses
+    assert isinstance(b["total_kWh"], float)
+
+
+def test_size_mission_output_contract():
+    ac, cond = ecs.Aircraft(), ecs.Conditioning()
+    s = ecs.size_mission(ac, cond, _simple_phases())
+    for key in ("per_phase", "sizing_motor_power_W", "sizing_phase",
+                "total_energy_kWh", "prop_total_kWh"):
+        assert key in s
+    assert isinstance(s["sizing_motor_power_W"], float)
+    assert isinstance(s["total_energy_kWh"], float)
+    # Each per-phase row must carry the fields the report table / battery budget read.
+    for r in s["per_phase"]:
+        for fld in ("phase", "P_motor_W", "energy_Wh", "duration_s"):
+            assert fld in r
