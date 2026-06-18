@@ -22,30 +22,30 @@ Run:  python payload_range.py   ->  prints the table and saves payload_range.png
 """
 
 import sys
+import json
 from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- Pull the converged design state + parametric mission model ------------ #
-# Single source of truth: MTOW comes from the class-II converger and every
-# energy term is recomputed from energy.py at that MTOW, so this diagram tracks
-# the design automatically -- no hardcoded converged numbers.
+# --- Design state from the OPTIMIZER's final output ------------------------ #
+# MTOW and installed battery mass come from the optimizer's final design
+# (final_design/results/data/characteristics.json); the mission propulsion
+# energy is recomputed at that MTOW via energy.py.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from class_II_sizing.energy import cruise_power, mission_energy, battery_mass
-from class_II_sizing.mtow_sizing import load_final_design_state
+from class_II_sizing.energy import cruise_power, mission_energy
 from parameters import (
     V_CRUISE, M_PAYLOAD, E_AUX_KWH, RESERVE_FRAC, T_CRUISE,
     E_CELL_WH, M_CELL_KG, CELL_TO_PACK,
 )
 
-# --- Converged design state (derived from the MTOW loop + battery sizing) -- #
-MTOW_DESIGN   = load_final_design_state()["mtow"]    # [kg]  converged MTOW
-E_INSTALLED   = (battery_mass(MTOW_DESIGN) * CELL_TO_PACK / M_CELL_KG) \
-                * E_CELL_WH / 1000.0                 # [kWh] installed pack energy (built, string-rounded)
+_cs = json.loads((PROJECT_ROOT / "final_design/results/data/characteristics.json").read_text())
+MTOW_DESIGN   = _cs["mass"]["mtow"]                  # [kg]  optimizer final MTOW
+_batt_kg      = _cs["mass"]["battery"]               # [kg]  optimizer installed battery mass
+E_INSTALLED   = (_batt_kg * CELL_TO_PACK / M_CELL_KG) * E_CELL_WH / 1000.0  # [kWh] installed pack energy
 E_MISSION_KWH = mission_energy(MTOW_DESIGN) / 3.6e6  # [kWh] propulsion mission energy at design MTOW
 DESIGN_RANGE_KM = 200.0   # [km]  design mission range (anchor)
 PAX_MASS_KG   = 100.0     # [kg]  mass per passenger incl. baggage (400 kg / 4)
@@ -109,11 +109,6 @@ def main():
     # mark the design point
     ax.plot([M_PAYLOAD], [DESIGN_RANGE_KM], "o", color="#D85A30",
             markersize=10, zorder=5)
-    ax.annotate("design mission\n(4 pax, 200 km)",
-                xy=(M_PAYLOAD, DESIGN_RANGE_KM),
-                xytext=(M_PAYLOAD - 150, DESIGN_RANGE_KM + 18),
-                fontsize=9,
-                arrowprops=dict(arrowstyle="->", color="#993C1D"))
     ax.set_xlabel("payload [kg]  (≈100 kg per passenger)")
     ax.set_ylabel("range [km]")
     ax.set_title("Payload-range, fixed-battery eVTOL (slopes up: shed payload → more range)")

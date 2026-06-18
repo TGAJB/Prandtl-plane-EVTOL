@@ -41,22 +41,25 @@ Run:  python climb.py
 """
 
 import sys
+import json
 import pathlib
 import numpy as np
 import matplotlib.pyplot as plt
 
-# parameters.py lives at the repo root; this file is in
-# final_characteristics/vehicle_dynamics/, so walk two levels up.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+# Repo root (parameters.py + the optimizer's final-design output live here).
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
-# --- Inputs from parameters.py -------------------------------------------- #
+# --- Inputs --------------------------------------------------------------- #
+# MTOW and wing geometry from the OPTIMIZER's final design state
+# (characteristics.json); aero/mission constants from parameters.py.
 try:
     import parameters as P
-    from class_II_sizing.mtow_sizing import load_final_design_state
+    _cs = json.loads((ROOT / "final_design/results/data/characteristics.json").read_text())
     G       = P.G
-    MTOW    = load_final_design_state()["mtow"]
-    S       = P.WingGeometry.S_tot
-    B_SPAN  = P.WingGeometry.b_fw
+    MTOW    = _cs["mass"]["mtow"]
+    S       = _cs["wing_geometry"]["total_area_m2"]
+    B_SPAN  = _cs["wing_geometry"]["span_m"]
     RHO_CR  = P.RHO_CRUISE
     CD0     = P.CD0
     E_SPAN  = P.OSWALD_EFFICIENCY
@@ -64,10 +67,9 @@ try:
     H_CR    = P.H_CRUISE
     LD      = P.LD_CRUISE
 except Exception:
-    # Standalone fallback (root not found). Values are the last known sheet
-    # state; if this path runs, the import above failed -- check the layout.
-    print("WARNING: parameters.py not found; running on fallback constants.")
-    G, MTOW, S, B_SPAN = 9.81, 1743.0, 25.82, 13.0
+    # Standalone fallback. If this path runs, an import above failed.
+    print("WARNING: parameters.py / characteristics.json not found; running on fallback constants.")
+    G, MTOW, S, B_SPAN = 9.81, 1979.9, 25.616, 13.0
     RHO_CR, CD0, E_SPAN = 0.835679, 0.0205, 1.34
     V_C, H_CR, LD = 200/3.6, 3810.0, 14.7
 

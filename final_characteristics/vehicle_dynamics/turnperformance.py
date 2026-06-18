@@ -26,8 +26,7 @@ PROVENANCE
 ----------
 All inputs pulled from parameters.py (single source of truth). Where a value
 is flagged there as preliminary/estimate, it is flagged here too:
-    CL_MAX = 1.66    ESTIMATE pending the aero polar (the V-n value; the sheet
-                     still lists CL_MAX_OPERATIONAL = 2.0)
+    CL_MAX = 1.686   box-wing CL_max from XFLR5 (aero dept)
     e = 1.34         box-wing span efficiency (e_hor_wings, updated 11-06-2026)
     CD0 = 0.0205     preliminary
     N_W = 3.5        positive limit load factor
@@ -36,24 +35,27 @@ Run:  python turning.py
 """
 
 import sys
+import json
 import pathlib
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-# parameters.py + the class-II converger live at the repo root; this file is in
-# final_characteristics/vehicle_dynamics/, so walk two levels up.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+# Repo root (parameters.py + the optimizer's final-design output live here).
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
-# --- Inputs from parameters.py -------------------------------------------- #
-# (import-or-fallback so the script runs standalone in the report repo)
+# --- Inputs --------------------------------------------------------------- #
+# MTOW and wing geometry come from the OPTIMIZER's final design state
+# (final_design/results/data/characteristics.json); the aero/mission constants
+# come from parameters.py. Import-or-fallback so it still runs standalone.
 try:
     import parameters as P
-    from class_II_sizing.mtow_sizing import load_final_design_state
+    _cs = json.loads((ROOT / "final_design/results/data/characteristics.json").read_text())
     G       = P.G
-    MTOW    = load_final_design_state()["mtow"]  # converged class-II mass
-    S       = P.WingGeometry.S_tot               # current box-wing reference area
-    B_SPAN  = P.WingGeometry.b_fw
+    MTOW    = _cs["mass"]["mtow"]                 # optimizer final MTOW
+    S       = _cs["wing_geometry"]["total_area_m2"]   # converged wing area
+    B_SPAN  = _cs["wing_geometry"]["span_m"]
     RHO_CR  = P.RHO_CRUISE
     RHO_SL  = P.RHO_ORIGIN
     E_SPAN  = P.OSWALD_EFFICIENCY                 # = e_hor_wings = 1.34
@@ -61,12 +63,12 @@ try:
     N_LIM   = P.N_W                               # 3.5
     V_C     = P.V_CRUISE                          # design cruise (TAS)
 except Exception:
-    G, MTOW, S, B_SPAN = 9.81, 1743.0, 25.82, 13.0
+    G, MTOW, S, B_SPAN = 9.81, 1979.9, 25.616, 13.0
     RHO_CR, RHO_SL     = 0.835679, 1.225
     E_SPAN, CD0, N_LIM = 1.34, 0.0205, 3.5
     V_C                = 200 / 3.6
 
-CL_MAX = 1.66   # ESTIMATE (V-n value); sheet CL_MAX_OPERATIONAL = 2.0
+CL_MAX = 1.686  # box-wing CL_max from XFLR5 (aero dept)
 
 # --- Derived --------------------------------------------------------------- #
 W   = MTOW * G

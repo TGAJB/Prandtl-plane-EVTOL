@@ -13,16 +13,18 @@ not the complete VTOL structural envelope.
 
 PROVENANCE OF INPUTS
 --------------------
-From parameters.py (traceable):
-    N_W = 3.5            positive limit load factor
-    S_W = 30 m^2         wing area
-    wing loading 760 N/m^2  -> W = 22 800 N (mass ~2324 kg, ~ MTOW 2314)
-    V_cruise = 200/3.6 = 55.6 m/s   design cruise speed
-    rho = 1.225, AR = 5.63
+From parameters.py + the class-II converger (load_final_design_state), sourced
+at runtime so the envelope tracks the design instead of fixed numbers:
+    N_W = 3.5                positive limit load factor
+    MTOW (converged)         from the MTOW loop; weight W = MTOW * g
+    S_tot, b_fw              box-wing reference area and span -> W/S and AR = b^2/S
+    rho = RHO_ORIGIN = 1.225 sea-level density (this is an EAS envelope)
+    V_cruise = 200/3.6 = 55.6 m/s   design cruise (TAS at cruise altitude); placed
+                             on the diagram as EAS via sqrt(rho_cr / rho_SL)
 
 Given / updated by the team:
-    V_dive = 1.6 * V_cruise = 88.9 m/s      (NB parameters.py still lists
-                                             V_DIVE_FACTOR = 1.25 -- reconcile)
+    V_dive = V_DIVE_FACTOR * V_cruise        (V_DIVE_FACTOR = 1.25 from
+                                             parameters.py, CS-25.335 lower bound)
     CL_max = 1.66        ESTIMATE pending the real aero polar (was 2.0)
 
 FLAGGED ASSUMPTIONS (confirm with loads / certification basis):
@@ -35,40 +37,52 @@ Run:  python vn_diagram.py
 """
 
 import sys
+import json
 import pathlib
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-# parameters.py + the class-II converger live at the repo root; this file is in
-# final_characteristics/, so walk one level up.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+# Repo root (parameters.py + the optimizer's final-design output live here).
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 # --- Inputs ---------------------------------------------------------------- #
-# From parameters.py (single source of truth) + the class-II converger.
+# MTOW and wing geometry from the OPTIMIZER's final design state
+# (characteristics.json); the rest from parameters.py.
 try:
     import parameters as P
-    from class_II_sizing.mtow_sizing import load_final_design_state
+    _cs = json.loads((ROOT / "final_design/results/data/characteristics.json").read_text())
     G        = P.G
-    MTOW     = load_final_design_state()["mtow"]  # converged class-II mass
+    MTOW     = _cs["mass"]["mtow"]                 # optimizer final MTOW
     N_POS    = P.N_W                              # positive limit load factor; CS-23-aligned,
                                                   #   which EASA SC-VTOL (small cat.) targets
-    S_W      = P.WingGeometry.S_tot               # box-wing reference area [m^2]
-    B_SPAN   = P.WingGeometry.b_fw                # reference span [m]
+    S_W      = _cs["wing_geometry"]["total_area_m2"]  # converged wing area [m^2]
+    B_SPAN   = _cs["wing_geometry"]["span_m"]         # reference span [m]
     RHO      = P.RHO_ORIGIN                        # sea-level density (EAS envelope) [kg/m^3]
-    V_CRUISE = P.V_CRUISE                          # design cruise speed [m/s]
+    RHO_CR   = P.RHO_CRUISE                         # cruise-altitude density [kg/m^3]
+    V_C_TAS  = P.V_CRUISE                           # design cruise speed (TAS at altitude) [m/s]
+    VD_FACTOR = P.V_DIVE_FACTOR                     # V_dive / V_cruise (CS-25.335 lower bound)
 except Exception:
-    G, MTOW          = 9.81, 1743.0
+    G, MTOW          = 9.81, 1979.9
     N_POS            = 3.5
-    S_W, B_SPAN      = 25.82, 13.0
+    S_W, B_SPAN      = 25.616, 13.0
     RHO              = 1.225
-    V_CRUISE         = 200 / 3.6
+    RHO_CR           = 0.835679
+    V_C_TAS          = 200 / 3.6
+    VD_FACTOR        = 1.25
+
+# This is a sea-level EAS structural envelope: the stall / manoeuvre speeds are
+# computed at sea-level density. The design cruise speed is a TAS at cruise
+# altitude, so it is converted to equivalent airspeed before being placed on the
+# diagram for consistency (V_EAS = V_TAS * sqrt(rho_alt / rho_SL)).
+V_CRUISE = V_C_TAS * np.sqrt(RHO_CR / RHO)   # cruise speed in EAS [m/s]
 
 AR = B_SPAN**2 / S_W    # reference aspect ratio (box-wing benefit carried by e)
 
 # Given / updated
-V_DIVE  = 1.6 * V_CRUISE   # dive speed [m/s]  (team value; params says 1.25)
-CL_MAX  = 1.66             # ESTIMATE pending aero polar (was 2.0)
+V_DIVE  = VD_FACTOR * V_CRUISE   # dive speed [m/s]  (V_DIVE_FACTOR from parameters.py)
+CL_MAX  = 1.686            # box-wing CL_max from XFLR5 (aero dept)
 
 # Flagged assumptions / certification basis
 # Basis: EASA SC-VTOL-01, small category (MTOM <= 3175 kg -> our converged
@@ -127,8 +141,9 @@ def main():
     ax.plot(Vp, n_stall_pos(Vp), color="#185FA5", lw=2)
     # flat positive limit from corner to dive
     ax.plot([V_A, V_DIVE], [N_POS, N_POS], color="#185FA5", lw=2)
-    # right edge (dive line) down to negative limit
-    ax.plot([V_DIVE, V_DIVE], [N_POS, N_NEG], color="#185FA5", lw=2)
+    # right edge (dive line): from the positive limit down to where the
+    # negative limit has ramped back to zero at V_D (CS-25.333(b) convention)
+    ax.plot([V_DIVE, V_DIVE], [N_POS, 0], color="#185FA5", lw=2)
     # negative stall curve from 0 to the speed where it meets N_neg
     V_neg = np.sqrt(abs(N_NEG) * W / (0.5 * RHO * CL_MAX * S_W))
     Vn = np.linspace(0, V_neg, 200)
@@ -139,7 +154,6 @@ def main():
             label="Manoeuvre envelope")
 
     # ---- Gust lines (dashed) ----
-    Vg = np.array([0, V_CRUISE, V_DIVE])
     ax.plot([0, V_CRUISE], [1, n_gust(V_CRUISE, UDE_CRUISE)], "--",
             color="#D85A30", lw=1.5)
     ax.plot([0, V_DIVE], [1, n_gust(V_DIVE, UDE_DIVE)], "--",
