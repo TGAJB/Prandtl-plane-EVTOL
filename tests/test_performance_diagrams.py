@@ -140,3 +140,43 @@ def test_payload_range_curve_anchored_and_monotonic():
     # Range grows monotonically as passengers are shed.
     ranges = [r[3] for r in rows]
     assert all(b > a for a, b in zip(ranges, ranges[1:]))
+
+
+# ===========================================================================
+# U2 - unit consistency (EAS/TAS conversion done in the right units)
+# ===========================================================================
+def test_vn_eas_tas_conversion():
+    # The V-n envelope is sea-level EAS; cruise is a cruise-altitude TAS placed
+    # on it via V_EAS = V_TAS * sqrt(rho_alt / rho_SL). Recompute independently.
+    expected = vn.V_C_TAS * math.sqrt(vn.RHO_CR / vn.RHO)
+    assert vn.V_CRUISE == pytest.approx(expected)
+    assert vn.V_CRUISE < vn.V_C_TAS          # EAS below TAS at altitude (rho < rho_SL)
+
+
+# ===========================================================================
+# U3 - null input (zero speed -> no aerodynamic load)
+# ===========================================================================
+def test_vn_zero_speed_no_load():
+    assert vn.n_stall_pos(0.0) == pytest.approx(0.0)   # no dynamic pressure, no lift
+    assert vn.n_gust(0.0, 15.0) == pytest.approx(1.0)  # no gust increment at V=0 -> 1 g
+
+
+# ===========================================================================
+# U4 - extreme value (large speeds stay finite and physically ordered)
+# ===========================================================================
+def test_diagrams_finite_at_extreme_speed():
+    assert math.isfinite(vn.n_gust(500.0, 15.0))
+    assert vn.n_stall_pos(500.0) > vn.n_stall_pos(100.0)        # monotone, no overflow
+    pr_hi = climb.P_required(200.0)
+    assert math.isfinite(pr_hi) and pr_hi > 0.0
+
+
+# ===========================================================================
+# U9 - input range / valid-envelope checks
+# ===========================================================================
+def test_vn_inputs_in_valid_range():
+    # CL_max for the box wing should be a sane high-lift value (XFLR5 gave 1.686).
+    assert 1.0 < vn.CL_MAX < 2.5
+    # Characteristic speeds must be correctly ordered for a valid envelope.
+    assert vn.V_S < vn.V_A < vn.V_DIVE
+    assert vn.V_S < vn.V_CRUISE < vn.V_DIVE
