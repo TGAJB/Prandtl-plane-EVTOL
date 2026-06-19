@@ -50,7 +50,7 @@ design_state = load_final_design_state(verbose=False)
 
 #mtow_kg = _solve_converged_mass() #CHANGE THIS for the actual MTOW in the end in    [kg]
 mtow_kg = design_state["mtow"]
-# mtow_kg = 2200
+#mtow_kg = 2500
 # ---- Propeller geometry ------------------------------------------------------
 DIAMETER       = 1.90  # propeller diameter (FIXED in your case)     [m]
 N_BLADES       = 8    # number of blades (your free variable)
@@ -640,9 +640,11 @@ def make_efficiency_figure(blade, betas=None):
 def main():
     blade = Blade()
     DL = T_HOVER_PROP / blade.A
+    DL_CRUISE = T_CRUISE_PROP / blade.A
     print("="*64)
     print(f" Propeller: D={DIAMETER} m, B={N_BLADES}, "
           f"disc loading {DL:.0f} N/m^2 ({DL/9.81:.0f} kg/m^2)")
+    print(f" Cruise disc loading {DL_CRUISE:.0f} N/m^2 ({DL_CRUISE/9.81:.0f} kg/m^2)")
     print(f" Airfoil stall at {np.rad2deg(POLAR.alpha_stall):.0f} deg, "
           f"Cl_max={POLAR.cl_max:.2f}")
     print("="*64)
