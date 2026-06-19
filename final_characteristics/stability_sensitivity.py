@@ -46,20 +46,27 @@ MTOW IS NOW COUPLED  (single coupled sweep)
 -------------------------------------------
 Roots tagged with a converger global (the 7th tuple field) feed the MTOW
 converger.  Each sample reconverges the MTOW for those roots (via the shared
-stability_eval.converged_mtow, memoised on the converger sub-vector) and uses
-that MTOW in the stability evaluation, so the MTOW output and the area-dependent
-derivatives both respond.  A fresh converge runs the internal landing-gear SLSQP
-(~25 s); the memoisation means only the converger-coupled columns trigger it, so
-the cost is ~ (2 + n_converger_roots) * N_SOBOL reconverges.  Lower N_SOBOL (env
-var STAB_SENS_N_SOBOL) for a quick look.
+stability_eval.converged_mtow) and uses that MTOW in the stability evaluation, so
+the MTOW output and the area-dependent derivatives both respond.  A fresh converge
+runs the internal landing-gear SLSQP (~25 s); only the converger-coupled columns
+need it, so there are ~ (2 + n_converger_roots) * N_SOBOL UNIQUE reconverges.
+
+PARALLEL & CONVERGED.  N_SOBOL defaults to 256 so the variance-based indices
+converge into their exact [0, 1] range (the old N=16 left them unconverged, so
+total-order cells read > 1).  To afford that, the unique MTOW reconverges -- and
+then the cheap stability evals -- are run across CPU cores (ProcessPoolExecutor):
+the parallel and serial paths give bit-identical results because each converge is
+seeded/deterministic.  Tune with the env vars below.
 
 Run:    python final_characteristics/stability_sensitivity.py
-        STAB_SENS_N_SOBOL=4 python final_characteristics/stability_sensitivity.py   # quick
+        STAB_SENS_N_SOBOL=8 python final_characteristics/stability_sensitivity.py   # quick (NOT converged)
+        STAB_SENS_WORKERS=4 python final_characteristics/stability_sensitivity.py   # cap workers (default = all cores)
 Output: PNG figures + a CSV in  final_characteristics/sensitivity_plots/stability/
 """
 
 import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -79,11 +86,17 @@ OUT_DIR = Path(__file__).resolve().parent / "sensitivity_plots" / "stability"
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-# Sobol base sample size (total evals ~ N_SOBOL*(D+2)); power of 2. The MTOW
+# Sobol base sample size (total evals ~ N_SOBOL*(D+2)); power of 2 for balance.
+# At 256 the variance-based indices converge into their exact [0, 1] range; the
+# tiny N=16 default used to leave them unconverged (estimates > 1). The MTOW
 # coupling makes each converger-coupled sample cost ~25 s, so allow an env
 # override for a quick look.
-N_SOBOL = int(os.environ.get("STAB_SENS_N_SOBOL", "16"))
+N_SOBOL = int(os.environ.get("STAB_SENS_N_SOBOL", "256"))
 SEED    = 12345
+# Worker processes for the parallel MTOW precompute (the ~25 s reconverges are
+# the only expensive step; the stability eval itself is cheap). Set
+# STAB_SENS_WORKERS=1 for a serial run (e.g. to reproduce / debug).
+WORKERS = max(1, int(os.environ.get("STAB_SENS_WORKERS", str(os.cpu_count() or 4))))
 
 # Root design parameters to sweep:
 #   (dotted_path, low, high, nominal, label, unit, converger_global)
@@ -144,18 +157,46 @@ HEATMAP_ROWS = REQ_NAMES + [MTOW_NAME]
 # ---------------------------------------------------------------------------
 # Core evaluation: one parameter vector -> all outputs
 # ---------------------------------------------------------------------------
-def evaluate_outputs(overrides):
-    """Run the coupled evaluation for one override dict; return a dict of outputs.
-
-    Reconverges the MTOW for any converger-coupled roots in `overrides` (memoised
-    in stability_eval), then evaluates the stability requirements at that MTOW.
-    Outputs are every requirement's signed margin (<= 0 means satisfied), the
-    aggregate count of failing requirements, and the converged MTOW [kg].
-    """
-    geometry_overrides = {
+def _geometry_overrides(overrides):
+    """The converger-coupled subset of `overrides`, mapped to mass_components globals."""
+    return {
         CONVERGER[name]: value for name, value in overrides.items() if name in CONVERGER
     }
-    mtow = se.converged_mtow(geometry_overrides)
+
+
+def _converger_key(geometry_overrides):
+    """Hashable key for a converger sub-vector, mirroring stability_eval's memo key
+    (rounded to 3 dp) so identical geometries map to the same precomputed MTOW."""
+    return tuple(sorted((name, round(value, 3)) for name, value in geometry_overrides.items()))
+
+
+def _converge_worker(geometry_overrides):
+    """Module-level worker (picklable under Windows 'spawn'): reconverge one MTOW.
+
+    Returns the converged MTOW [kg] for the given converger-geometry overrides.
+    Each worker has its own empty stability_eval cache, so every call here is a
+    fresh ~25 s landing-gear SLSQP reconverge -- which is exactly why we hand it
+    only the UNIQUE converger sub-vectors.
+    """
+    return se.converged_mtow(geometry_overrides)
+
+
+def evaluate_outputs(overrides, mtow_lookup=None):
+    """Run the coupled evaluation for one override dict; return a dict of outputs.
+
+    Reconverges the MTOW for any converger-coupled roots in `overrides`, then
+    evaluates the stability requirements at that MTOW. When `mtow_lookup` is given
+    (the parallel Sobol path), the MTOW is read from it instead of reconverging
+    here; otherwise it falls back to the (memoised) stability_eval reconverge so
+    the serial callers (e.g. tornado) are unaffected. Outputs are every
+    requirement's signed margin (<= 0 means satisfied), the aggregate count of
+    failing requirements, and the converged MTOW [kg].
+    """
+    geometry_overrides = _geometry_overrides(overrides)
+    if mtow_lookup is not None:
+        mtow = mtow_lookup[_converger_key(geometry_overrides)]
+    else:
+        mtow = se.converged_mtow(geometry_overrides)
 
     results = se.evaluate_stability(param_overrides=overrides, mtow=mtow)
     out = dict(results["margins"])  # name -> signed margin
@@ -168,12 +209,42 @@ def _overrides_from_row(row):
     return {PNAMES[j]: float(row[j]) for j in range(D)}
 
 
-def _eval_matrix(matrix):
-    """Evaluate every row of `matrix`; return {output_name: array(N)}."""
+# Per-worker MTOW lookup, set once by the pool initializer so the (large) dict is
+# shipped to each worker a single time rather than pickled with every task.
+_WORKER_MTOW_LOOKUP = None
+
+
+def _eval_init(mtow_lookup):
+    """ProcessPool initializer: stash the precomputed MTOW lookup in the worker."""
+    global _WORKER_MTOW_LOOKUP
+    _WORKER_MTOW_LOOKUP = mtow_lookup
+
+
+def _eval_row_worker(row):
+    """Module-level worker: evaluate one parameter row using the worker's MTOW lookup.
+
+    Returns a list aligned with OUTPUT_NAMES (lists pickle cheaply; the caller
+    re-keys them). The MTOW is read from the precomputed lookup, so this does NO
+    reconverge -- it is the cheap stability eval only."""
+    out = evaluate_outputs(_overrides_from_row(row), mtow_lookup=_WORKER_MTOW_LOOKUP)
+    return [out[name] for name in OUTPUT_NAMES]
+
+
+def _eval_matrix(matrix, mtow_lookup=None, pool=None):
+    """Evaluate every row of `matrix`; return {output_name: array(N)}.
+
+    With `pool` (a ProcessPoolExecutor whose initializer already holds the MTOW
+    lookup) the cheap stability evals run in parallel; otherwise they run serially
+    using `mtow_lookup` (or a per-call reconverge when that is None too)."""
     n = matrix.shape[0]
     collected = {name: np.empty(n) for name in OUTPUT_NAMES}
+    if pool is not None:
+        for i, res in enumerate(pool.map(_eval_row_worker, [matrix[i] for i in range(n)])):
+            for k, name in enumerate(OUTPUT_NAMES):
+                collected[name][i] = res[k]
+        return collected
     for i in range(n):
-        out = evaluate_outputs(_overrides_from_row(matrix[i]))
+        out = evaluate_outputs(_overrides_from_row(matrix[i]), mtow_lookup=mtow_lookup)
         for name in OUTPUT_NAMES:
             collected[name][i] = out[name]
     return collected
@@ -234,6 +305,33 @@ def _sobol_indices(fA, fB, fAB_list):
     return S, ST
 
 
+def _collect_converger_dicts(matrices):
+    """Unique converger sub-vector dicts across every row of every matrix.
+
+    Identical (rounded) geometries collapse to one entry so each ~25 s reconverge
+    is paid once. Non-converger column swaps share A's converger sub-vector, so
+    the count is ~(2 + n_converger_roots)*N, not (D+2)*N.
+    """
+    by_key = {}
+    for M in matrices:
+        for i in range(M.shape[0]):
+            g = _geometry_overrides(_overrides_from_row(M[i]))
+            by_key.setdefault(_converger_key(g), g)
+    return list(by_key.values())
+
+
+def _parallel_mtow_lookup(matrices):
+    """Reconverge the MTOW for every UNIQUE converger sub-vector across `matrices`,
+    in parallel across WORKERS processes; return {converger_key: mtow}."""
+    unique = _collect_converger_dicts(matrices)
+    if WORKERS <= 1 or len(unique) <= 1:
+        mtows = [_converge_worker(g) for g in unique]
+    else:
+        with ProcessPoolExecutor(max_workers=WORKERS) as pool:
+            mtows = list(pool.map(_converge_worker, unique))
+    return {_converger_key(g): m for g, m in zip(unique, mtows)}
+
+
 def sobol():
     """Run the Sobol design once; return per-output S and ST matrices.
 
@@ -245,15 +343,27 @@ def sobol():
     A = base01[:, :D] * (HI - LO) + LO
     B = base01[:, D:] * (HI - LO) + LO
 
-    fA = _eval_matrix(A)
-    fB = _eval_matrix(B)
-
     # Build the D cross-matrices AB_i (= A with column i replaced by B's column i).
-    fAB = []  # fAB[i] is a dict {output: array(N)}
+    ABs = [A.copy() for _ in range(D)]
     for i in range(D):
-        ABi = A.copy()
-        ABi[:, i] = B[:, i]
-        fAB.append(_eval_matrix(ABi))
+        ABs[i][:, i] = B[:, i]
+
+    # Reconverge every UNIQUE converger sub-vector once, in parallel -- the ~25 s
+    # SLSQP reconverge is the dominant cost. The cheap stability evals then just
+    # read the precomputed MTOW lookup; once the reconverges are parallel they are
+    # comparable in cost, so run them across the pool too.
+    mtow_lookup = _parallel_mtow_lookup([A, B, *ABs])
+
+    if WORKERS > 1:
+        with ProcessPoolExecutor(max_workers=WORKERS, initializer=_eval_init,
+                                 initargs=(mtow_lookup,)) as pool:
+            fA = _eval_matrix(A, pool=pool)
+            fB = _eval_matrix(B, pool=pool)
+            fAB = [_eval_matrix(ABi, pool=pool) for ABi in ABs]
+    else:
+        fA = _eval_matrix(A, mtow_lookup=mtow_lookup)
+        fB = _eval_matrix(B, mtow_lookup=mtow_lookup)
+        fAB = [_eval_matrix(ABi, mtow_lookup=mtow_lookup) for ABi in ABs]
 
     S_mat, ST_mat = {}, {}
     for name in OUTPUT_NAMES:
@@ -316,9 +426,11 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     n_conv = len(CONVERGER)
     print(f"Stability + MTOW sensitivity consult  ({D} roots, {len(REQ_NAMES)} requirements)")
+    n_reconv = (2 + n_conv) * N_SOBOL
     print(f"  Sobol N={N_SOBOL}  (~{N_SOBOL * (D + 2)} evaluations)")
-    print(f"  MTOW-coupled roots: {n_conv}  (~{(2 + n_conv) * N_SOBOL} MTOW reconverges @ ~25 s each;"
-          f" set STAB_SENS_N_SOBOL to lower)")
+    print(f"  MTOW-coupled roots: {n_conv}  (~{n_reconv} unique MTOW reconverges @ ~25 s each,"
+          f" parallel over {WORKERS} worker(s) ~ {n_reconv * 25 / WORKERS / 60:.0f} min;"
+          f" set STAB_SENS_N_SOBOL / STAB_SENS_WORKERS to tune)")
 
     # 1) Tornado on the aggregate failing count AND on the converged MTOW.
     print("\n[1/2] Tornado (local one-at-a-time) ...")

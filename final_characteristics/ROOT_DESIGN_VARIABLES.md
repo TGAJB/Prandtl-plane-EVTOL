@@ -151,9 +151,14 @@ the MTOW so the heatmap ranks both stability-drivers and MTOW-drivers in one run
 Toggle the remaining roots in by editing the tool's `PARAMS` list. Run:
 
 ```
-python final_characteristics/stability_sensitivity.py            # full (N_SOBOL=16)
-STAB_SENS_N_SOBOL=4 python final_characteristics/stability_sensitivity.py   # quick
+python final_characteristics/stability_sensitivity.py            # full (N_SOBOL=256, converged)
+STAB_SENS_N_SOBOL=8 python final_characteristics/stability_sensitivity.py   # quick look (indices NOT converged)
+STAB_SENS_WORKERS=4 python final_characteristics/stability_sensitivity.py   # cap parallel workers (default = all cores)
 ```
+
+The MTOW reconverges (~25 s each) are run in parallel across CPU cores; N_SOBOL=256
+is large enough that the variance-based indices converge into their exact [0, 1]
+range (a small N leaves them unconverged and they can read > 1).
 
 and read `sensitivity_plots/stability/sobol_heatmap.png` (per-(root × output)
 total-order indices, with an MTOW row) and `sobol_total_order.csv`.
