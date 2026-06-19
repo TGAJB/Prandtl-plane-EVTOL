@@ -809,7 +809,7 @@ Z_WING_R     = WingGeometry.z_w_aw       # [m]  high rear wing (= z_w_fw + gap)
 # Front-wing vertical placement range from the fuselage-centreline datum (z up,
 # negative = below the centreline). Geometric limit from the fuselage layout; used
 # as the optimiser's z_w_fw design-variable bounds. (Comfortably above the skid
-# datum Z_GEAR ~ -1.30 m.)
+# datum Z_GEAR ~ -2.30 m.)
 Z_W_FW_MIN   = -0.9                       # [m]  lowest front-wing mount
 Z_W_FW_MAX   = -0.6                       # [m]  highest front-wing mount
 WINGLET_MASS_FRAC = 0.10                 # [-]  wing-mass fraction carved out for the two
@@ -962,8 +962,9 @@ W_PAYLOAD_BOX = 1.4    # [m]  cabin width                                       
 H_PAYLOAD_BOX = 1.2    # [m]  seated height                                             PLACEHOLDER
 
 # -- Landing gear (skid rails) --
+GROUND_CLEARANCE = 1.30                     # [m]  static clearance: skid contact to fuselage belly (single source of truth)
 X_GEAR      = 0.5 * L_FUS                  # [m]  rail mid-length under the cabin
-Z_GEAR      = -(FUSE_WIDTH / 2 + 0.30)     # [m]  belly radius + 0.30 m static clearance
+Z_GEAR      = -(FUSE_WIDTH / 2 + GROUND_CLEARANCE)  # [m]  belly radius + static clearance
 # Y_GEAR_RAIL (half-track) is derived from L_ARM further down, after the landing-gear
 # trade-study constants that define it.
 

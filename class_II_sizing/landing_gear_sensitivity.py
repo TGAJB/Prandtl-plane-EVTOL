@@ -61,7 +61,7 @@ OUT_DIR = Path(__file__).resolve().parent / "sensitivity_plots"
 # converged MTOW from mtow_sizing.
 M_LANDING_KG = 2136.0
 
-N_SOBOL = 32    # Sobol base sample size (total evals = N_SOBOL*(D+2)); power of 2 for balance
+N_SOBOL = 256   # Sobol base sample size (total evals = N_SOBOL*(D+2)); power of 2 for balance
 N_MC    = 150   # Latin-Hypercube Monte Carlo samples
 SEED    = 12345
 
@@ -143,11 +143,33 @@ def evaluate(overrides):
         _restore(saved)
 
 
+# Bounded infeasibility fallback for variance-based SA. Anchored to the feasible
+# gear-mass scale (~1.5x the nominal selected mass) so the rare no-feasible sample
+# does not become an extreme outlier (the old 0.05*MTOW ~ 107 kg was ~2.5x a normal
+# gear and inflated the Sobol indices). Computed lazily (one SLSQP sizing of the
+# nominal point) and cached; _SEL_STATS records how often the fallback fires.
+_FALLBACK_MASS = None
+_SEL_STATS = {"n": 0, "infeasible": 0}
+
+
+def _fallback_mass():
+    global _FALLBACK_MASS
+    if _FALLBACK_MASS is None:
+        _, _, m_nom = evaluate(NOMINAL)
+        _FALLBACK_MASS = 1.5 * m_nom if np.isfinite(m_nom) else 0.05 * M_LANDING_KG
+    return _FALLBACK_MASS
+
+
 def selected_mass(overrides):
-    """Mass [kg] of the CHOSEN design for variance-based SA. A finite fallback keeps the
-    output defined on the rare sample where no architecture is feasible."""
+    """Mass [kg] of the CHOSEN design for variance-based SA. A bounded finite fallback
+    keeps the output defined on the rare sample where no architecture is feasible,
+    without injecting an extreme outlier (see _fallback_mass)."""
     _, _, sel_mass = evaluate(overrides)
-    return sel_mass if np.isfinite(sel_mass) else 0.05 * M_LANDING_KG
+    _SEL_STATS["n"] += 1
+    if np.isfinite(sel_mass):
+        return sel_mass
+    _SEL_STATS["infeasible"] += 1
+    return _fallback_mass()
 
 
 def _overrides_from_row(row):
@@ -192,6 +214,7 @@ def plot_tornado(base, rows, path):
 # Method 2 - Sobol variance-based global sensitivity (Saltelli / Jansen)
 # ---------------------------------------------------------------------------
 def sobol():
+    _SEL_STATS["n"] = 0; _SEL_STATS["infeasible"] = 0   # count fallbacks over this run only
     sampler = qmc.Sobol(d=2 * D, scramble=True, seed=SEED)
     base = sampler.random(N_SOBOL)              # (N, 2D) in [0,1]
     A01, B01 = base[:, :D], base[:, D:]
@@ -209,22 +232,53 @@ def sobol():
         fABi = evalmat(ABi)
         S[i]  = np.mean(fB * (fABi - fA)) / var           # Saltelli 2010 first-order
         ST[i] = 0.5 * np.mean((fA - fABi) ** 2) / var      # Jansen total-order
+
+    # Exact Sobol indices lie in [0, 1]; an estimate above 1 is a non-convergence
+    # artifact (too few samples for a discontinuous output). Flag it so the run is
+    # not read as converged.
+    worst = max(float(np.abs(S).max()), float(np.abs(ST).max()))
+    if worst > 1.0 + 1e-3:
+        warnings.warn(
+            f"Sobol indices out of range (max |index| = {worst:.2f} > 1): the "
+            f"N_SOBOL={N_SOBOL} estimate has not converged. Increase N_SOBOL "
+            f"(keep a power of 2).",
+            stacklevel=2,
+        )
     return S, ST, var
 
 
 def plot_sobol(S, ST, var, path):
     order = np.argsort(ST)
     labels = [PLABEL[PNAMES[i]] for i in order]
-    Si = np.clip(S[order], 0, None)
-    STi = np.clip(ST[order], 0, None)
+    # Exact indices lie in [0, 1]: clip negatives to 0 and cap the DISPLAY at 1. Any
+    # raw estimate > 1 is a non-convergence artifact, drawn capped and flagged below.
+    S_raw  = np.clip(S[order], 0, None)
+    ST_raw = np.clip(ST[order], 0, None)
+    Si  = np.minimum(S_raw, 1.0)
+    STi = np.minimum(ST_raw, 1.0)
     y = np.arange(D)
     fig, ax = plt.subplots(figsize=(8.5, 6))
-    ax.barh(y + 0.2, STi, height=0.4, color="#7e57c2", label="total-order $S_{Ti}$ (incl. interactions)")
-    ax.barh(y - 0.2, Si,  height=0.4, color="#26a69a", label="first-order $S_i$")
+    bars_t = ax.barh(y + 0.2, STi, height=0.4, color="#7e57c2",
+                     label="total-order $S_{Ti}$ (incl. interactions)")
+    bars_1 = ax.barh(y - 0.2, Si, height=0.4, color="#26a69a", label="first-order $S_i$")
+    # Flag any bar whose raw estimate exceeded 1 (clipped for display = not converged).
+    flagged = False
+    for raw, bars in ((ST_raw, bars_t), (S_raw, bars_1)):
+        for k, patch in enumerate(bars):
+            if raw[k] > 1.0 + 1e-3:
+                flagged = True
+                patch.set_hatch("//"); patch.set_edgecolor("crimson")
+                ax.text(0.99, patch.get_y() + patch.get_height() / 2.0,
+                        f">1 (raw {raw[k]:.2f})", ha="right", va="center",
+                        fontsize=7, color="crimson")
     ax.set_yticks(y); ax.set_yticklabels(labels)
-    ax.set_xlabel("Sobol sensitivity index [-]")
-    ax.set_title("Global (variance-based) sensitivity of the chosen gear mass\n"
-                 f"(output std = {np.sqrt(var):.1f} kg; Sobol' sampling, N={N_SOBOL})")
+    ax.set_xlim(0, 1.0)
+    ax.set_xlabel("Sobol sensitivity index [-]  (exact range [0, 1])")
+    title = ("Global (variance-based) sensitivity of the chosen gear mass\n"
+             f"(output std = {np.sqrt(var):.1f} kg; Sobol' sampling, N={N_SOBOL})")
+    if flagged:
+        title += "\nhatched: raw estimate > 1 (not converged) -- raise N_SOBOL"
+    ax.set_title(title)
     ax.legend(loc="lower right", fontsize=8)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout(); fig.savefig(path, dpi=140); plt.close(fig)
@@ -337,6 +391,10 @@ def main():
     print(f"      output std = {np.sqrt(var):.1f} kg.  Most influential (total-order):")
     for i in idx[:5]:
         print(f"        {PLABEL[PNAMES[i]]:<24s} S_T={ST[i]:.2f}  S_1={S[i]:.2f}")
+    if _SEL_STATS["n"]:
+        infeas_pct = 100.0 * _SEL_STATS["infeasible"] / _SEL_STATS["n"]
+        print(f"      no-feasible-architecture samples: {_SEL_STATS['infeasible']}/"
+              f"{_SEL_STATS['n']} ({infeas_pct:.1f}%) -> fallback {_fallback_mass():.1f} kg")
 
     # 3) Monte Carlo selection robustness
     print("\n[3/3] Monte Carlo selection robustness (LHS) ...")

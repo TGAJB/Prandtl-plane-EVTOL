@@ -1337,7 +1337,7 @@ def geom_for_sketch(details):
         track_m=details["track_m"],
         L_eff=p.get("L", L_ARM),
         skid_len=L_SKID_RAIL,
-        clearance=0.30,                              # [m] static belly-to-ground clearance
+        clearance=GROUND_CLEARANCE,                  # [m] static belly-to-ground clearance (from parameter sheet)
         fuse_width=FUSE_WIDTH,
     )
 
@@ -1410,7 +1410,7 @@ def hub_mass(use_fusion=False, m_hub_fusion=None):
 
 # Miscellaneous
 def misc_mass(mtow_kg):
-    return 0.09 * mtow_kg + 32 + 85 #kg of the thermal battery management system (1) and the parachute (2)
+    return 0.10 * mtow_kg + 32 + 85 #kg of the thermal battery management system (1) and the parachute (2)
 
 
 def hinge_mass(mtow_kg):
