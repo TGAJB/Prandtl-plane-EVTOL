@@ -26,6 +26,7 @@ All masses in kg.
 """
 
 import math
+import numbers
 import sys
 from pathlib import Path
 
@@ -65,6 +66,17 @@ def test_fuselage_monotonic_and_finite():
     assert math.isfinite(big) and big > mc.fuselage_mass(2000.0)
 
 
+def test_fuselage_output_contract():
+    # U10: a finite positive scalar mass the MTOW loop can consume.
+    m = mc.fuselage_mass(2000.0)
+    assert isinstance(m, numbers.Real) and math.isfinite(m) and m > 0.0
+
+
+def test_fuselage_mass_fraction_plausible():
+    # U9: at the design point the fuselage is a few % of MTOW (sane regression regime).
+    assert 0.02 < mc.fuselage_mass(2000.0) / 2000.0 < 0.12
+
+
 # ===========================================================================
 # ST-WG -- wing / winglet
 # ===========================================================================
@@ -88,6 +100,17 @@ def test_wing_mass_monotonic_and_finite():
     assert math.isfinite(mc.wing_mass(10_000.0))
 
 
+def test_wing_output_contract():
+    # U10: finite positive scalar mass for the MTOW loop.
+    m = mc.wing_mass(2000.0)
+    assert isinstance(m, numbers.Real) and math.isfinite(m) and m > 0.0
+
+
+def test_wing_mass_fraction_plausible():
+    # U9: combined front+rear box wing is a sane fraction of MTOW.
+    assert 0.03 < mc.wing_mass(2000.0) / 2000.0 < 0.15
+
+
 # ===========================================================================
 # ST-SEC -- secondary masses (tail, hinge, misc)
 # ===========================================================================
@@ -106,6 +129,12 @@ def test_tail_mass_aero_floor_and_monotonic():
     assert mc.tail_mass(0.0) > 0.0
     assert mc.tail_mass(MTOW_HI) > mc.tail_mass(MTOW_LO)
     assert math.isfinite(mc.tail_mass(10_000.0))
+
+
+def test_secondary_masses_output_contract():
+    # U10: tail, hinge and misc all return finite positive scalar masses.
+    for m in (mc.tail_mass(2000.0), mc.hinge_mass(2000.0), mc.misc_mass(2000.0)):
+        assert isinstance(m, numbers.Real) and math.isfinite(m) and m > 0.0
 
 
 # ===========================================================================
@@ -140,3 +169,10 @@ def test_mtow_increases_with_input_mass(mt_lo, mt_hi):
     # Heavier input -> heavier structure/battery -> heavier estimate (gradient<1
     # is what makes the fixed-point iteration converge).
     assert mt_hi["mtow"] > mt_lo["mtow"]
+
+
+def test_mtow_finite_at_extreme_input():
+    # U4: a heavy off-design input must still produce a finite, ordered estimate
+    # (no NaN/overflow from any component regression or the gear optimiser).
+    r = mt.compute_mtow(3500.0, verbose=False)
+    assert math.isfinite(r["mtow"]) and r["mtow"] > 0.0
