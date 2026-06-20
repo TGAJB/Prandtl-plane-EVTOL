@@ -176,3 +176,20 @@ def test_mtow_finite_at_extreme_input():
     # (no NaN/overflow from any component regression or the gear optimiser).
     r = mt.compute_mtow(3500.0, verbose=False)
     assert math.isfinite(r["mtow"]) and r["mtow"] > 0.0
+
+
+def test_converged_mass_is_self_consistent():
+    # The fixed point of the loop: feeding the converged MTOW back through one
+    # iteration must reproduce it within the convergence tolerance (the
+    # "iterates until take-off mass converges" claim).
+    r = mt.converged_mass()
+    m = r["mtow"]
+    back = mt.compute_mtow(m, verbose=False)["mtow"]
+    assert abs(back - m) / m < mt.CONVERGENCE_TOLERANCE
+
+
+def test_converged_mass_in_bounds_and_conserved():
+    # Converged design sits inside the search bounds and still balances mass.
+    r = mt.converged_mass()
+    assert mt.BOUND_LOW < r["mtow"] < mt.BOUND_HIGH
+    assert r["mtow"] == pytest.approx(sum(r[k] for k in _PARTS))
