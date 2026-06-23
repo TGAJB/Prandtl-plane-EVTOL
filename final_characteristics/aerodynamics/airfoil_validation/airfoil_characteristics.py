@@ -639,50 +639,31 @@ def plot_differences(
     alpha_mask = (reference.alpha >= overlap[0]) & (reference.alpha <= overlap[1])
     alpha = reference.alpha[alpha_mask]
     reference_cl = reference.values("CL")[alpha_mask]
-    reference_cd = reference.values("CD")[alpha_mask]
-    reference_cm = reference.values("Cm")[alpha_mask]
     delta_cl_percent = _relative_difference_percent(
         reference_cl,
         _interp(candidate, "CL", alpha),
         min_reference_abs=0.02,
     )
-    delta_cd_percent = _relative_difference_percent(
-        reference_cd,
-        _interp(candidate, "CD", alpha),
-    )
-    delta_cm_percent = _relative_difference_percent(
-        reference_cm,
-        _interp(candidate, "Cm", alpha),
-    )
 
-    figure, axes = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
-    axes[0].plot(alpha, delta_cl_percent, color="tab:blue")
-    axes[0].axhline(0.0, color="black", linewidth=0.8)
-    _setup_axis(axes[0], "", r"Relative $\Delta C_L$ [%]", r"$C_L$ relative difference")
-    axes[0].text(
+    figure, ax = plt.subplots(figsize=(10, 3.6))
+    ax.plot(alpha, delta_cl_percent, color="tab:blue")
+    ax.axhline(0.0, color="black", linewidth=0.8)
+    _setup_axis(
+        ax,
+        r"Angle of attack $\alpha$ [deg]",
+        r"Relative $\Delta C_L$ [%]",
+        "",
+    )
+    ax.text(
         0.01,
         0.90,
         r"Near-zero $C_L$ reference points omitted",
-        transform=axes[0].transAxes,
+        transform=ax.transAxes,
         fontsize=9,
         va="top",
     )
 
-    axes[1].plot(alpha, delta_cd_percent, color="tab:orange")
-    axes[1].axhline(0.0, color="black", linewidth=0.8)
-    _setup_axis(axes[1], "", r"Relative $\Delta C_D$ [%]", r"$C_D$ relative difference")
-
-    axes[2].plot(alpha, delta_cm_percent, color="tab:green")
-    axes[2].axhline(0.0, color="black", linewidth=0.8)
-    _setup_axis(
-        axes[2],
-        r"Angle of attack $\alpha$ [deg]",
-        r"Relative $\Delta C_m$ [%]",
-        r"$C_m$ relative difference",
-    )
-
-    figure.suptitle("Flow5 minus AirfoilTools Relative Differences")
-    figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
+    figure.tight_layout()
 
     png_path = output_dir / "airfoil_validation_differences.png"
     pdf_path = output_dir / "airfoil_validation_differences.pdf"
