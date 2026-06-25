@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+
+OUTPUT_DIR = Path(__file__).resolve().parent
+CL_ALPHA_PNG_PATH = OUTPUT_DIR / "lift_curve_cl_alpha.png"
+CL_ALPHA_PDF_PATH = OUTPUT_DIR / "lift_curve_cl_alpha.pdf"
 
 # Write each row from your aerodynamic table here.
 # Use `None` for values you do not have yet.
@@ -257,121 +263,42 @@ def plot_cl_vs_alpha(
     plt,
     alpha_deg: list[float],
     cl_values: list[float],
-    fit_alpha_deg: list[float],
-    fit_cl_values: list[float],
     cl_max_idx: int,
-    cl0: float,
-    lift_curve_slope_per_deg: float,
-    alpha_zero_lift_deg: float,
     cruise_alpha_deg: float,
     cruise_cl: float,
 ) -> None:
-    """Plot CL as a function of alpha and show the fitted lift curve."""
-    alpha_at_cl_one_deg = (1.0 - cl0) / lift_curve_slope_per_deg
-    fit_line_alpha_deg, fit_line_cl_values = build_straight_line(
-        min(fit_alpha_deg),
-        max(max(fit_alpha_deg), alpha_at_cl_one_deg, cruise_alpha_deg),
-        lift_curve_slope_per_deg,
-        cl0,
-    )
-    alpha_zero_lift_sign = "-" if alpha_zero_lift_deg >= 0.0 else "+"
-    alpha_zero_lift_magnitude = abs(alpha_zero_lift_deg)
-
+    """Plot CL as a function of alpha with only the presentation design points."""
     plt.figure(figsize=(8, 5))
-    plt.plot(alpha_deg, cl_values, marker="o", linewidth=1.8, label=r"$C_L$ data")
-    plt.scatter(
-        fit_alpha_deg,
-        fit_cl_values,
-        facecolors="none",
-        edgecolors="navy",
-        s=90,
-        linewidths=1.6,
-        zorder=3,
-        label="Points used for lift-curve fit",
-    )
-    plt.plot(
-        fit_line_alpha_deg,
-        fit_line_cl_values,
-        color="navy",
-        linewidth=2.0,
-        label=(
-            rf"Fit: $C_L = {lift_curve_slope_per_deg:.4f}"
-            rf"(\alpha_{{deg}} {alpha_zero_lift_sign} {alpha_zero_lift_magnitude:.4f})$"
-        ),
-    )
+    plt.plot(alpha_deg, cl_values, marker="o", linewidth=1.8)
     plt.scatter(
         alpha_deg[cl_max_idx],
         cl_values[cl_max_idx],
         color="crimson",
-        s=80,
-        zorder=3,
-        label=rf"Estimated $C_{{L,\max}}$ = {cl_values[cl_max_idx]:.4f}",
+        marker="o",
+        s=90,
+        zorder=4,
     )
     plt.annotate(
         rf"$C_{{L,\max}}$ = {cl_values[cl_max_idx]:.4f}"
-        + f"\nalpha = {alpha_deg[cl_max_idx]:.1f} deg",
+        + f"\n$\\alpha$ = {alpha_deg[cl_max_idx]:.1f} deg",
         xy=(alpha_deg[cl_max_idx], cl_values[cl_max_idx]),
-        xytext=(12, 12),
+        xytext=(-112, -6),
         textcoords="offset points",
+        fontsize=12,
         bbox={"boxstyle": "round", "fc": "white", "ec": "gray"},
         arrowprops={"arrowstyle": "->", "color": "gray"},
     )
-    plt.scatter(0.0, cl0, color="darkgreen", s=70, zorder=3)
-    plt.scatter(alpha_zero_lift_deg, 0.0, color="purple", s=70, zorder=3)
     plt.scatter(
         cruise_alpha_deg,
         cruise_cl,
-        color="black",
-        marker="D",
-        s=75,
+        color="crimson",
+        marker="o",
+        s=90,
         zorder=4,
-        label=rf"Cruise: $\alpha$ = {cruise_alpha_deg:.2f} deg, $C_L$ = {cruise_cl:.4f}",
-    )
-
-    axis = plt.gca()
-    axis.relim()
-    axis.autoscale_view()
-    x_axis_min, _ = axis.get_xlim()
-    y_axis_min, _ = axis.get_ylim()
-    axis.vlines(
-        alpha_zero_lift_deg,
-        y_axis_min,
-        0.0,
-        colors="purple",
-        linestyles="--",
-        linewidth=1.2,
-        alpha=0.7,
-        zorder=1,
-    )
-    axis.hlines(
-        cl0,
-        x_axis_min,
-        0.0,
-        colors="darkgreen",
-        linestyles="--",
-        linewidth=1.2,
-        alpha=0.7,
-        zorder=1,
-    )
-
-    plt.annotate(
-        rf"$C_{{L,0}}$ = {cl0:.4f}",
-        xy=(0.0, cl0),
-        xytext=(18, 14),
-        textcoords="offset points",
-        bbox={"boxstyle": "round", "fc": "white", "ec": "gray"},
-        arrowprops={"arrowstyle": "->", "color": "gray"},
     )
     plt.annotate(
-        rf"$\alpha_0$ = {alpha_zero_lift_deg:.2f} deg",
-        xy=(alpha_zero_lift_deg, 0.0),
-        xytext=(18, -22),
-        textcoords="offset points",
-        bbox={"boxstyle": "round", "fc": "white", "ec": "gray"},
-        arrowprops={"arrowstyle": "->", "color": "gray"},
-    )
-    plt.annotate(
-        rf"Cruise: $\alpha$ = {cruise_alpha_deg:.2f} deg"
+        "Cruise"
+        + f"\n$\\alpha$ = {cruise_alpha_deg:.2f} deg"
         + f"\n$C_L$ = {cruise_cl:.4f}",
         xy=(cruise_alpha_deg, cruise_cl),
         xytext=(52, -26),
@@ -382,9 +309,7 @@ def plot_cl_vs_alpha(
     )
     plt.xlabel(r"$\alpha$ [deg]")
     plt.ylabel(r"$C_L$")
-    plt.title(r"$C_L$ vs $\alpha$")
     plt.grid(True, linestyle="--", alpha=0.5)
-    plt.legend()
     plt.tight_layout()
 
 
@@ -598,15 +523,15 @@ def main() -> None:
         plt,
         alpha_deg,
         cl_values,
-        lift_fit_alpha_deg,
-        lift_fit_cl_values,
         cl_max_idx,
-        cl0,
-        lift_curve_slope_per_deg,
-        alpha_zero_lift_deg,
         cruise_alpha_deg,
         cruise_cl,
     )
+    lift_curve_figure = plt.gcf()
+    lift_curve_figure.savefig(CL_ALPHA_PNG_PATH, dpi=300)
+    lift_curve_figure.savefig(CL_ALPHA_PDF_PATH)
+    print(f"Saved lift-curve plot to {CL_ALPHA_PNG_PATH}")
+    print(f"Saved lift-curve plot to {CL_ALPHA_PDF_PATH}")
     plot_drag_polar(
         plt,
         cl_values,
